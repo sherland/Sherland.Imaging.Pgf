@@ -29,12 +29,28 @@
 #include "PGFimage.h"
 #include <cstring>
 
-// __declspec(dllexport) is an MSVC/Windows-DLL-specific extension - not meaningful (and not even
-// syntactically accepted by clang without extra flags) for the Emscripten/WASM build target, where
-// these functions are statically linked into one binary and .NET's own WASM build tooling controls
-// which symbols survive linking, driven by which P/Invoke declarations reference them.
+// __declspec(dllexport) is an MSVC/Windows-DLL-specific extension for the desktop DLL build.
+//
+// For the Emscripten/WASM build target, EMSCRIPTEN_KEEPALIVE is the equivalent that actually
+// matters - confirmed the hard way (real DllNotFoundException("__Internal") at runtime, on a real
+// Playwright-driven browser test, not a guess): plain `extern "C"` linkage is enough for these
+// functions to compile, link with zero errors, and even show up correctly (by name, with a valid
+// function pointer) in the generated `pinvoke-table.h` .NET's WASM SDK builds from scanning
+// PictTag.UI.Browser.Interop's LibraryImport("__Internal") declarations - none of that is
+// sufficient at runtime. Without EMSCRIPTEN_KEEPALIVE, wasm-ld's own dead-code elimination still
+// drops these functions from the module's actual export section (confirmed by inspecting the built
+// .wasm's `WebAssembly.Module.exports()` directly - empty of any pgf_* entry either way), and the
+// .NET WASM interpreter's own pinvoke resolution (used whenever RunAOTCompilation isn't enabled,
+// i.e. every normal Debug `dotnet build`/`dotnet run` inner-loop build) needs the symbol to be a
+// real, JS-visible wasm export to resolve it - the embedded C-level pinvoke table alone only
+// serves AOT-compiled call sites. EMSCRIPTEN_KEEPALIVE (a real Emscripten macro, equivalent to
+// passing -sEXPORTED_FUNCTIONS explicitly) is what actually forces wasm-ld to keep and export the
+// symbol.
 #if defined(_WIN32)
 #define PICTTAG_EXPORT __declspec(dllexport)
+#elif defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+#define PICTTAG_EXPORT EMSCRIPTEN_KEEPALIVE
 #else
 #define PICTTAG_EXPORT
 #endif

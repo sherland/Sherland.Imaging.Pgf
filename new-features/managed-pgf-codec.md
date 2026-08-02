@@ -782,6 +782,19 @@ code inside an actual browser session at all, so a standalone throwaway WASM tim
 would duplicate infrastructure Stage 13's real-browser Playwright work needs to build anyway once
 there's a real call site to measure. Revisit there, not here.
 
+**Stage 11 — deliberately skipped, per its own stated gate.** The stage sequence itself frames this as
+"a stretch goal gated on stage 10's numbers showing real headroom to chase, not a mandatory stage."
+Stage 10's real numbers don't show that headroom being needed: at realistic thumbnail dimensions and
+quality values, both native (~0.9 ms) and managed (~1.3-1.5 ms) decode complete in low single-digit
+milliseconds - comfortably inside the "under 5 ms" acceptance bar Stage 10 set, itself derived with
+real headroom over the worst case actually measured. The ~1.5-1.7x gap to native is real but not a
+product problem worth chasing with a vectorization rewrite (and the correctness-re-verification risk
+that comes with one, per the architecture section's own warning that SIMD "can silently alter
+rounding/clamping behavior") when the unvectorized scalar port already meets the actual constraint
+that matters (interactive responsiveness during thumbnail grid scrolling). Revisit if a future
+real-world measurement (e.g. Stage 13's eventual in-browser numbers, where the interpreter's overhead
+is much larger) shows an actual case where this gap matters.
+
 ## Stage sequence
 
 Each stage independently committable with its own tests, per this repo's convention. Decode and

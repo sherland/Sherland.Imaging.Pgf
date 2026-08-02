@@ -489,6 +489,27 @@ documented — exactly the "verify, don't recall" bar this repo holds itself to 
   (`TestBitmaps.MinimumSupportedDimension = 10`) — a legitimate scope narrowing (real thumbnails never
   need it) independent of the debug-channel finding above.
 
+**Stage 2 — done.** `source/PictTag.PgfCodec/BitStream.cs`: a direct, method-for-method port of
+`BitStream.h`'s stateless bit-array primitives over `Span<uint>`/`ReadOnlySpan<uint>`, verified by 38
+hand-constructed-bit-pattern tests (`BitStreamTests.cs`) with no PGF file involved. Writing real tests
+against the real port (rather than assuming the C++ and the port agree) surfaced two more genuine,
+worth-recording findings:
+
+- **`SetBitBlock`/`ClearBitBlock` have "at least `len`" semantics for real, not just per their doc
+  comment's wording** — there is no end-mask on the last word touched (confirmed by testing, not by
+  re-reading the comment more carefully), so both round the affected range up to the end of whatever
+  word contains the last requested bit, *even in the single-word case*
+  (`ClearBitBlock(stream, 4, 8)` clears bits 4-31, not 4-11). Both methods' C# doc comments now state
+  this explicitly with a worked example — a future caller (Stages 5-6) assuming an exact range would
+  have introduced a real, hard-to-spot bug.
+- **`SeekBitRange`/`SeekBit1Range`'s original C++ deliberately over-reads one word past the caller's
+  logical range** when the scanned range is entirely zero (all-one) and ends exactly on a word
+  boundary — harmless there only because real callers' buffers always have slack past the "in use"
+  length; a bounds-checked `Span<T>` has no such implicit slack. Fixed by reordering the loop's
+  `&&` operands (`count < len` first) so the port never reads past `len` bits — provably safe instead
+  of safe-by-caller-convention, with identical return values for every valid input (verified by the
+  existing tests, not just argued).
+
 ## Stage sequence
 
 Each stage independently committable with its own tests, per this repo's convention. Decode and

@@ -584,6 +584,40 @@ PRD's other confirmed-unreachable-branch decisions (ROI, OpenMP, `nLevels=0`) - 
 since porting the real, reachable behavior faithfully is the actual goal, not handling every input
 the vendored pointer arithmetic could theoretically be pointed at.
 
+**Stage 7 — done.** `PgfColorConversion` (both directions: `EncodeBgraToYuva`/`Downsample`/
+`DecodeYuvaToBgra`, direct ports of `RgbToYuv`/`Downsample`/`GetBitmap`'s `ImageModeRGBA` branches,
+`channelMap`/`pitch` hardcoded to the identity/contiguous values every real caller in this codebase
+actually uses rather than threaded through as unused generality) and `PgfImageDecoder` (the
+single-shot decode orchestrator tying header parse + entropy decode + inverse wavelet transform +
+color conversion together across all 4 channels, direct port of `CPGFImage::Open`+`Read(0)`+
+`GetBitmap` chained - `PgfDecoderCore`'s single shared bitstream-reading state, confirmed from
+`CPGFImage::Read`'s loop structure, decodes all 4 channels' subbands *per level* before
+inverse-transforming any of them, not channel-by-channel to completion - the bitstream interleaves
+that way, so getting the loop nesting right here was load-bearing, not cosmetic).
+
+This is the stage the PRD calls out as "the milestone proving the whole scalar decode pipeline is
+correct end to end" - and it passed in full on the first run: 100 new tests (`PgfColorConversionTests`
+in isolation - color transform alone is exactly invertible with no wavelet/entropy coding involved,
+including at the exact byte-value corners worked out by hand in the doc comments, plus known-value
+box-average arithmetic for `Downsample`'s odd-dimension branches; `PgfImageDecoderTests` end-to-end -
+every `TestBitmaps` fixture x every `EdgeCaseDimensions` pair x quality `{0, 1, 4, 6, 15}`, encoded by
+the native shim's `pgf_encode_bgra_alloc` and decoded by both the managed port and the native oracle,
+asserted byte-exact against each other at *every* quality level, not just 0 - decode is deterministic
+given the same bitstream, so unlike Stage 8's round-trip matrix there's no cross-implementation-encoder
+ambiguity to narrow here). Also covers the real `sample-thumbnail.pgf` fixture (Tier 2's actual
+real-world leg) and Tier 5's truncated/garbage/empty-input fail-closed cases. Full suite (250 tests
+total across all stages so far) run 5x for stability - no flakiness, matching Stage 1's finding that
+avoiding `pgf_debug_decode_channel` in automated tests keeps this rig solid.
+
+One subtlety confirmed rather than assumed: `RgbToYuv`'s `(uAvg + vAvg) >> 2` (decode-side dequant
+combine) carries an original-code comment claiming "must be logical shift operator" that, taken
+literally, would be wrong for the signed, possibly-negative `int` sum involved here (worked through by
+hand for pure green: `U=V=-255`, and a *logical* shift of that sum would produce a wildly wrong,
+un-clamped result) - C#'s ordinary arithmetic (sign-extending) `>>` on `int`, the same operator C++
+would actually use for a signed operand in practice, is what the byte-exact test results confirm is
+correct; the comment most likely means "must stay a shift, not integer division" (which round
+differently for negative operands) rather than the CS-terminology "logical vs. arithmetic" distinction.
+
 ## Stage sequence
 
 Each stage independently committable with its own tests, per this repo's convention. Decode and

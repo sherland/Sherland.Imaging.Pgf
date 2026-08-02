@@ -368,7 +368,7 @@ own existing test suite (`PictTag.Data.Tests/PgfDecoderTests.cs`) is not touched
 - **Tier 3 — intermediate-stage comparison, not just end-to-end.** Byte-exact BGRA equality alone
   makes a decode mismatch hard to localize (entropy decode vs. inverse transform vs. color conversion
   could all be the culprit). Add a small **test-only** debug export to the native shim (e.g.
-  `pgf_debug_get_channel`, dumping `CPGFImage::GetChannel(c)`'s raw post-decode/pre-colorconversion
+  `pgf_debug_decode_channel`, dumping `CPGFImage::GetChannel(c)`'s raw post-decode/pre-colorconversion
   `DataT` buffer) so the port's own intermediate YUV channel data can be compared stage-by-stage
   against the real oracle while building the decode entropy-decode and inverse-transform stages, before
   the full `GetBitmap` equivalent even exists.
@@ -442,6 +442,53 @@ own existing test suite (`PictTag.Data.Tests/PgfDecoderTests.cs`) is not touched
   be zero or near-zero per call in both directions — verified by `MemoryDiagnoser`'s `Allocated`
   column, not inferred from "the code uses `Span<T>`."
 
+## Progress log
+
+**Stage 1 — done.** `native/PictTag.PgfDecoder/shim.cpp` gained `pgf_encode_bgra_alloc`/
+`pgf_free_encoded` and `pgf_debug_decode_channel`; `source/PictTag.PgfCodec` (empty skeleton) and
+`source/PictTag.PgfCodec.Tests` (20 passing tests, `NativeEncodeExportsTests.cs`) exist and are wired
+into `PictTag.slnx`. Three real, non-obvious findings came out of getting this far, all now fixed or
+documented — exactly the "verify, don't recall" bar this repo holds itself to elsewhere:
+
+- **A genuine P/Invoke marshaling bug, not specific to this PRD's new code.** Every `bool`-returning
+  export in this shim (new and pre-existing) was marshaled with `[return: MarshalAs(UnmanagedType.
+  Bool)]` (4-byte Win32 `BOOL`), but MSVC's C++ `bool` return is only ABI-guaranteed correct in the
+  return register's low byte (AL) — the upper 3 bytes are compiler/codegen-dependent, not guaranteed
+  zero. A genuine `false` could be misread as `true` whenever those upper bytes happened to be
+  nonzero. Confirmed with a deliberately adversarial repro (a function that unconditionally returns
+  `false` but writes nonzero out-parameters right before returning — the out-parameters marshaled
+  correctly, the return value didn't). Fixed by switching every occurrence to
+  `MarshalAs(UnmanagedType.U1)`, in **all three** P/Invoke wrapper classes:
+  `PictTag.Data.PgfDecoding.PgfDecoder` and `PictTag.UI.Browser.Interop.NativePgf` (both pre-existing,
+  production) as well as this PRD's new `PictTag.PgfCodec.Tests.Oracle.NativePgfOracle`. The
+  pre-existing decode functions had apparently been "getting lucky" (their specific compiled code
+  happens to leave the upper return-register bytes clean) rather than being provably correct — worth
+  fixing regardless of whether it had ever caused an observed failure in production.
+- **A real `realloc()`/`delete[]` mismatch, fixed.** `CPGFMemoryStream`'s allocating constructor grows
+  its buffer via `realloc()` when written past capacity, but its destructor always frees via
+  `delete[]` — undefined behavior when mixing the two allocators. `pgf_encode_bgra_alloc` now uses a
+  pre-sized, non-owning buffer instead, sidestepping the growth path entirely (fails closed via a
+  caught `IOException` if the fixed size is ever exceeded, rather than growing/corrupting).
+- **`pgf_debug_decode_channel` has a real, unresolved crash risk under repeated calls — scoped out of
+  automated testing, not fixed.** Calling this specific function repeatedly (a modest number of times
+  is enough — not just hundreds) produces a real `STATUS_ACCESS_VIOLATION`, even using only the
+  already-known-good real fixture with no encoding involved at all. Narrowed to the final
+  `GetChannel()`/`memcpy` read specifically (removing it eliminates the crash) but not further
+  root-caused: a real, correctly-configured AddressSanitizer rebuild (confirmed genuinely active via
+  its own startup diagnostics) found no violation report before the crash, and the ABI marshaling fix
+  above — initially suspected as the same root cause — did *not* resolve it when tested directly.
+  `PictTag.PgfCodec.Tests` deliberately does not call this function at all; it remains available for
+  occasional manual/interactive use during later stages (its actual intended purpose) with a
+  prominent warning in its own doc comment. Revisit if a real need for automated intermediate-channel
+  comparison arises in Stage 5/6 — don't reuse this function in a loop without solving this first.
+- **`min(width, height) < 10` triggers a separate, real vendored-library code path** (`CPGFImage::
+  ComputeLevels()`'s `nLevels=0` fallback — a wavelet-transform-free "store raw/uncoded channel data"
+  path, never exercised by this shim's original decode-only exports since real digiKam thumbnails
+  never approach this size) that was also implicated in early crash investigation. Both
+  `pgf_encode_bgra_alloc` and `pgf_debug_decode_channel` now explicitly reject it
+  (`TestBitmaps.MinimumSupportedDimension = 10`) — a legitimate scope narrowing (real thumbnails never
+  need it) independent of the debug-channel finding above.
+
 ## Stage sequence
 
 Each stage independently committable with its own tests, per this repo's convention. Decode and
@@ -450,7 +497,7 @@ round-trip matrix comes online as early as the shared infrastructure allows, rat
 very end.
 
 1. **Fixture + oracle infrastructure**: add the native shim's test-only `pgf_encode_bgra_alloc`/
-   `pgf_free_encoded` and `pgf_debug_get_channel` exports. Exit test: the extended native oracle
+   `pgf_free_encoded` and `pgf_debug_decode_channel` exports. Exit test: the extended native oracle
    encodes a handful of known-pixel bitmaps (solid color, checkerboard) and decodes them back
    correctly through its own existing `pgf_decode_bgra` — proving the new native exports work before
    any C# port work depends on them.
@@ -468,7 +515,7 @@ very end.
 5. **Macroblock/bitplane entropy decode + encode** (`Decoder`/`Encoder`/`CMacroBlock` equivalents,
    ported together since they're mirror images sharing buffer shapes) — the highest-risk stage in
    both directions. Exit test: Tier 3 intermediate-channel comparison for decode against the oracle's
-   `pgf_debug_get_channel`; for encode, feed a known coefficient array through the C# encoder then the
+   `pgf_debug_decode_channel`; for encode, feed a known coefficient array through the C# encoder then the
    *native* decoder's debug export and confirm the coefficients survive the round trip.
 6. **Inverse + forward wavelet transform**, including decode's level-freed-after-use lifecycle. Exit
    test: Tier 3 comparison again, now downstream of the transform in both directions, still isolated

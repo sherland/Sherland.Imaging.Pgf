@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>PictTag.PgfCodec.Tests</RootNamespace>
+    <TargetFramework>net10.0</TargetFramework>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3.mtp-v2" Version="3.2.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PictTag.PgfCodec\PictTag.PgfCodec.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Native oracle DLL for the round-trip test rig (new-features/managed-pgf-codec.md) - the
+         same PictTagPgfDecoder.dll PictTag.Data P/Invokes into for production decode, here also
+         exercised via its new test-only encode/debug exports (shim.cpp). -->
+    <None Include="..\..\native\PictTag.PgfDecoder\build\PictTagPgfDecoder.dll"
+          Condition="Exists('..\..\native\PictTag.PgfDecoder\build\PictTagPgfDecoder.dll')"
+          CopyToOutputDirectory="PreserveNewest" Link="PictTagPgfDecoder.dll" />
+  </ItemGroup>
+
+</Project>

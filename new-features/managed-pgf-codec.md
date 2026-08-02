@@ -853,6 +853,36 @@ unrelated-project sanity check - all passed on the first run after the swap, no 
 solution (`PictTag.slnx`, all 21 projects including `PictTag.Integration.Tests` and the
 `net10.0-browser` WASM build) also builds clean.
 
+**Stage 13 — done.** The live proof this whole PRD ultimately exists to deliver: a real, running
+`aspire start` stack (`api` + `browser-ui` resources, both confirmed healthy via `aspire wait`
+before touching either), driven by a real headless Chromium session via Playwright, decoding a real
+digiKam-derived PGF thumbnail through the managed codec inside the browser - not a build success, not
+an isolated unit test.
+
+`ProgressivePgfBrowserTests.RealPgfThumbnail_DecodesProgressivelyWithCorrectResolutionGrowth_InARealBrowser`
+asserts on the real `PICTTAG_PGF_LEVEL:{level}:{width}x{height}` console signal
+`BrowserProgressiveBitmapLoader` emits once per successfully decoded level - the exact signal this
+class's own pre-Stage-12 doc comment recorded as *never firing at all* under the old native path
+(every decode attempt threw `DllNotFoundException` before reaching it). It now fires repeatedly, with
+monotonically non-decreasing resolution per level, matching the coarsest-to-finest progressive
+contract exactly - passed on the first run, and stable across three consecutive runs against the
+same live stack (no flakiness despite real browser/network timing being involved). The pre-existing
+`RealPgfThumbnail_RequestedFromARealBrowser_NegotiatesRawPgfContentType` test (content-negotiation
+layer, untouched by Stage 12's decoder swap) still passes unchanged, run alongside it.
+
+The class's own doc comment was rewritten, not just appended to: the old "what this stage could NOT
+close" investigation record is kept verbatim as explicit historical context (real, valuable
+engineering history - the dotnet/runtime #59255 finding, the Mono interop trace pinpointing exactly
+where `"__Internal"` resolution fails, etc.), but clearly marked as describing code that no longer
+exists, not a live caveat about today's replacement - a future reader skimming this file should not
+mistake Stage 8's genuine dead end for a still-open problem.
+
+Byte-exact pixel correctness of the decode *algorithm* itself was already proven in isolation well
+before this stage (`PictTag.PgfCodec.Tests`' 567 tests, Stages 5-9, against the real native oracle);
+what only a real browser run could prove - and now has - is that the same managed code actually
+executes correctly under Mono's WASM interpreter, driven by real HTTP responses, inside a real page,
+with no P/Invoke/native-linking failure mode left to hit.
+
 ## Stage sequence
 
 Each stage independently committable with its own tests, per this repo's convention. Decode and

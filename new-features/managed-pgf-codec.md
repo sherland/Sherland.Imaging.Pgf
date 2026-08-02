@@ -658,6 +658,49 @@ the `quality=0` baseline, not adjacent-step monotonicity - which does hold at ev
 
 Full suite (556 tests total across all stages so far) run 5x for stability - no flakiness.
 
+**Stage 9 — done.** `PgfProgressiveDecoder`: level-by-level decode mirroring `PictTag.Data.PgfDecoding.
+PgfDecoder.ProgressivePgfDecoder`'s public shape (`Width`/`Height`/`Levels`, `TryGetLevelSize`,
+`TryDecodeLevel<TResult>` with the same `DecodedCallback<TResult>` pattern) - direct port of
+`CPGFImage::Open` + repeated `Read(level)` + `GetBitmap`. Building this surfaced that Stage 7/8's
+`PgfImageDecoder` and the new type needed near-identical header-parse-plus-channel-setup logic, so
+that preamble was factored out into a new shared `PgfDecodeSession` (used by both) rather than
+duplicated - a real, judged-in-the-moment refactor, not scope creep: `PgfImageDecoder.TryDecode` is
+now a thin loop over `PgfDecodeSession.DecodeOneLevel` down to 0, and `PgfProgressiveDecoder` calls
+the same method down to whatever level the caller most recently requested, picking up where a
+previous call left off exactly like the original's own `m_currentLevel` bookkeeping (each level's
+subbands freed once consumed - see `PgfWaveletTransform.InverseTransform`'s existing doc comment).
+
+Unlike the native wrapper, this type isn't `IDisposable` - no unmanaged handle exists to free in a
+pure-managed port, a genuine simplification, not a gap.
+
+One real regression caught by the existing suite, not new tests: refactoring
+`PgfImageDecoder.TryDecode` to call `PgfDecodeSession.DecodeOneLevel` moved the per-level entropy-decode
+calls **outside** the try/catch that used to wrap the whole method, so `TruncatedStream_FailsClosed_
+WithoutThrowing` (a Stage 7 test) started throwing `PgfFormatException` instead of returning `false`.
+Fixed by moving the try/catch into `DecodeOneLevel` itself, alongside `PgfDecodeSession.TryOpen`'s own
+header-parse try/catch - every throwing path across a session's lifetime now fails closed the same way,
+in both callers, instead of relying on the caller to wrap it correctly.
+
+Also required a real, deliberate divergence from the native shim's own permissiveness, documented in
+`TryDecodeLevel`'s doc comment: requesting a level *already passed* (coarser than the finest level
+reached so far on this instance) is a genuine caller-contract violation - PictTag.Data.PgfDecoding's
+native wrapper doesn't guard against it (`CPGFImage::Read`'s `while (m_currentLevel > level)` loop
+simply becomes a no-op, silently returning whatever the *previous* level's data was, at the *previous*
+level's dimensions, not the requested one). This port fails closed (`false`) instead, matching this
+PRD's general Tier 5 philosophy elsewhere. Re-requesting the *exact same* level again (idempotent, not
+a contract violation) remains valid and is explicitly tested.
+
+11 new tests: the three named `ProgressiveDecoder_*` shapes ported from `PgfDecoderTests.cs`
+(level-0-matches-single-shot, monotonic-resolution-growth using the real `sample-thumbnail.pgf`
+fixture, malformed-input-fails-closed), plus out-of-range/already-passed-level/idempotent-re-request
+cases this port's stricter contract needed, plus the Tier 2 cross-check the test rig section calls out
+by name ("every progressive level via OpenProgressive/TryDecodeLevel") - every level of both the real
+fixture and several Stage-8-encoded synthetic fixtures (multiple quality values), decoded via this
+port and the native oracle's own newly-added `pgf_level_size`/`pgf_decode_level_bgra` P/Invoke wrappers
+(added to `NativePgfOracle` specifically for this stage), asserted byte-exact. All passed on the first
+run except the pre-existing regression above (caught immediately by the existing suite, fixed before
+any new test was even run). Full suite (567 tests total) run 5x for stability - no flakiness.
+
 ## Stage sequence
 
 Each stage independently committable with its own tests, per this repo's convention. Decode and

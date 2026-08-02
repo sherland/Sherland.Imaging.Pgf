@@ -1,0 +1,117 @@
+namespace PictTag.PgfCodec;
+
+/// <summary>
+/// Stage 9: progressive/level-by-level managed decode, mirroring
+/// <c>PictTag.Data.PgfDecoding.PgfDecoder.ProgressivePgfDecoder</c>'s existing public shape
+/// (<see cref="Width"/>/<see cref="Height"/>/<see cref="Levels"/>, <see cref="TryGetLevelSize"/>,
+/// <see cref="TryDecodeLevel{TResult}"/> with the same <see cref="DecodedCallback{TResult}"/> delegate
+/// pattern) - direct equivalent of <c>CPGFImage::Open</c> + repeated <c>Read(level)</c> +
+/// <c>GetBitmap</c> (PGFimage.h: "the current level immediately after Open() is Levels()"), called
+/// once per level in strictly decreasing order to render progressively coarse-to-fine without
+/// re-decoding earlier levels - the same native semantics shim.cpp's own doc comment on
+/// <c>pgf_open</c>/<c>pgf_decode_level_bgra</c> documents.
+///
+/// Unlike the native wrapper, this type is not <see cref="IDisposable"/>: there is no unmanaged
+/// handle to free - every field is a managed array, so ordinary GC is the entire cleanup story. This
+/// is a genuine, deliberate simplification a managed port gets for free, not an oversight or a gap
+/// versus the native shape being mirrored.
+/// </summary>
+internal sealed class PgfProgressiveDecoder
+{
+    private readonly PgfDecodeSession session;
+    private readonly (short[] Data, int Width, int Height)[] lastDecoded = new (short[], int, int)[4];
+    private int currentLevel;
+
+    private PgfProgressiveDecoder(PgfDecodeSession session)
+    {
+        this.session = session;
+        currentLevel = session.Levels;
+    }
+
+    public delegate TResult DecodedCallback<out TResult>(ReadOnlySpan<byte> bgra, int width, int height);
+
+    /// <summary>Width/Height at level 0 (full resolution) - matches
+    /// <c>PgfDecoder.ProgressivePgfDecoder.Width</c>/<c>Height</c>'s own doc comment: the level
+    /// dimensions actually available to decode may differ; use <see cref="TryGetLevelSize"/> per
+    /// level.</summary>
+    public int Width => session.FullWidth;
+
+    public int Height => session.FullHeight;
+
+    public int Levels => session.Levels;
+
+    public static PgfProgressiveDecoder? TryOpen(ReadOnlyMemory<byte> pgfData)
+    {
+        PgfDecodeSession? session = PgfDecodeSession.TryOpen(pgfData);
+        return session is null ? null : new PgfProgressiveDecoder(session);
+    }
+
+    /// <summary>Direct port of <c>CPGFImage::Width(level)</c>/<c>Height(level)</c>'s
+    /// <c>LevelSizeL</c> formula (PGFimage.h:413,420,499): <c>ceil(size / 2^level)</c>, independent of
+    /// how much has actually been decoded so far - matches <c>pgf_level_size</c>'s own only-checks-
+    /// <c>level &lt; 0</c> validation (no upper-bound check either) rather than adding a stricter one
+    /// this port's own oracle doesn't have.</summary>
+    public bool TryGetLevelSize(int level, out int width, out int height)
+    {
+        if (level < 0)
+        {
+            width = height = 0;
+            return false;
+        }
+
+        width = LevelSize(Width, level);
+        height = LevelSize(Height, level);
+        return true;
+    }
+
+    private static int LevelSize(int size, int level) => (size + (1 << level) - 1) >> level;
+
+    /// <summary>Direct port of <c>CPGFImage::Read(level)</c>'s non-ROI loop (PGFimage.cpp:428-475)
+    /// followed by <c>GetBitmap</c>: decodes any not-yet-reached levels down to
+    /// <paramref name="level"/> (a no-op if already there or past it from an earlier call - matching
+    /// the original's own <c>while (m_currentLevel > level)</c> guard), then always re-runs color
+    /// conversion on whatever is currently decoded, exactly mirroring
+    /// <c>pgf_decode_level_bgra</c> calling <c>Read</c>+<c>GetBitmap</c> unconditionally every call.
+    ///
+    /// Levels must be requested in decreasing order across calls on one instance - the same contract
+    /// <c>PgfDecoder.ProgressivePgfDecoder</c> and the native <c>CPGFImage::Read</c> both document,
+    /// since each level's subbands are freed once consumed (<see cref="PgfWaveletTransform.
+    /// InverseTransform"/>'s doc comment). Requesting a level already passed on this instance returns
+    /// <see langword="false"/> rather than silently decoding/returning the wrong level's data - a
+    /// deliberate, stricter fail-closed behavior than the native shim has for the same misuse
+    /// (managed-pgf-codec.md Tier 5's general philosophy), not a difference in the valid/documented
+    /// usage pattern.</summary>
+    public bool TryDecodeLevel<TResult>(int level, DecodedCallback<TResult> onDecoded, out TResult? result)
+    {
+        result = default;
+
+        if (level < 0 || level >= Levels || level > currentLevel)
+        {
+            return false;
+        }
+
+        while (currentLevel > level)
+        {
+            (short[] Data, int Width, int Height)[]? decoded = session.DecodeOneLevel(currentLevel);
+            if (decoded is null)
+            {
+                return false;
+            }
+
+            Array.Copy(decoded, lastDecoded, 4);
+            currentLevel--;
+        }
+
+        int outWidth = lastDecoded[0].Width;
+        int outHeight = lastDecoded[0].Height;
+        int chromaWidth = lastDecoded[1].Width;
+
+        byte[] buffer = new byte[checked(outWidth * outHeight * 4)];
+        PgfColorConversion.DecodeYuvaToBgra(
+            lastDecoded[0].Data, lastDecoded[1].Data, lastDecoded[2].Data, lastDecoded[3].Data,
+            outWidth, outHeight, chromaWidth, session.Downsample, buffer);
+
+        result = onDecoded(buffer, outWidth, outHeight);
+        return true;
+    }
+}

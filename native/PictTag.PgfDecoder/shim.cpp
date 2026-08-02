@@ -27,23 +27,49 @@
 // across multiple separate P/Invoke calls between pgf_open and pgf_close.
 
 #include "PGFimage.h"
-#include <vector>
+#include <cstring>
+
+// __declspec(dllexport) is an MSVC/Windows-DLL-specific extension - not meaningful (and not even
+// syntactically accepted by clang without extra flags) for the Emscripten/WASM build target, where
+// these functions are statically linked into one binary and .NET's own WASM build tooling controls
+// which symbols survive linking, driven by which P/Invoke declarations reference them.
+#if defined(_WIN32)
+#define PICTTAG_EXPORT __declspec(dllexport)
+#else
+#define PICTTAG_EXPORT
+#endif
 
 struct PgfDecoderHandle
 {
-    std::vector<uint8_t> buffer;
+    // Plain heap buffer, not std::vector<uint8_t> - the .NET WASM SDK's NativeFileReference
+    // compilation has no per-file compiler-flag scoping (confirmed: the only extension point,
+    // EmccFlags, applies indiscriminately to every native file in the build, including the .NET
+    // runtime's own .c files), and this Emscripten-bundled libc++'s <__utility/pair.h> fails to
+    // instantiate under whatever C++ standard clang defaults to without an explicit -std= flag -
+    // a flag that can't be added globally without breaking those .c files ("-std=c++17 not
+    // allowed with 'C'"). Avoiding std::vector here (and the header that pulls it in) sidesteps
+    // the problem entirely for the one file that needed it - the vendored libpgf/*.cpp files use
+    // no STL and never hit this.
+    uint8_t* buffer;
+    size_t bufferLen;
     CPGFMemoryStream stream;
     CPGFImage img;
 
     PgfDecoderHandle(const uint8_t* data, size_t dataLen)
-        : buffer(data, data + dataLen), stream(buffer.data(), buffer.size())
+        : buffer(new uint8_t[dataLen]), bufferLen(dataLen), stream(buffer, dataLen)
     {
+        memcpy(buffer, data, dataLen);
+    }
+
+    ~PgfDecoderHandle()
+    {
+        delete[] buffer;
     }
 };
 
 extern "C" {
 
-__declspec(dllexport) bool pgf_get_dimensions(
+PICTTAG_EXPORT bool pgf_get_dimensions(
     const uint8_t* data, size_t dataLen, uint32_t* outWidth, uint32_t* outHeight)
 {
     if (data == nullptr || dataLen == 0 || outWidth == nullptr || outHeight == nullptr)
@@ -73,7 +99,7 @@ __declspec(dllexport) bool pgf_get_dimensions(
     }
 }
 
-__declspec(dllexport) bool pgf_decode_bgra(
+PICTTAG_EXPORT bool pgf_decode_bgra(
     const uint8_t* data, size_t dataLen, uint8_t* outBuffer, size_t outBufferLen)
 {
     if (data == nullptr || dataLen == 0 || outBuffer == nullptr)
@@ -116,7 +142,7 @@ __declspec(dllexport) bool pgf_decode_bgra(
     }
 }
 
-__declspec(dllexport) PgfDecoderHandle* pgf_open(
+PICTTAG_EXPORT PgfDecoderHandle* pgf_open(
     const uint8_t* data, size_t dataLen, uint32_t* outWidth, uint32_t* outHeight, int* outLevels)
 {
     if (data == nullptr || dataLen == 0)
@@ -150,7 +176,7 @@ __declspec(dllexport) PgfDecoderHandle* pgf_open(
 // Real per-level dimensions (CPGFImage::Width(level)/Height(level)) - call before
 // pgf_decode_level_bgra for a given level to size the output buffer, same two-step pattern as
 // pgf_get_dimensions -> pgf_decode_bgra above.
-__declspec(dllexport) bool pgf_level_size(
+PICTTAG_EXPORT bool pgf_level_size(
     PgfDecoderHandle* handle, int level, uint32_t* outWidth, uint32_t* outHeight)
 {
     if (handle == nullptr || outWidth == nullptr || outHeight == nullptr || level < 0)
@@ -174,7 +200,7 @@ __declspec(dllexport) bool pgf_level_size(
 // handle from pgf_open. Levels must be requested in decreasing order (Levels()-1, Levels()-2, ...,
 // 0) - matching CPGFImage::Read's own semantics of continuing from wherever it left off - but a
 // caller that only wants the final image can also call this once with targetLevel 0 directly.
-__declspec(dllexport) bool pgf_decode_level_bgra(
+PICTTAG_EXPORT bool pgf_decode_level_bgra(
     PgfDecoderHandle* handle, int targetLevel, uint8_t* outBuffer, size_t outBufferLen)
 {
     if (handle == nullptr || outBuffer == nullptr || targetLevel < 0)
@@ -205,7 +231,7 @@ __declspec(dllexport) bool pgf_decode_level_bgra(
     }
 }
 
-__declspec(dllexport) void pgf_close(PgfDecoderHandle* handle)
+PICTTAG_EXPORT void pgf_close(PgfDecoderHandle* handle)
 {
     delete handle;
 }

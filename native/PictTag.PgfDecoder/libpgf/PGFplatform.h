@@ -326,6 +326,31 @@ inline OSError SetFPos(HANDLE hFile, int posMode, INT64 posOff) {
 
 
 //-------------------------------------------------------------------------------
+// EMSCRIPTEN (WebAssembly) - PictTag.UI.Browser's client-side progressive PGF
+// decode. Emscripten's libc is close enough to POSIX for this header's existing
+// POSIX branch to apply unmodified (confirmed: a real Emscripten build of this
+// exact file compiles and links against it), it just isn't caught by any of the
+// checks above on its own.
+//-------------------------------------------------------------------------------
+#ifdef __EMSCRIPTEN__
+#ifndef __POSIX__
+#define __POSIX__
+#endif
+
+// Emscripten's libc may or may not define these (unverified either way, unlike the confirmed
+// POSIX-branch compile itself) - same guarded fallback the *BSD branch below already uses for
+// the same uncertainty, harmless if Emscripten's own headers already provide them.
+#ifndef off64_t
+#define off64_t off_t
+#endif
+
+#ifndef lseek64
+#define lseek64 lseek
+#endif
+#endif // __EMSCRIPTEN__
+
+
+//-------------------------------------------------------------------------------
 // SOLARIS
 //-------------------------------------------------------------------------------
 #ifdef __sun

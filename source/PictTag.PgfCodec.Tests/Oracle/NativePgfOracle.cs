@@ -38,6 +38,40 @@ internal static partial class NativePgfOracle
         nint data, nuint dataLen, int level, int channel,
         nint outBuffer, nuint outBufferLen, out uint outWidth, out uint outHeight);
 
+    [LibraryImport(LibraryName)]
+    private static partial nint pgf_open(nint data, nuint dataLen, out uint outWidth, out uint outHeight, out int outLevels);
+
+    [LibraryImport(LibraryName)]
+    private static partial void pgf_close(nint handle);
+
+    /// <summary>Opens (and immediately closes) via the existing, already-proven-safe production
+    /// progressive-decode entry point (<c>pgf_open</c>/<c>pgf_close</c> - unlike
+    /// <see cref="TryDebugDecodeChannel"/>, these are exercised extensively and safely elsewhere in
+    /// this repo, e.g. <c>PictTag.Data.Tests.PgfDecoderTests</c>) purely to read back
+    /// <c>Levels()</c> - the one header field <see cref="TryGetDimensions"/> doesn't expose, needed
+    /// to cross-validate <c>PgfHeaderIO.ComputeLevels</c> against the real codec's own header
+    /// parsing, not just this port's self-consistency.</summary>
+    public static unsafe bool TryGetLevelCount(ReadOnlySpan<byte> pgfData, out int levels)
+    {
+        nint handle;
+        uint w, h;
+        int lvls;
+        fixed (byte* dataPtr = pgfData)
+        {
+            handle = pgf_open((nint)dataPtr, (nuint)pgfData.Length, out w, out h, out lvls);
+        }
+
+        if (handle == 0)
+        {
+            levels = 0;
+            return false;
+        }
+
+        pgf_close(handle);
+        levels = lvls;
+        return true;
+    }
+
     public static unsafe bool TryGetDimensions(ReadOnlySpan<byte> pgfData, out int width, out int height)
     {
         bool ok;

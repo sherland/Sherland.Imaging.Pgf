@@ -520,6 +520,19 @@ finding, since C# has no such allocator mismatch to avoid) - 20 new tests, all p
 been absorbed by the time these were written). `PgfStreamException` is the shared "invalid stream
 position" error type both use, matching the spirit of the original `IOException`.
 
+**Stage 4 — done.** `PgfHeader`/`PgfHeaderIO`: pre-header/header/level-length-array read and write,
+byte-exact with `CDecoder`'s constructor (Decoder.cpp:83) and the header-writing portion of
+`CEncoder`'s constructor (Encoder.cpp:70) plus `WriteLevelLength`. `PgfHeaderIO.ComputeLevels` is a
+direct port of `CPGFImage::ComputeLevels`'s auto-selection branch. Also added `pgf_open`/`pgf_close`
+to the test oracle wrapper (the existing, already-proven-safe production progressive-decode entry
+point - not `pgf_debug_decode_channel`) so `NLevels` could be cross-validated against the real codec
+too, not just width/height. All 18 new tests passed on the first run, including the strongest proof
+available for this stage: a C#-written header opened successfully by the *real native decoder*
+(`pgf_get_dimensions`/`pgf_open` reporting the exact width/height/level-count for four different
+dimension pairs) - a single wrong byte anywhere in the pre-header/header would have made that fail,
+so this is a genuine confirmation the byte layout (including the hand-packed
+`PGFVersionNumber`/version-flags bitfields) is exactly right, not just self-consistent.
+
 ## Stage sequence
 
 Each stage independently committable with its own tests, per this repo's convention. Decode and

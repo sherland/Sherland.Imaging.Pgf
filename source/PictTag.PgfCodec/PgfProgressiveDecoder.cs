@@ -1,11 +1,13 @@
+using System.Buffers;
+
 namespace PictTag.PgfCodec;
 
 /// <summary>
 /// Stage 9: progressive/level-by-level managed decode, mirroring
 /// <c>PictTag.Data.PgfDecoding.PgfDecoder.ProgressivePgfDecoder</c>'s existing public shape
 /// (<see cref="Width"/>/<see cref="Height"/>/<see cref="Levels"/>, <see cref="TryGetLevelSize"/>,
-/// <see cref="TryDecodeLevel{TResult}"/> with the same <see cref="DecodedCallback{TResult}"/> delegate
-/// pattern) - direct equivalent of <c>CPGFImage::Open</c> + repeated <c>Read(level)</c> +
+/// <see cref="TryDecodeLevel{TResult}"/> with the same <see cref="PgfDecodedCallback{TResult}"/>
+/// delegate pattern) - direct equivalent of <c>CPGFImage::Open</c> + repeated <c>Read(level)</c> +
 /// <c>GetBitmap</c> (PGFimage.h: "the current level immediately after Open() is Levels()"), called
 /// once per level in strictly decreasing order to render progressively coarse-to-fine without
 /// re-decoding earlier levels - the same native semantics shim.cpp's own doc comment on
@@ -15,6 +17,12 @@ namespace PictTag.PgfCodec;
 /// handle to free - every field is a managed array, so ordinary GC is the entire cleanup story. This
 /// is a genuine, deliberate simplification a managed port gets for free, not an oversight or a gap
 /// versus the native shape being mirrored.
+///
+/// Stage 10: each <see cref="TryDecodeLevel{TResult}"/> call rents its output buffer from
+/// <see cref="ArrayPool{T}"/> for the duration of <paramref name="onDecoded"/>-in-
+/// <see cref="TryDecodeLevel{TResult}"/> rather than allocating a fresh array per call - the same
+/// pooling <see cref="PgfImageDecoder"/> uses, appropriate here too since a caller rendering a
+/// progressive sequence calls this once per level, not once total.
 /// </summary>
 internal sealed class PgfProgressiveDecoder
 {
@@ -27,8 +35,6 @@ internal sealed class PgfProgressiveDecoder
         this.session = session;
         currentLevel = session.Levels;
     }
-
-    public delegate TResult DecodedCallback<out TResult>(ReadOnlySpan<byte> bgra, int width, int height);
 
     /// <summary>Width/Height at level 0 (full resolution) - matches
     /// <c>PgfDecoder.ProgressivePgfDecoder.Width</c>/<c>Height</c>'s own doc comment: the level
@@ -81,7 +87,7 @@ internal sealed class PgfProgressiveDecoder
     /// deliberate, stricter fail-closed behavior than the native shim has for the same misuse
     /// (managed-pgf-codec.md Tier 5's general philosophy), not a difference in the valid/documented
     /// usage pattern.</summary>
-    public bool TryDecodeLevel<TResult>(int level, DecodedCallback<TResult> onDecoded, out TResult? result)
+    public bool TryDecodeLevel<TResult>(int level, PgfDecodedCallback<TResult> onDecoded, out TResult? result)
     {
         result = default;
 
@@ -106,12 +112,20 @@ internal sealed class PgfProgressiveDecoder
         int outHeight = lastDecoded[0].Height;
         int chromaWidth = lastDecoded[1].Width;
 
-        byte[] buffer = new byte[checked(outWidth * outHeight * 4)];
-        PgfColorConversion.DecodeYuvaToBgra(
-            lastDecoded[0].Data, lastDecoded[1].Data, lastDecoded[2].Data, lastDecoded[3].Data,
-            outWidth, outHeight, chromaWidth, session.Downsample, buffer);
+        int bufferSize = checked(outWidth * outHeight * 4);
+        byte[] rented = ArrayPool<byte>.Shared.Rent(bufferSize);
+        try
+        {
+            PgfColorConversion.DecodeYuvaToBgra(
+                lastDecoded[0].Data, lastDecoded[1].Data, lastDecoded[2].Data, lastDecoded[3].Data,
+                outWidth, outHeight, chromaWidth, session.Downsample, rented.AsSpan(0, bufferSize));
 
-        result = onDecoded(buffer, outWidth, outHeight);
-        return true;
+            result = onDecoded(rented.AsSpan(0, bufferSize), outWidth, outHeight);
+            return true;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(rented);
+        }
     }
 }

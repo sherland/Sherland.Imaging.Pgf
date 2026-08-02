@@ -1,3 +1,5 @@
+using System.Buffers;
+
 namespace PictTag.PgfCodec;
 
 /// <summary>
@@ -9,19 +11,26 @@ namespace PictTag.PgfCodec;
 /// this type always decodes straight through to level 0 in one call, sharing
 /// <see cref="PgfDecodeSession"/>'s setup/per-level decode logic with it.
 ///
+/// Stage 10: <see cref="TryDecode{TResult}"/> writes into an <see cref="ArrayPool{T}"/>-rented buffer
+/// and hands it to <paramref name="onDecoded"/>-in-<see cref="TryDecode{TResult}"/> as a
+/// <see cref="ReadOnlySpan{T}"/>, never an owned array - matching
+/// <c>PictTag.Data.PgfDecoding.PgfDecoder.TryDecode</c>'s existing shape exactly (managed-pgf-codec.md's
+/// "Decode public API mirrors the existing shape" architecture note), so Stage 12's call-site swap is
+/// a mechanical facade change, not a redesign.
+///
 /// Fails closed (returns <see langword="false"/>, never throws) on any malformed/truncated input,
 /// matching the native shim's own <c>catch (...) { return false; }</c> boundary
 /// (managed-pgf-codec.md Tier 5) - every throwing path in <see cref="PgfHeaderIO"/>/
 /// <see cref="PgfMemoryReader"/>/<see cref="PgfDecoderCore"/> is a real-but-invalid-input signal, not
-/// a programming error, so it's caught inside <see cref="PgfDecodeSession.TryOpen"/> rather than left
-/// to propagate.
+/// a programming error, so it's caught inside <see cref="PgfDecodeSession"/> rather than left to
+/// propagate.
 /// </summary>
 internal static class PgfImageDecoder
 {
-    public static bool TryDecode(ReadOnlyMemory<byte> pgfData, out byte[]? bgra, out int width, out int height)
+    public static bool TryDecode<TResult>(
+        ReadOnlyMemory<byte> pgfData, PgfDecodedCallback<TResult> onDecoded, out TResult? result)
     {
-        bgra = null;
-        width = height = 0;
+        result = default;
 
         PgfDecodeSession? session = PgfDecodeSession.TryOpen(pgfData);
         if (session is null)
@@ -46,14 +55,21 @@ internal static class PgfImageDecoder
             channelData = decoded;
         }
 
-        byte[] output = new byte[checked(session.FullWidth * session.FullHeight * 4)];
-        PgfColorConversion.DecodeYuvaToBgra(
-            channelData[0].Data, channelData[1].Data, channelData[2].Data, channelData[3].Data,
-            session.FullWidth, session.FullHeight, session.ChromaWidth, session.Downsample, output);
+        int bufferSize = checked(session.FullWidth * session.FullHeight * 4);
+        byte[] rented = ArrayPool<byte>.Shared.Rent(bufferSize);
+        try
+        {
+            PgfColorConversion.DecodeYuvaToBgra(
+                channelData[0].Data, channelData[1].Data, channelData[2].Data, channelData[3].Data,
+                session.FullWidth, session.FullHeight, session.ChromaWidth, session.Downsample,
+                rented.AsSpan(0, bufferSize));
 
-        bgra = output;
-        width = session.FullWidth;
-        height = session.FullHeight;
-        return true;
+            result = onDecoded(rented.AsSpan(0, bufferSize), session.FullWidth, session.FullHeight);
+            return true;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(rented);
+        }
     }
 }

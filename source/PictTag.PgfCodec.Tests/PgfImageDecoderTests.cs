@@ -21,14 +21,15 @@ public class PgfImageDecoderTests
         bool nativeOk = NativePgfOracle.TryDecode(pgfBytes, out byte[]? nativeBgra, out int nativeWidth, out int nativeHeight);
         Assert.True(nativeOk, "Native oracle failed to decode a file it just produced.");
 
-        bool managedOk = PgfImageDecoder.TryDecode(pgfBytes, out byte[]? managedBgra, out int managedWidth, out int managedHeight);
+        bool managedOk = PgfImageDecoder.TryDecode(pgfBytes, static (bgra, width, height) => (Bytes: bgra.ToArray(), width, height),
+            out (byte[] Bytes, int width, int height) managed);
         Assert.True(managedOk, "Managed decoder failed on a file the native oracle decodes successfully.");
 
-        Assert.Equal(expectedWidth, managedWidth);
-        Assert.Equal(expectedHeight, managedHeight);
-        Assert.Equal(nativeWidth, managedWidth);
-        Assert.Equal(nativeHeight, managedHeight);
-        Assert.Equal(nativeBgra, managedBgra);
+        Assert.Equal(expectedWidth, managed.width);
+        Assert.Equal(expectedHeight, managed.height);
+        Assert.Equal(nativeWidth, managed.width);
+        Assert.Equal(nativeHeight, managed.height);
+        Assert.Equal(nativeBgra, managed.Bytes);
     }
 
     public static TheoryData<int, int, byte> FixtureDimensionsAndQualities()
@@ -85,12 +86,13 @@ public class PgfImageDecoderTests
         (byte[] bgra, int w, int h) = TestBitmaps.Gradient(width, height);
         Assert.True(NativePgfOracle.TryEncode(bgra, w, h, quality: 0, out byte[]? pgfBytes));
 
-        bool managedOk = PgfImageDecoder.TryDecode(pgfBytes!, out byte[]? managedBgra, out int managedWidth, out int managedHeight);
+        bool managedOk = PgfImageDecoder.TryDecode(pgfBytes!, static (bgra, width, height) => (Bytes: bgra.ToArray(), width, height),
+            out (byte[] Bytes, int width, int height) managed);
 
         Assert.True(managedOk);
-        Assert.Equal(w, managedWidth);
-        Assert.Equal(h, managedHeight);
-        Assert.Equal(bgra, managedBgra);
+        Assert.Equal(w, managed.width);
+        Assert.Equal(h, managed.height);
+        Assert.Equal(bgra, managed.Bytes);
     }
 
     public static TheoryData<int, int> EdgeCaseDimensions()
@@ -123,7 +125,7 @@ public class PgfImageDecoderTests
 
         byte[] truncated = pgfBytes![..(pgfBytes.Length / 2)];
 
-        bool ok = PgfImageDecoder.TryDecode(truncated, out byte[]? result, out _, out _);
+        bool ok = PgfImageDecoder.TryDecode(truncated, static (bgra, w, h) => bgra.ToArray(), out byte[]? result);
 
         Assert.False(ok);
         Assert.Null(result);
@@ -135,7 +137,7 @@ public class PgfImageDecoderTests
         byte[] garbage = new byte[256];
         new Random(42).NextBytes(garbage);
 
-        bool ok = PgfImageDecoder.TryDecode(garbage, out byte[]? result, out _, out _);
+        bool ok = PgfImageDecoder.TryDecode(garbage, static (bgra, w, h) => bgra.ToArray(), out byte[]? result);
 
         Assert.False(ok);
         Assert.Null(result);
@@ -144,7 +146,7 @@ public class PgfImageDecoderTests
     [Fact]
     public void EmptyInput_FailsClosed_WithoutThrowing()
     {
-        bool ok = PgfImageDecoder.TryDecode(ReadOnlyMemory<byte>.Empty, out byte[]? result, out _, out _);
+        bool ok = PgfImageDecoder.TryDecode(ReadOnlyMemory<byte>.Empty, static (bgra, w, h) => bgra.ToArray(), out byte[]? result);
 
         Assert.False(ok);
         Assert.Null(result);

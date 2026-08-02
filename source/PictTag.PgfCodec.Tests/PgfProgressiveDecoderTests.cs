@@ -17,8 +17,12 @@ public class PgfProgressiveDecoderTests
     {
         byte[] pgfBytes = File.ReadAllBytes(TestFixtures.SampleThumbnailPath);
 
-        bool singleShotOk = PgfImageDecoder.TryDecode(pgfBytes, out byte[]? singleShotBgra, out int ssWidth, out int ssHeight);
+        bool singleShotOk = PgfImageDecoder.TryDecode(pgfBytes, static (bgra, width, height) => (Bytes: bgra.ToArray(), width, height),
+            out (byte[] Bytes, int width, int height) singleShot);
         Assert.True(singleShotOk);
+        byte[] singleShotBgra = singleShot.Bytes;
+        int ssWidth = singleShot.width;
+        int ssHeight = singleShot.height;
 
         PgfProgressiveDecoder? decoder = PgfProgressiveDecoder.TryOpen(pgfBytes);
         Assert.NotNull(decoder);

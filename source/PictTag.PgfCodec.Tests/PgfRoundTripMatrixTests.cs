@@ -56,9 +56,10 @@ public class PgfRoundTripMatrixTests
 
         // Leg 1: encode C#, decode C# - self round trip.
         Assert.True(PgfImageEncoder.TryEncode(original, w, h, quality, out byte[]? csBytes), "C# encode failed.");
-        Assert.True(PgfImageDecoder.TryDecode(csBytes!, out byte[]? csDecodeCs, out int w1, out int h1), "C# decode of C#-encoded bytes failed.");
-        Assert.Equal(w, w1);
-        Assert.Equal(h, h1);
+        Assert.True(PgfImageDecoder.TryDecode(csBytes!, static (bgra, width, height) => (Bytes: bgra.ToArray(), width, height),
+            out (byte[] Bytes, int width, int height) csDecodeCs), "C# decode of C#-encoded bytes failed.");
+        Assert.Equal(w, csDecodeCs.width);
+        Assert.Equal(h, csDecodeCs.height);
 
         // Leg 2: encode C#, decode native - validates the new encoder against the trusted, unmodified
         // real decoder (the single most important leg per the PRD).
@@ -68,9 +69,10 @@ public class PgfRoundTripMatrixTests
 
         // Leg 3: encode native, decode C# - validates the new decoder against real encoder output.
         Assert.True(NativePgfOracle.TryEncode(original, w, h, quality, out byte[]? nativeBytes), "Native encode failed.");
-        Assert.True(PgfImageDecoder.TryDecode(nativeBytes!, out byte[]? csDecodeNative, out int w3, out int h3), "C# decode of native-encoded bytes failed.");
-        Assert.Equal(w, w3);
-        Assert.Equal(h, h3);
+        Assert.True(PgfImageDecoder.TryDecode(nativeBytes!, static (bgra, width, height) => (Bytes: bgra.ToArray(), width, height),
+            out (byte[] Bytes, int width, int height) csDecodeNative), "C# decode of native-encoded bytes failed.");
+        Assert.Equal(w, csDecodeNative.width);
+        Assert.Equal(h, csDecodeNative.height);
 
         // Leg 4: encode native, decode native - sanity check the shim export itself is wired correctly.
         Assert.True(NativePgfOracle.TryDecode(nativeBytes!, out byte[]? nativeDecodeNative, out int w4, out int h4), "Native decode of native-encoded bytes failed.");
@@ -79,16 +81,16 @@ public class PgfRoundTripMatrixTests
 
         if (quality == 0)
         {
-            Assert.Equal(original, csDecodeCs);
+            Assert.Equal(original, csDecodeCs.Bytes);
             Assert.Equal(original, nativeDecodeCs);
-            Assert.Equal(original, csDecodeNative);
+            Assert.Equal(original, csDecodeNative.Bytes);
             Assert.Equal(original, nativeDecodeNative);
         }
         else
         {
-            Assert.Equal(csDecodeCs, nativeDecodeCs);
-            Assert.Equal(csDecodeCs, csDecodeNative);
-            Assert.Equal(csDecodeCs, nativeDecodeNative);
+            Assert.Equal(csDecodeCs.Bytes, nativeDecodeCs);
+            Assert.Equal(csDecodeCs.Bytes, csDecodeNative.Bytes);
+            Assert.Equal(csDecodeCs.Bytes, nativeDecodeNative);
         }
     }
 }

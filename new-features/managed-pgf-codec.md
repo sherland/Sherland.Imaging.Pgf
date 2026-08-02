@@ -432,15 +432,33 @@ own existing test suite (`PictTag.Data.Tests/PgfDecoderTests.cs`) is not touched
   - Browser/WASM under a **real AOT-compiled `dotnet publish`** (`RunAOTCompilation=true`) — the prior
     native investigation confirmed AOT compiles successfully even though P/Invoke resolution still
     failed there, so this configuration is real and reachable, not hypothetical.
-- **Concrete pass/fail latency numbers are deliberately not fixed in this document** — set them from
-  the first real measurement in stage 10 below (see "Stage sequence"), against the actual constraint
-  that matters for decode: thumbnails must stay interactively responsive during dwell-gated grid
-  scrolling (`client-side-pgf-and-remove-thumbnail-cache.md`), not an arbitrary number invented
-  without a baseline. Encode has no latency-sensitive production caller, so its numbers are informative
-  rather than gating.
-- **Allocation target**: steady-state hot-path allocation (post-warmup, buffers already rented) should
-  be zero or near-zero per call in both directions — verified by `MemoryDiagnoser`'s `Allocated`
-  column, not inferred from "the code uses `Span<T>`."
+- **Concrete pass/fail latency numbers, set from Stage 10's first real `BenchmarkDotNet` measurement**
+  (Desktop CoreCLR, `ShortRun` job, `PictTag.PgfCodec.Benchmarks`) against the actual constraint that
+  matters for decode: thumbnails must stay interactively responsive during dwell-gated grid scrolling
+  (`client-side-pgf-and-remove-thumbnail-cache.md`). At realistic thumbnail dimensions (128-256px) and
+  quality values a real digiKam library would actually use (4 and above, not the lossless `quality=0`
+  extreme), managed single-shot decode measured **0.3-1.4 ms** and managed progressive decode's full
+  coarsest-to-finest sequence measured **1.0-1.5 ms** — both comfortably inside "interactively
+  responsive" by any reasonable definition (single-digit milliseconds, not the 16 ms/frame or ~100 ms/
+  interaction budgets that would actually matter for a scrolling grid). **Bar: managed decode of a
+  thumbnail up to 256x256 at quality &gt;= 4 must complete in under 5 ms** on comparable hardware -
+  chosen with real headroom over the ~1.4 ms worst case actually measured, not a value backed into
+  from "whatever the code currently does." Encode has no latency-sensitive production caller (PictTag
+  never writes PGF files - CLAUDE.md's "read-only by design" GUI scope boundary), so its numbers
+  (1.2-2.1 ms at the same sizes) remain informative rather than gating, as originally planned.
+- **Allocation target — informative, not met, and now backed by real numbers instead of aspiration**:
+  the "zero or near-zero per call" target stated in the original plan does **not** hold for this port
+  as of Stage 10 - measured managed allocation is real and size-proportional (roughly 650 KB per
+  256x256 decode, 2.3 MB per 512x512 decode; similar for encode), 800-2000x the size-independent
+  native P/Invoke leg's own marshaling overhead. Stage 10's hardening pass pooled the single largest
+  per-call allocation (the output BGRA buffer, both single-shot and progressive decode, via
+  `ArrayPool<byte>`, matching `PictTag.Data.PgfDecoding.PgfDecoder`'s existing production shape) but
+  deliberately did not extend pooling to the per-channel wavelet-coefficient buffers
+  (`PgfSubband`/`PgfWaveletTransform`) or the macroblock entropy-coder scratch buffers
+  (`PgfMacroBlock`/`PgfEncodeMacroBlock`) - see Stage 10's progress log entry for why, and for the
+  measured breakdown that makes clear those two are where the remaining allocation actually comes
+  from (not "the code uses `Span&lt;T&gt;` so it must be fine" - the measurement is what settled this,
+  exactly per this bullet's own original instruction).
 
 ## Progress log
 
@@ -700,6 +718,69 @@ port and the native oracle's own newly-added `pgf_level_size`/`pgf_decode_level_
 (added to `NativePgfOracle` specifically for this stage), asserted byte-exact. All passed on the first
 run except the pre-existing regression above (caught immediately by the existing suite, fixed before
 any new test was even run). Full suite (567 tests total) run 5x for stability - no flakiness.
+
+**Stage 10 — done, with a deliberately narrowed scope documented below.** Two real pieces: an
+allocation-hardening pass on the decode API surface, and a new `PictTag.PgfCodec.Benchmarks`
+BenchmarkDotNet console project (Desktop CoreCLR) that produced this PRD's first real latency/
+allocation numbers (now recorded above in "Test rig: performance").
+
+*Hardening.* `PgfImageDecoder.TryDecode` changed from `out byte[]? bgra` to a
+`TryDecode<TResult>(pgfData, PgfDecodedCallback<TResult> onDecoded, out TResult? result)` shape - a
+real breaking API change to this port's own code (not shipped anywhere yet), made now because the
+PRD's own "Proposed architecture" section specifies it explicitly ("Decode public API mirrors the
+existing shape... `DecodedCallback&lt;TResult&gt;` pattern writing into a pooled buffer... never an
+internally-allocated array") and because `PgfProgressiveDecoder.TryDecodeLevel` (Stage 9) already used
+exactly this shape - the two were inconsistent before this stage, not just unhardened. The output BGRA
+buffer for both is now `ArrayPool&lt;byte&gt;`-rented, matching what
+`PictTag.Data.PgfDecoding.PgfDecoder.TryDecode` already does in production, so Stage 12's call-site
+swap stays mechanical. The shared `DecodedCallback&lt;TResult&gt;` delegate (previously duplicated as
+a nested type on `PgfProgressiveDecoder` alone) moved to a single top-level `PgfDecodedCallback&lt;
+TResult&gt;` both types now share.
+
+This refactor moved per-level entropy-decode calls (`PgfDecodeSession.DecodeOneLevel`) so they were no
+longer wrapped by `PgfImageDecoder.TryDecode`'s own try/catch - a real regression the existing suite
+caught immediately (`TruncatedStream_FailsClosed_WithoutThrowing` started throwing instead of
+returning `false`), fixed by moving the try/catch into `DecodeOneLevel` itself so both callers get the
+same fail-closed guarantee regardless of which one happens to wrap it.
+
+*Deliberately not hardened this stage, with real reasoning, not an oversight:* the per-channel
+wavelet-coefficient buffers (`PgfSubband.AllocMemory`'s `short[]` allocations, aliased directly by
+`PgfWaveletTransform`'s level-0 LL band via `SetBuffer` - real aliasing complexity, not just an unpooled
+array) and the fixed-size macroblock entropy-coder scratch buffers (`PgfMacroBlock`/
+`PgfEncodeMacroBlock`'s `Value`/`CodeBuffer`/`sigFlagVector`, each allocated once per decode/encode
+session, not per-call-in-a-loop). Two real blockers, not laziness: (1) `ArrayPool&lt;T&gt;.Rent` can
+return an array *larger* than requested, and `BitStream`'s helpers (`SeekBitRange`, `NumberOfWords`,
+etc.) and `ComposeBitplane`'s bounds logic trust the array's own `.Length` in several places - pooling
+these safely would mean auditing and fixing every such call site to use an explicit `BufferSize`
+constant instead, a real correctness risk for the single most delicate, hardest-to-debug component in
+this whole port (Stage 5's "all tests failed on the first run" experience is the concrete reason this
+risk is taken seriously, not a hypothetical one). (2) `PgfDecoderCore`/`PgfMacroBlock` are shared,
+through `PgfDecodeSession`, by both the single-shot path (session-scoped, safe to release in a
+`finally`) *and* `PgfProgressiveDecoder` (caller-controlled, unbounded lifetime, deliberately not
+`IDisposable` per Stage 9's own documented reasoning) - pooling at that shared layer would mean either
+reversing Stage 9's simplification or threading two different lifetime policies through one shared
+type. Given the measured numbers below don't show these as clearly worth that risk/complexity trade
+yet, they're left as plain arrays, with the real allocation cost now quantified instead of guessed.
+
+*Measurements* (`PictTag.PgfCodec.Benchmarks`, `ShortRun` job - 3 iterations, wider confidence
+intervals than a full default run, but real numbers from real runs, appropriate for "first
+measurement" per this stage's own charter, not a final tuned baseline): at 256x256/quality=8 (a
+realistic thumbnail), managed single-shot decode measured ~1.34 ms vs. native's ~0.86 ms (~1.6x),
+allocating ~651 KB per call; managed encode measured ~2.06 ms vs. native's ~1.37 ms (~1.5x), allocating
+~1.06 MB; managed progressive decode's full level sequence measured ~1.46 ms vs. native's ~0.93 ms
+(~1.6x), allocating the same ~651 KB (expected - it does the same total work as single-shot). At
+512x512/quality=0 (worst case: largest tested size, lossless), managed decode allocated ~5 MB and took
+~11 ms vs. native's ~8.1 ms. Output size matches the native encoder exactly at every quality value 0-15
+for the 256x256 fixture (a direct, non-benchmark sweep, `--sizes`) - expected from Stage 8's round-trip
+matrix, reconfirmed here as a real cross-check rather than assumed to still hold.
+
+*Explicitly out of scope this stage, deferred to Stage 13, not skipped silently:* Browser/WASM
+benchmarking (Mono interpreter and real AOT). `BenchmarkDotNet` itself only runs Desktop CoreCLR-style
+process-spawning jobs, and more fundamentally, Stage 12 (wiring the managed codec into
+`PictTag.UI.Browser`) hasn't happened yet - there is currently no way to execute `PictTag.PgfCodec`
+code inside an actual browser session at all, so a standalone throwaway WASM timing harness built now
+would duplicate infrastructure Stage 13's real-browser Playwright work needs to build anyway once
+there's a real call site to measure. Revisit there, not here.
 
 ## Stage sequence
 

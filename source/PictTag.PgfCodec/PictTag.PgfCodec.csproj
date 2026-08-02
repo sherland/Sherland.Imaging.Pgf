@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="PictTag.PgfCodec.Tests" />
+    <InternalsVisibleTo Include="PictTag.PgfCodec.Benchmarks" />
   </ItemGroup>
 
 </Project>

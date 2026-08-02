@@ -510,6 +510,16 @@ worth-recording findings:
   of safe-by-caller-convention, with identical return values for every valid input (verified by the
   existing tests, not just argued).
 
+**Stage 3 — done.** `PgfMemoryReader` (decode-side, wraps `ReadOnlyMemory<byte>`, replicates
+`CPGFMemoryStream`'s real truncate-at-EOS `Read` and upper-bound-only `SetPos` contract exactly, plus
+a deliberate added lower-bound check the original never had - seeking negative was already invalid
+in the original, just uncaught there) and `PgfByteWriter` (encode-side, backed by a real
+`MemoryStream` rather than replicating the C++ workaround from Stage 1's `realloc()`/`delete[]`
+finding, since C# has no such allocator mismatch to avoid) - 20 new tests, all passing first try
+(the `BitStream` stage's lesson - verify against real behavior, not the doc comment - had already
+been absorbed by the time these were written). `PgfStreamException` is the shared "invalid stream
+position" error type both use, matching the spirit of the original `IOException`.
+
 ## Stage sequence
 
 Each stage independently committable with its own tests, per this repo's convention. Decode and

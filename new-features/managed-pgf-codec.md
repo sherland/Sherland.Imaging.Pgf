@@ -533,6 +533,33 @@ dimension pairs) - a single wrong byte anywhere in the pre-header/header would h
 so this is a genuine confirmation the byte layout (including the hand-packed
 `PGFVersionNumber`/version-flags bitfields) is exactly right, not just self-consistent.
 
+**Stage 5 — done.** `PgfMacroBlock`/`PgfDecoderCore` (decode) and `PgfEncodeMacroBlock`/
+`PgfEncoderCore` (encode): the bitplane/significance-map entropy coder, both directions, plus
+`Partition`'s `LinBlockSize`-tiled subband traversal. Two real, deliberate scope reductions turned
+out to be justified by the vendored code's own dead branches, not assumptions: ROI header modeling
+(this port's encoder never sets the `PGFROI` flag, so the real `ROIBlockHeader` is never actually
+read from the stream for any file this codebase touches) and the OpenMP multi-macroblock array path
+(this build always compiles with `LIBPGF_DISABLE_OPENMP`, so only the single-macroblock branch is
+ever real).
+
+Given Stage 1's finding that the only native hook exposing intermediate coefficient data
+(`pgf_debug_decode_channel`) has an unresolved crash risk under repeated calls, this stage's
+correctness proof is **self-consistency** (C# encode → C# decode, verified exact) rather than
+cross-implementation - a deliberate, documented adjustment from the original plan, with full
+cross-implementation validation deferred to Stage 7's end-to-end BGRA comparison against the
+always-safe `pgf_decode_bgra`. 22 new tests (constant/alternating/random/sparse-spike/full-short-range
+coefficient patterns, exact-macroblock-boundary and multi-macroblock-spanning sequences, and
+`Partition`'s full 2D tiling including non-multiple-of-8 dimensions) - **all failed on the first run**
+(everything decoded to zero) from a real, self-introduced bug this port's own tests caught
+immediately: `PgfMacroBlock` hard-coded its "current block size" as the constant `BufferSize` from
+construction, when the original deliberately initializes it to `0` specifically so a fresh,
+never-decoded block reports "completely read" and forces a real decode before the first value is
+consumed (`CMacroBlock`'s own constructor comment: "makes sure that `IsCompletelyRead()` returns true
+for an empty macro block") - missing that meant every read silently pulled from an undecoded, all-zero
+array instead of ever invoking the entropy decoder at all. Fixed by giving the block a real "not yet
+decoded" initial state (`bufferSizeInUse = 0`, set to the real value only once a block has actually
+been read) matching the original's sentinel exactly. Every test has passed on every run since.
+
 ## Stage sequence
 
 Each stage independently committable with its own tests, per this repo's convention. Decode and

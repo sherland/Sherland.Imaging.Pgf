@@ -18,7 +18,12 @@ namespace PictTag.PgfCodec;
 internal static class BitStream
 {
     private const int WordWidth = 32;
-    private const int WordWidthLog = 5;
+
+    /// <summary>Exposed (not just <c>private</c>) so callers converting a bit position into a word
+    /// index - e.g. <c>PgfMacroBlock</c> slicing <c>CodeBuffer</c> at a bit-aligned offset - can
+    /// reuse the same constant instead of hard-coding <c>&gt;&gt; 5</c>.</summary>
+    public const int WordWidthLog = 5;
+
     private const uint WordMask = 0xFFFFFFE0;
     private const uint Filled = 0xFFFFFFFF;
 

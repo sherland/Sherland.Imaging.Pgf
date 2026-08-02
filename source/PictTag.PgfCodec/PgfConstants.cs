@@ -19,11 +19,30 @@ internal static class PgfConstants
 
     public const int MaxLevel = 30;
     public const int MaxBitPlanes = 15; // 16 minus sign bit, non-PGF32SUPPORT build
+    public const int MaxBitPlanesLog = 5; // bits needed to encode MaxBitPlanes
     public const int MaxQuality = MaxBitPlanes;
     public const int DownsampleThreshold = 3;
 
     /// <summary>Larger of FilterSizeL(5)/FilterSizeH(3) - WaveletTransform.h.</summary>
     public const int FilterSize = 5;
+
+    /// <summary>Must be a multiple of WordWidth(32), &lt;= UINT16_MAX - PGFtypes.h. One macroblock's
+    /// entire input (encoded bitstream, in 32-bit words) and output (decoded coefficients) capacity.</summary>
+    public const int BufferSize = 16384;
+
+    /// <summary>Side length of a coefficient block in an LL or HH subband - Partition's tiling unit.</summary>
+    public const int LinBlockSize = 8;
+
+    /// <summary>Side length of a coefficient block in an HL or LH subband - DecodeInterleaved's
+    /// tiling unit (DecodeInterleaved itself is not ported - see PgfMacroBlock's doc comment).</summary>
+    public const int InterBlockSize = 4;
+
+    /// <summary>Bit-length of the run-length block-size field within the bitplane coding scheme
+    /// (&lt; 16, ld(BufferSize) &lt; RLblockSizeLen &lt;= 2*ld(BufferSize)) - PGFtypes.h.</summary>
+    public const int RLblockSizeLen = 15;
+
+    /// <summary>Max length of a run-length-encoded block: <c>(1 &lt;&lt; RLblockSizeLen) - 1</c>.</summary>
+    public const int MaxCodeLen = (1 << RLblockSizeLen) - 1;
 
     public const byte ImageModeIndexedColor = 2;
     public const byte ImageModeRGBA = 17;

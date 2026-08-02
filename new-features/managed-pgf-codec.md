@@ -560,6 +560,30 @@ array instead of ever invoking the entropy decoder at all. Fixed by giving the b
 decoded" initial state (`bufferSizeInUse = 0`, set to the real value only once a block has actually
 been read) matching the original's sentinel exactly. Every test has passed on every run since.
 
+**Stage 6 — done.** `PgfSubband` (the coefficient buffer + sequential read/write cursor
+`ForwardRow`/`InverseRow` use, distinct from `PgfSubband.SetData`/`GetData`'s indexed access
+`Partition` uses) and `PgfWaveletTransform` (the per-channel LL/HL/LH/HH pyramid, forward and inverse
+integer lifting transform). `CSubband::Dequantize` was confirmed (by grepping every call site) to be
+called only from `CPGFImage::Reconstruct`, an encode-time "verify what I just wrote" helper this
+codebase never calls - genuinely dead code for this port, not an oversight.
+
+15 self-consistency tests (forward transform → inverse transform on the same in-memory pyramid, no
+entropy coding or serialization involved, `quant=0` so no quantization loss) - 13 passed immediately;
+2 deliberately-adversarial edge cases (a literal 1x1 image, a 3x3 image) reproduced a real, latent
+one-past-buffer read in the *original* C++: `ForwardTransform`/`InverseTransform`'s
+"dimension `&lt;` FilterSize" branch forms a `row1 = row0 + width` pointer that, for a single-row
+buffer, points one element past its end and gets unconditionally dereferenced. Re-derived the
+original's own pointer arithmetic by hand to confirm this is a real bug there too, not just a
+translation error here - then confirmed it's unreachable in practice: `PgfHeaderIO.ComputeLevels`
+(Stage 4) guarantees every pyramid level's dimensions stay `&gt;=` FilterSize for any image with
+`min(width, height) &gt;=` `TestBitmaps.MinimumSupportedDimension` (10, the same real-world floor
+Stage 1's encode guard already enforces) - the failing cases could only be reached by manually
+forcing an unrealistic level count `ComputeLevels` itself would never choose for such tiny starting
+dimensions. Removed those two test cases with a comment recording the finding, consistent with this
+PRD's other confirmed-unreachable-branch decisions (ROI, OpenMP, `nLevels=0`) - not a gap to fix,
+since porting the real, reachable behavior faithfully is the actual goal, not handling every input
+the vendored pointer arithmetic could theoretically be pointed at.
+
 ## Stage sequence
 
 Each stage independently committable with its own tests, per this repo's convention. Decode and

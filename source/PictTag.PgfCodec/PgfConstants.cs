@@ -44,6 +44,9 @@ internal static class PgfConstants
     /// <summary>Max length of a run-length-encoded block: <c>(1 &lt;&lt; RLblockSizeLen) - 1</c>.</summary>
     public const int MaxCodeLen = (1 << RLblockSizeLen) - 1;
 
+    /// <summary>Number of subbands per wavelet transform level (LL, HL, LH, HH).</summary>
+    public const int NSubbands = 4;
+
     public const byte ImageModeIndexedColor = 2;
     public const byte ImageModeRGBA = 17;
     public const byte ImageModeUnknown = 255;

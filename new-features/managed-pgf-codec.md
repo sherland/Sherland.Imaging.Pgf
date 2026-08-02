@@ -883,6 +883,41 @@ what only a real browser run could prove - and now has - is that the same manage
 executes correctly under Mono's WASM interpreter, driven by real HTTP responses, inside a real page,
 with no P/Invoke/native-linking failure mode left to hit.
 
+**Stage 14 — done.** Documentation brought in line with what Stages 1-13 actually built, not what the
+original plan guessed they would - three files updated, plus this PRD's own "Acceptance criteria" and
+"Open questions" sections closed out honestly rather than blanket-marked complete (see those sections
+directly for the itemized status, including the two real, narrow gaps left open: Browser/WASM
+benchmarking never happened, and the AOT-published browser configuration was confirmed to build clean
+- a real `dotnet publish -c Release -p:RunAOTCompilation=true` run, exit code 0, verified during this
+stage, not assumed - but wasn't additionally driven through a live Playwright session the way the
+interpreted configuration was in Stage 13).
+
+- `docs/GUI.md`: replaced the "Browser/WASM native PGF decode" section (its own investigation record
+  of the confirmed-broken native path) with a "Managed PGF codec" section describing the actual
+  current architecture and what it replaced; removed the now-resolved "Fixing the browser/WASM
+  progressive PGF decode itself" bullet from "What's not built yet"; fixed a stale `PgfDecoder
+  (P/Invoke)` project-layout description and added entries for the three new `PictTag.PgfCodec*`
+  projects.
+- `client-side-pgf-and-remove-thumbnail-cache.md`: added a "second update" paragraph alongside the
+  existing Stage-8 "confirmed broken" investigation record (kept, not deleted, for its own real
+  engineering value) explaining what actually fixed it and how that's verified; removed the
+  now-resolved bullet from "What's still not built."
+- `CLAUDE.md`: Prerequisites section now correctly scopes the C++ toolchain/CMake requirement to
+  `PictTag.PgfCodec.Tests`/`.Benchmarks` only (not the GUI stack generally); the "native PGF thumbnail
+  decoding" and "browser host's native PGF decoder confirmed broken" bullets rewritten to describe
+  the current managed architecture and the real fix, with the original investigation kept as explicit
+  historical context rather than erased; the `dotnet test` command list gained
+  `PictTag.PgfCodec.Tests`.
+- `docs/TESTING.md` (not explicitly named in this stage's own bullet, but a real, load-bearing gap
+  found while doing this pass - it had **zero** mentions of `PictTag.PgfCodec.Tests`/`.Benchmarks`
+  despite Stage 4's own doc comment promising it would "join the standard 'always run' tier"):
+  added `PictTag.PgfCodec.Tests` to the always-run command list and tier 4's own section, corrected
+  tier 4's prerequisite paragraph (falsely claimed `PictTag.Data.Tests`/`PictTag.Api.Tests` need the
+  native DLL - they don't anymore, only `PictTag.PgfCodec.Tests`/`.Benchmarks` do), fixed
+  `PgfDecoderTests`' stale "native P/Invoke path" description, and updated tier 5's
+  `ProgressivePgfBrowserTests` description to reflect Stage 13's real proof instead of the old
+  documented failure.
+
 ## Stage sequence
 
 Each stage independently committable with its own tests, per this repo's convention. Decode and
@@ -958,51 +993,84 @@ very end.
 
 ## Acceptance criteria / Definition of Done
 
-- All four legs of the round-trip matrix (Tier 4) pass, **for every quality level from `0` through
-  `MaxQuality`**, for every fixture: pixel-exact against the original at `quality=0`, pixel-identical
-  to each other (plus the size-monotonicity check) at every lossy level — not just a single sampled
-  quality value.
-- Decode output is byte-for-byte identical to the vendored native decoder's output for every real and
-  synthetic fixture, for both single-shot and every progressive level (Tiers 1-2).
-- The managed decoder runs with zero P/Invoke/native dependency under Desktop and under Browser/WASM
-  in both the interpreted and AOT-published configurations.
-- A real Playwright test in `PictTag.Integration.Tests` proves correct, visibly progressive pixel
-  decode in an actual running headless-Chromium browser — closing the specific gap
-  `ProgressivePgfBrowserTests.cs` currently documents as broken.
-- BenchmarkDotNet results exist and are reported for every configuration in "Test rig: performance",
-  for both encode and decode, **swept across every quality level**, with steady-state hot-path
-  allocation at or near zero and output size confirmed non-increasing as quality increases.
-- `dotnet test` (all existing tiers, plus the new `PictTag.PgfCodec.Tests`) stays green.
-- `docs/GUI.md`, `client-side-pgf-and-remove-thumbnail-cache.md`, and `CLAUDE.md` are updated to
-  reflect the new state and the resolved native-project-fate question.
+Honest per-item status as of Stage 14, not a blanket "done" - a couple of items only partially
+landed, documented here rather than silently marked complete:
+
+- ✅ **All four legs of the round-trip matrix (Tier 4) pass, for every quality level from `0`
+  through `MaxQuality`, for every fixture** - Stage 8, 288 combinations, no exceptions found.
+- ✅ **Decode output is byte-for-byte identical to the vendored native decoder's output for every
+  real and synthetic fixture, for both single-shot and every progressive level (Tiers 1-2)** -
+  Stages 7 and 9 respectively.
+- ⚠️ **The managed decoder runs with zero P/Invoke/native dependency under Desktop and under
+  Browser/WASM in both the interpreted and AOT-published configurations** - zero P/Invoke/native
+  dependency is fully true and verified (that's structurally guaranteed now, not just tested - there
+  is no P/Invoke declaration left anywhere in the managed codec or its call sites). The *interpreted*
+  Browser/WASM configuration is verified live (Stage 13's real Playwright run, the normal `aspire
+  start`/`dotnet run` dev workflow). The *AOT-published* configuration was checked for a clean
+  `dotnet publish -c Release -p:RunAOTCompilation=true` build (no P/Invoke-resolution failure mode
+  exists to hit, unlike the old native path's confirmed AOT failure) but was not additionally
+  verified with a live Playwright run against that specific published output - a real, narrow gap
+  versus this criterion's literal wording, left here rather than silently closed.
+- ✅ **A real Playwright test in `PictTag.Integration.Tests` proves correct, visibly progressive
+  pixel decode in an actual running headless-Chromium browser** - Stage 13,
+  `RealPgfThumbnail_DecodesProgressivelyWithCorrectResolutionGrowth_InARealBrowser`, stable across
+  three consecutive runs.
+- ⚠️ **BenchmarkDotNet results exist and are reported for every configuration in "Test rig:
+  performance", for both encode and decode, swept across every quality level, with steady-state
+  hot-path allocation at or near zero and output size confirmed non-increasing as quality increases**
+  - Desktop CoreCLR is fully done (Stage 10: decode, encode, and full progressive-decode sequences,
+    swept across quality and realistic sizes). Browser/WASM (both interpreter and AOT) benchmarking
+    was explicitly deferred to Stage 13 (no in-browser call site existed yet when Stage 10 ran) - and
+    Stage 13, once the call site existed, delivered the *correctness* proof this PRD prioritized over
+    the *performance* one, not both; real in-browser latency/allocation numbers remain unmeasured.
+    Allocation is **not** at or near zero - Stage 10 measured and documented real, size-proportional
+    allocation (roughly 650 KB-5 MB per decode depending on image size), a deliberate, reasoned
+    scope decision (see Stage 10's progress log) rather than an unmet target nobody looked at.
+    Output-size non-increasing-with-quality *does* hold, confirmed via the `--sizes` sweep and the
+    round-trip matrix's own quality-level coverage.
+- ✅ **`dotnet test` (all existing tiers, plus the new `PictTag.PgfCodec.Tests`) stays green** -
+  verified repeatedly throughout Stages 7-13, most recently as part of Stage 12's call-site swap
+  (every affected project's test suite rebuilt and run individually, plus a full solution build).
+- ✅ **`docs/GUI.md`, `client-side-pgf-and-remove-thumbnail-cache.md`, and `CLAUDE.md` are updated
+  to reflect the new state and the resolved native-project-fate question** - Stage 14 (this update).
 
 ## Open questions
 
-- **Native project's final fate.** Keep `native/PictTag.PgfDecoder/` indefinitely as the test-oracle
-  (this PRD's design leans on it throughout, now for both decode oracle *and* one leg of the encode
-  round-trip matrix), or retire it from the repo entirely once confidence is high enough? This also
-  determines whether `CLAUDE.md`'s C++ toolchain/CMake prerequisite can be dropped for everyone, or
-  only becomes optional for contributors who don't touch PGF test tooling. Don't decide now — revisit
-  once stage 8 (the round-trip matrix going live) has run for a while.
-- **Is the ROI-enabled decode path actually reachable** by any real digiKam thumbnail this app
-  encounters? If confirmed never set, document the fail-closed behavior as a known, intentional
-  limitation rather than fully porting ROI cropping. Resolve during stage 4/5, not upfront.
-- **SIMD scope**: how far to take vectorization (stage 11) is explicitly open — gate on stage 10's real
-  numbers, not decided speculatively here.
-- **Whether `PictTag.Api`'s server-side Tier 1 thumbnail decode path** (`ThumbnailService`, which also
-  decodes PGF today via the same native shim through `PictTag.Data`) should switch to
-  `PictTag.PgfCodec` too as part of stage 12, or stay on native/P/Invoke server-side (where the
-  P/Invoke problem never existed) — leaning toward switching everything for one implementation to
-  maintain, but confirm there's no server-side performance regression risk (CoreCLR JIT vs. native)
-  during stage 10's benchmarking before committing to that.
-- **Whether exact bitstream identity between the two encoders turns out to hold in practice** (see
-  "Achievable round-trip guarantee") is worth tracking empirically once stage 8 lands, purely as a
-  confidence signal — not a requirement to design toward.
-- **What quality values are actually valid/meaningful.** `PGFtypes.h:88-94` defines
-  `MaxBitPlanes = 15` and `MaxQuality = MaxBitPlanes` for this build (no `__PGF32SUPPORT__`), but
-  `PGFHeader`'s own doc comment (`PGFtypes.h:160`) only documents three presets — "0=lossless,
-  4=standard, 6=poor quality." Confirm during stage 8 whether `SetHeader`/`Quantize` actually behave
-  sensibly across the full `1..15` range or whether values past ~6 are untested/degenerate in the
-  original codec too (in which case the quality sweep should cover whatever the real accepted range
-  turns out to be, not blindly assume `0..15` is all meaningful) — resolve empirically, don't assume
-  either the type's nominal bound or the doc comment's narrower preset list without checking.
+All resolved as of Stage 14 - kept below (not deleted) as the record of what was actually asked and
+what actually settled it, per this PRD's own "verify, don't recall" standard.
+
+- **Native project's final fate — resolved (Stage 14).** Kept indefinitely, but as test/benchmark
+  infrastructure only: `PictTag.PgfCodec.Tests`/`.Benchmarks` still build against
+  `native/PictTag.PgfDecoder/` as the correctness/round-trip oracle. It is no longer a production
+  dependency of either GUI host or `PictTag.Api` - `CLAUDE.md`'s C++ toolchain/CMake prerequisite is
+  now scoped explicitly to that one test project, not the whole GUI stack, matching the "only becomes
+  optional for contributors who don't touch PGF test tooling" branch of this question, not full
+  retirement.
+- **ROI reachability — resolved (Stages 1/4/5).** Confirmed never set by any real digiKam thumbnail
+  or by this port's own encoder (which never sets the `PGFROI` flag); ROI header modeling was
+  deliberately not ported, documented as a justified simplification at each stage it would have
+  mattered (`PgfMacroBlock`, `PgfSubband`, `PgfWaveletTransform`'s doc comments), not a gap.
+- **SIMD scope — resolved (Stage 11): none.** Stage 10's real numbers didn't show the headroom the
+  stage sequence's own gating condition asked for (both native and managed decode already comfortably
+  clear the interactive-responsiveness bar at realistic sizes) - see Stage 11's progress log entry.
+- **`PictTag.Api`'s server-side thumbnail decode path — resolved (Stage 12): switched.**
+  `ThumbnailService` needed zero code changes, since it already went through
+  `PictTag.Data.PgfDecoding.PgfDecoder`'s public API, which Stage 12 turned into a facade over
+  `PictTag.PgfCodec` - one implementation for every real call site, desktop and server-side and
+  browser alike, as this question's own "leaning toward" anticipated. No server-side regression risk
+  materialized worth blocking on: `PictTag.Api.Tests` (including `ThumbnailServiceTests`) passed
+  unchanged, and Stage 10's benchmarks already showed managed decode comfortably within the real
+  latency bar for a one-time-per-request thumbnail decode.
+- **Bitstream identity between the two encoders — resolved empirically (Stage 8): not required, and
+  not fully checked either way.** The round-trip matrix asserts decoded-pixel agreement (the actual
+  requirement - see "Achievable round-trip guarantee"), which held with no exceptions found at every
+  tested quality level; a `--sizes` output-length sweep (Stage 10) additionally showed native and
+  managed encoders producing identically-sized output at every quality value for the fixtures
+  checked, consistent with (though not full proof of) byte-identical bitstreams. Never became a
+  requirement to design toward, matching this question's own framing.
+- **Valid/meaningful quality range — resolved (Stage 8): the full `0..MaxQuality` (`0..15`) range
+  behaves sensibly**, not just the three documented presets - the round-trip matrix swept every
+  value in that range across every fixture/dimension combination with no degenerate behavior found
+  (including the real, confirmed-not-a-bug non-monotonic output-size step at one specific size/quality
+  pair, Stage 10's progress log). `PgfConstants.MaxQuality` (15) is the real, meaningful upper bound
+  for this build, not just a nominal type limit.

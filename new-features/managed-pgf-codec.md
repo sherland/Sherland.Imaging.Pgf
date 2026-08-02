@@ -618,6 +618,46 @@ would actually use for a signed operand in practice, is what the byte-exact test
 correct; the comment most likely means "must stay a shift, not integer division" (which round
 differently for negative operands) rather than the CS-terminology "logical vs. arithmetic" distinction.
 
+**Stage 8 — done.** `PgfImageEncoder`: single-shot managed encode, the algebraic mirror of
+`PgfImageDecoder` - direct port of `CPGFImage::SetHeader`+`WriteHeader`+`WriteImage` chained together
+(BGRA in, PGF bytes out), reusing every earlier stage's pieces (`PgfColorConversion.EncodeBgraToYuva`/
+`Downsample`, `PgfWaveletTransform.ForwardTransform`, `PgfEncoderCore`/`PgfSubband.ExtractTile` from
+Stage 5, `PgfHeaderIO.Write` from Stage 4) with no new port surface beyond the orchestration itself.
+One deliberate, permanent scope cut, made explicit in both `PgfImageEncoder`'s and
+`PgfHeaderIO.Write`'s doc comments: level-length bytes are always written as zero placeholders, never
+patched with real values afterward (no `CEncoder::UpdateLevelLength` equivalent) - grepping every real
+consumer confirmed `Decoder.cpp` calls level-length information "optional" and the only reader in this
+codebase, `CPGFImage::ReadEncodedData`, is never called by anything in scope; porting the real
+value's macroblock/level-boundary deferred-accounting exactly would add real complexity for a field
+nothing decodes, asserts on, or even could be tested against (this PRD's own "decode-correctness, not
+bitstream-identity" guarantee already rules out byte-identical files as a goal).
+
+This stage is "the central proof this PRD exists to deliver" per its own stage-sequence description,
+and the Tier 4 four-way round-trip matrix (`PgfRoundTripMatrixTests`) confirms the "quantization is
+deterministic, so lossy output should be implementation-invariant" hypothesis holds cleanly with **no
+exceptions found at any tested quality level** - 288 combinations (3 fixtures x 6
+`EdgeCaseDimensions` pairs x all 16 quality values `0..MaxQuality`), each running all four legs
+(encode C#/decode C#, encode C#/decode native, encode native/decode C#, encode native/decode native)
+and asserting pixel-exact agreement with the original source bitmap at `quality=0` or pixel-identical
+cross-leg agreement at every other quality value - passed in full on the first real test run, after a
+quick standalone smoke check (a scratch console app compiling `PictTag.PgfCodec`'s sources directly,
+P/Invoking the native shim, swept across the same quality range) had already confirmed no obvious
+bugs before committing to writing the full matrix. `PgfImageEncoderTests` adds Tier 5's encode-side
+negative cases (invalid/mismatched dimensions, quality above `MaxQuality`, below-minimum-dimension
+rejection) plus an output-size sanity check.
+
+One real, non-obvious finding from that sanity check: output size is **not** strictly
+monotonically non-increasing step-by-step across adjacent quality values - a first version of the
+"higher quality never regresses size" test asserted exactly that and failed at 10x10/quality 8→9 (82
+then 86 bytes). Traced to the *native* encoder itself via the same scratch console app: it reproduces
+the identical 82-then-86 byte sequence at that exact size/quality, byte-for-byte - a real property of
+the original codec (entropy-coding overhead occasionally exceeds the coefficient-magnitude savings
+from one quantization step to the next, especially at tiny single-macroblock sizes), not a port bug.
+Fixed by testing what the PRD's own wording actually specifies - every quality value compared against
+the `quality=0` baseline, not adjacent-step monotonicity - which does hold at every tested size.
+
+Full suite (556 tests total across all stages so far) run 5x for stability - no flakiness.
+
 ## Stage sequence
 
 Each stage independently committable with its own tests, per this repo's convention. Decode and

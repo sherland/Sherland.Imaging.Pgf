@@ -144,9 +144,10 @@ internal static class PgfHeaderIO
 
     /// <summary>Writes pre-header, header, and a zeroed level-length placeholder array - matching
     /// the header-writing portion of <c>CEncoder</c>'s constructor plus <c>WriteLevelLength</c>
-    /// (Encoder.cpp:70,177). Real per-level lengths get patched in later (Stage 8, mirroring
-    /// <c>UpdateLevelLength</c>) once the entropy coder has actually produced them - this method
-    /// only reserves the placeholder space, matching the real encoder's own two-phase write.
+    /// (Encoder.cpp:70,177). Unlike the original, the placeholder is never patched with real values
+    /// afterward (no <c>UpdateLevelLength</c> equivalent) - see <see cref="PgfImageEncoder"/>'s doc
+    /// comment for why that's a deliberate, permanent scope cut rather than unfinished work: nothing
+    /// in this codebase's real decode path ever reads level lengths.
     ///
     /// Scope limitation, deliberate: always writes <c>hSize = HeaderSize</c> (no color table, no
     /// user data) - this port never emits either, matching <c>pgf_encode_bgra_alloc</c>'s own

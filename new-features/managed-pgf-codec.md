@@ -795,6 +795,64 @@ that matters (interactive responsiveness during thumbnail grid scrolling). Revis
 real-world measurement (e.g. Stage 13's eventual in-browser numbers, where the interpreter's overhead
 is much larger) shows an actual case where this gap matters.
 
+**Stage 12 — done.** Real production call sites now go through `PictTag.PgfCodec`, not native
+P/Invoke, on both hosts. Three real, meaningful changes, not just a rename:
+
+- **`PictTag.PgfCodec`'s entry points went public** (`PgfImageDecoder`, `PgfProgressiveDecoder`,
+  `PgfDecodedCallback<TResult>` - `PgfImageEncoder` stays `internal`, matching the PRD's own "encoder
+  gets no production call site" scope note). This is the moment this library stopped being
+  test/benchmark-only infrastructure and became the real, first-class, multi-consumer library the
+  "Proposed architecture" section always described - confirmed empirically, not assumed: `PictTag.UI`/
+  `PictTag.UI.Controls` (both already `net10.0`, already referenced by both the `net10.0` desktop host
+  and the `net10.0-browser` host) proved a plain-`net10.0` library needs no multi-targeting to be
+  referenced from a `browser-wasm` project - the same pattern `PictTag.PgfCodec` now follows.
+- **`PictTag.Data.PgfDecoding.PgfDecoder` is now a facade over `PictTag.PgfCodec`**, not a P/Invoke
+  wrapper - same public shape (`TryDecode<TResult>`, `OpenProgressive`, `ProgressivePgfDecoder`, even
+  keeping a real (now no-op) `Dispose()` so every existing `using` call site keeps compiling), widened
+  from `ReadOnlySpan<byte>` to `ReadOnlyMemory<byte>` (source-compatible with every real call site,
+  which all pass a `byte[]` - confirmed by reading each one, not assumed) to match `PgfImageDecoder`'s
+  own signature without a defensive copy. `PictTag.Api.Thumbnails.ThumbnailService` (server-side JPEG
+  tier generation) and `PictTag.UI.Desktop.DesktopProgressiveBitmapLoader` needed **zero call-site
+  changes** - genuinely mechanical, exactly as planned. `PictTag.Data.csproj` dropped its native DLL
+  copy-to-output entirely (production desktop/server code needs zero native binaries now) in favor of
+  a `PictTag.PgfCodec` project reference.
+- **`PictTag.UI.Browser.Interop`/`NativePgf` is deleted, not just faceted** - unlike the Desktop side,
+  keeping the old wrapper name would have been actively misleading (a class called `NativePgf`
+  containing zero P/Invoke), and there was a stronger reason to remove it outright:
+  `BrowserProgressiveBitmapLoader` now calls `PgfProgressiveDecoder` directly, and
+  `PictTag.UI.Browser.csproj` lost its entire `NativeFileReference`/`EmccFlags`/`WasmBuildNative`
+  native-linking setup (confirmed by a full solution build afterward - no native compilation happens
+  for PGF at all anymore, only Avalonia/SkiaSharp's own pre-existing WASM linking). This is the fix
+  for a real, previously-documented production gap, not a refactor of working code:
+  `ProgressivePgfBrowserTests.cs`'s own pre-Stage-12 doc comment (updated here to reflect this, full
+  rewrite deferred to Stage 13) recorded that every native call from the old `NativePgf` threw
+  `DllNotFoundException("__Internal")` in every configuration tried, meaning real users got zero
+  progressive PGF decoding in the browser before this change. `PgfProgressiveDecoder` has no
+  P/Invoke/native-linking dependency at all, so that entire failure class is structurally gone, not
+  patched around.
+
+**Deliberately not done, evaluated and deferred, not overlooked**: the stage sequence's own "evaluate
+collapsing `DesktopProgressiveBitmapLoader`/`BrowserProgressiveBitmapLoader`'s duplicated decode-loop
+logic into one shared `PictTag.UI` implementation" suggestion. Both loaders now call the identical
+`PgfProgressiveDecoder` type (no more platform-specific decoder divergence to justify two files), so
+physical consolidation is *possible* - but `DesktopProgressiveBitmapLoaderTests.cs`'s real Avalonia-
+headless coverage (4 tests, `[AvaloniaFact]`) exists only on the desktop side today; moving the shared
+logic into `PictTag.UI` without first confirming Avalonia.Headless test infrastructure is available
+there too (not verified either way) risked silently losing that coverage rather than genuinely
+sharing it. The core goal - one real decoder, no P/Invoke divergence - is already achieved without
+moving files; revisit the physical consolidation separately if it's ever actually needed, now that
+it's cheap either way.
+
+**Verification**: every test suite touching a changed call site was rebuilt and run individually
+(not just the whole solution build) - `PictTag.Data.Tests` (15 tests, including `PgfDecoderTests.cs`
+completely unchanged - the regression proof the facade swap preserved behavior exactly),
+`PictTag.Api.Tests` (44 tests, including `ThumbnailServiceTests`), `PictTag.UI.Desktop.Tests` (4
+tests, real Avalonia-rendered progressive bitmaps through the new managed path), `PictTag.UI.Tests`
+(62), `PictTag.UI.Controls.Tests` (6), `PictTag.PgfCodec.Tests` (567), plus `PictTag.Core.Tests` as an
+unrelated-project sanity check - all passed on the first run after the swap, no regressions. The full
+solution (`PictTag.slnx`, all 21 projects including `PictTag.Integration.Tests` and the
+`net10.0-browser` WASM build) also builds clean.
+
 ## Stage sequence
 
 Each stage independently committable with its own tests, per this repo's convention. Decode and

@@ -24,7 +24,7 @@ namespace PictTag.PgfCodec;
 /// pooling <see cref="PgfImageDecoder"/> uses, appropriate here too since a caller rendering a
 /// progressive sequence calls this once per level, not once total.
 /// </summary>
-internal sealed class PgfProgressiveDecoder
+public sealed class PgfProgressiveDecoder
 {
     private readonly PgfDecodeSession session;
     private readonly (short[] Data, int Width, int Height)[] lastDecoded = new (short[], int, int)[4];

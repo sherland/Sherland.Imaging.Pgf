@@ -25,7 +25,7 @@ namespace PictTag.PgfCodec;
 /// a programming error, so it's caught inside <see cref="PgfDecodeSession"/> rather than left to
 /// propagate.
 /// </summary>
-internal static class PgfImageDecoder
+public static class PgfImageDecoder
 {
     public static bool TryDecode<TResult>(
         ReadOnlyMemory<byte> pgfData, PgfDecodedCallback<TResult> onDecoded, out TResult? result)

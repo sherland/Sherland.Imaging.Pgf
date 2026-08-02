@@ -5,7 +5,7 @@ namespace PictTag.PgfCodec;
 /// codec.md's "Decode public API mirrors the existing shape"): the decoded BGRA buffer is only ever
 /// exposed as a <see cref="ReadOnlySpan{T}"/> over a pooled (<see cref="System.Buffers.ArrayPool{T}"/>)
 /// array, valid only for the duration of this callback, never handed back as an owned array.</summary>
-internal delegate TResult PgfDecodedCallback<out TResult>(ReadOnlySpan<byte> bgra, int width, int height);
+public delegate TResult PgfDecodedCallback<out TResult>(ReadOnlySpan<byte> bgra, int width, int height);
 
 /// <summary>
 /// Shared decode-setup logic factored out of <see cref="PgfImageDecoder"/> (single-shot) and

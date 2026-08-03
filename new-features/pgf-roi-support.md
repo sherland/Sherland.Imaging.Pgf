@@ -497,3 +497,50 @@ already closed. If a genuine need for that leg emerges later, `pgf_open`'s own d
 
 Regression gate: full `PictTag.PgfCodec.Tests` suite - **1173/1173 passed** (1166 existing + 7 new
 cross-implementation tests, zero regressions).
+
+### Stage 6: Full ROI round-trip matrix
+
+Added `PgfRoiFullMatrixTests`: a systematic sweep (4 fixture sizes x 5 quality values spanning
+0..`MaxQuality` x 4 rectangle shapes per size - full image, interior, top-left corner, bottom-right
+corner - **80 self-consistency cases**), all pixel-exact within the accurate ROI against a plain
+managed decode. Also two dedicated tests for the Test rig's explicit "SkipTileBuffer correctness"
+point: decoding a partial ROI down to a *coarse* level in one `TryDecodeLevel` call, then making a
+*separate, later* call on the same instance requesting level 0 - a real off-by-one in
+`SkipTileBuffer`'s stream-position bookkeeping would desync the shared bitstream cursor specifically
+for that second call, a genuinely different code path than any single-call test exercises (needed
+larger fixtures, 150x150/128x160, than earlier stages used - `ComputeLevels` only returns more than 1
+level once `min(width,height) > 100`, confirmed empirically after the first attempt at 64x64/96x80
+both had `Levels==1` and the test's own guard caught it before any real assertion ran).
+
+**Resolved this PRD's first Open Question** ("whether enabling ROI tiling measurably hurts compression
+ratio... confirm empirically... rather than assume tile boundaries are cheap"): **yes, measurably, and
+sometimes severely in relative terms** - measured real encode sizes (plain vs. ROI) across 4 sizes x 5
+quality values:
+
+| size | quality | plain bytes | ROI bytes | delta |
+|---|---|---|---|---|
+| 64x64 | 0 | 4894 | 4980 | +1.8% |
+| 64x64 | 8 | 758 | 824 | +8.7% |
+| 64x64 | 16 | 38 | 124 | +226% |
+| 150x150 | 0 | 14556 | 14296 | -1.8% |
+| 150x150 | 8 | 1370 | 1616 | +18.0% |
+| 150x150 | 16 | 62 | 320 | +416% |
+| 256x256 | 0 | 15652 | 17828 | +13.9% |
+| 256x256 | 8 | 1278 | 2248 | +75.9% |
+| 256x256 | 16 | 106 | 1092 | +930% |
+
+At near-lossless quality (0-1) the overhead is modest (roughly 0-14%, sometimes even negative - tile
+boundaries occasionally *help* the entropy coder by resetting run-length state at a favorable point).
+At aggressive quality settings on simple/small content, the *relative* overhead explodes (up to
+~930%) - not because ROI encodes vastly more data, but because `EncodeTileBuffer` forces a macroblock
+flush at every tile boundary regardless of how little data that tile has, so each tile pays close to
+a fixed per-macroblock cost while the *baseline* (non-ROI) output shrinks toward a handful of bytes.
+This is real, useful engineering data, not a surprise finding invalidating the design - it directly
+confirms this PRD's own Non-goal ("Making ROI the default or only encode path") must stay exactly
+that: ROI stays strictly opt-in, and this cost is the reason why. Recorded permanently as a loose,
+generous-bound sanity test (`RoiEncodeSize_StaysWithinGenerousBoundOfPlainEncode`, not a tight
+regression gate - a compression ratio isn't a correctness property) so a future catastrophic
+regression (e.g. a tile somehow encoded multiple times) would still be caught.
+
+Regression gate: full `PictTag.PgfCodec.Tests` suite - **1259/1259 passed** (1173 existing + 86 new
+matrix/size tests, zero regressions).

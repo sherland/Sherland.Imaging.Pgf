@@ -90,4 +90,15 @@ internal static class PgfModeInfo
         PgfConstants.ImageModeLab48 => true,
         _ => false,
     };
+
+    /// <summary>Expected tightly-packed source byte length for <see cref="PgfImageEncoder.
+    /// TryEncodeMode"/>'s input contract - <c>width * height * (bpp/8)</c> works for every mode with
+    /// a whole-byte-or-more bpp, but breaks for Bitmap's 1bpp (integer division truncates
+    /// <c>1/8</c> to 0): Bitmap packs 8 pixels per byte, MSB-first, <c>(width+7)/8</c> bytes per row
+    /// (matching <c>RgbToYuv</c>'s own <c>w2</c> - PGFimage.cpp:1405), not a per-pixel byte count at
+    /// all.</summary>
+    public static int ExpectedSourceByteLength(byte mode, byte bpp, int width, int height) =>
+        mode == PgfConstants.ImageModeBitmap
+            ? checked(((width + 7) / 8) * height)
+            : checked(width * height * (bpp / 8));
 }

@@ -493,8 +493,10 @@ PICTTAG_EXPORT bool pgf_debug_decode_raw(
     const uint8_t* data, size_t dataLen, uint8_t bpp, const int32_t* channelMap, int32_t channelMapLen,
     uint8_t* outBuffer, size_t outBufferLen, uint32_t* outWidth, uint32_t* outHeight)
 {
+    // bpp==1 (Bitmap - the only mode GetBitmap accepts a sub-byte bpp for, ASSERT(bpp==1) unconditional,
+    // PGFimage.cpp:1402) is a real, valid request, not rejected alongside bpp==0.
     if (data == nullptr || dataLen == 0 || channelMap == nullptr || outBuffer == nullptr ||
-        outWidth == nullptr || outHeight == nullptr || bpp == 0 || bpp % 8 != 0)
+        outWidth == nullptr || outHeight == nullptr || bpp == 0 || (bpp != 1 && bpp % 8 != 0))
     {
         return false;
     }
@@ -513,7 +515,10 @@ PICTTAG_EXPORT bool pgf_debug_decode_raw(
 
         uint32_t width = img.Width();
         uint32_t height = img.Height();
-        int pitch = static_cast<int>(width) * (bpp / 8);
+        // Ceiling bits-to-bytes-per-row - matches RgbToYuv/GetBitmap's own w2 (PGFimage.cpp:1405) for
+        // bpp==1, and is equivalent to the plain width*(bpp/8) every other (byte-aligned bpp) mode
+        // uses, so one formula covers both without a special case.
+        int pitch = static_cast<int>((static_cast<uint64_t>(width) * bpp + 7) / 8);
         size_t requiredSize = static_cast<size_t>(pitch) * height;
         if (outBufferLen < requiredSize)
         {

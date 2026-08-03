@@ -204,7 +204,9 @@ internal static partial class NativePgfOracle
             }
         }
 
-        int bufferSize = checked(fullWidth * fullHeight * (bpp / 8));
+        // Ceiling bits-to-bytes-per-row, matching the native shim's own pitch formula exactly
+        // (pgf_debug_decode_raw's doc comment) - width*(bpp/8) truncates to 0 for bpp==1 (Bitmap).
+        int bufferSize = checked((int)(((long)fullWidth * bpp + 7) / 8) * fullHeight);
         byte[] buffer = new byte[bufferSize];
         bool ok;
         uint w, h;

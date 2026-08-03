@@ -679,4 +679,77 @@ internal static class PgfColorConversion
             cnt += 4;
         }
     }
+
+    // ---- Group G (pgf-all-image-modes.md): Bitmap (1bpp) - the structural odd one out. Only the
+    // "new unpacked version since version 7" sub-variant is ported: RgbToYuv's own Bitmap case
+    // (PGFimage.cpp:1398-1444) has the pre-Version7 packed-input alternative permanently disabled
+    // (commented out in the real source, not just unreachable at runtime) - this port's encoder
+    // always sets Version7 (PgfConstants.EncoderVersionFlags), matching every real file this port's
+    // own encoder can ever produce. The pre-Version7 GetBitmap decode branch is real, reachable code
+    // in the native source (gated on the *file's own* version flag, not a compile-time constant like
+    // the encode side) - but it stores channel data at a genuinely different width (one DataT per
+    // *byte*, not per *pixel* - PGFimage.cpp:1866-1883's yw=w2 rebinding), which would require
+    // PgfDecodeSession's channel-allocation logic to special-case Bitmap's file version, for a code
+    // path no file in this codebase's own test corpus or any real digiKam thumbnail could ever
+    // exercise (predates Version5, over a decade before real PGF thumbnails existed) - deliberately
+    // not ported, matching this PRD's own "don't guess at untested bit-packing logic... document as
+    // an explicitly-unverified/best-effort port" guidance for exactly this situation. Internally, one
+    // DataT per *pixel* (values 0 or 1, no YuvOffset8 centering - matching the real source's own
+    // choice not to offset Bitmap data) - the packed-byte representation only ever exists at the
+    // encode input / decode output boundary.
+
+    /// <summary>Direct port of <c>RgbToYuv</c>'s <c>ImageModeBitmap</c> case, the only active branch
+    /// (PGFimage.cpp:1409-1425): unpacks <paramref name="packedBits"/> (MSB-first, <c>(width+7)/8</c>
+    /// tightly-packed bytes per row - this port's own encode input contract, matching every other
+    /// mode's "no padding" convention) into one 0-or-1 <see cref="int"/> per pixel. No
+    /// <see cref="YuvOffset8"/> centering - the real source doesn't apply one for this mode either.</summary>
+    public static void EncodeBitmapToY(ReadOnlySpan<byte> packedBits, int width, int height, Span<int> y)
+    {
+        int rowBytes = (width + 7) / 8;
+        int yPos = 0;
+        int rowStart = 0;
+
+        for (int row = 0; row < height; row++)
+        {
+            int cnt = 0;
+            for (int j = 0; j < rowBytes; j++)
+            {
+                byte b = packedBits[rowStart + j];
+                for (int k = 0; k < 8; k++)
+                {
+                    int bit = (b & 0x80) >> 7;
+                    if (cnt < width)
+                    {
+                        y[yPos++] = bit;
+                    }
+
+                    b <<= 1;
+                    cnt++;
+                }
+            }
+
+            rowStart += rowBytes;
+        }
+    }
+
+    /// <summary>Decode side of Bitmap: direct port of <c>GetBitmap</c>'s <c>ImageModeBitmap</c>
+    /// Version7 branch's real per-pixel values (PGFimage.cpp:1840-1865) - reads each pixel's 0/1
+    /// value straight from the internal (already-unpacked, one-per-pixel) representation, no
+    /// byte-packing round trip needed since this port's output is always 8-bit BGRA32 (Goal 1), never
+    /// GetBitmap's own packed-1bpp output shape. 1 broadcasts to white (255,255,255), 0 to black
+    /// (0,0,0) - the conventional bitmap interpretation - A=255.</summary>
+    public static void DecodeYToBitmapBgra(ReadOnlySpan<int> y, int width, int height, Span<byte> bgra)
+    {
+        int pixelCount = width * height;
+        int cnt = 0;
+        for (int pos = 0; pos < pixelCount; pos++)
+        {
+            byte v = y[pos] != 0 ? (byte)255 : (byte)0;
+            bgra[cnt] = v;
+            bgra[cnt + 1] = v;
+            bgra[cnt + 2] = v;
+            bgra[cnt + 3] = 255;
+            cnt += 4;
+        }
+    }
 }

@@ -59,7 +59,7 @@ internal static class PgfImageEncoder
             return false;
         }
 
-        if (source.Length != checked(width * height * (bpp / 8)))
+        if (source.Length != PgfModeInfo.ExpectedSourceByteLength(mode, bpp, width, height))
         {
             return false;
         }
@@ -120,6 +120,9 @@ internal static class PgfImageEncoder
                 break;
             case PgfConstants.ImageModeGray32:
                 PgfColorConversion.EncodeSingleChannel32ToYuvOffset(source, width, height, channelBuffers[0]);
+                break;
+            case PgfConstants.ImageModeBitmap:
+                PgfColorConversion.EncodeBitmapToY(source, width, height, channelBuffers[0]);
                 break;
             default:
                 return false;

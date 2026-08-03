@@ -335,3 +335,24 @@ parsed" step, not new parsing logic or a new native oracle to prove correctness 
   PictTagPgfDecoder.dll" CopyToOutputDirectory="PreserveNewest">` item picked up the rebuilt DLL on
   the next `dotnet build` automatically - no `.csproj` change needed.
 - Full regression suite (existing tests, unaffected by the shim addition): 1295/1295 passed.
+
+### Stage 5: full round-trip matrix
+
+- New `PgfLevelLengthCrossImplementationTests.cs` covers both Test rig legs across every
+  `TestBitmaps.EdgeCaseDimensions()` × {quality 0, 8, `MaxQuality`} = 18 cases each:
+  - **Decode-side accessor leg**: encode with `NativePgfOracle.TryEncode` (real native encoder),
+    read the same file's level lengths via both `NativePgfOracle.TryGetLevelLengths` (the new shim
+    export) and the managed `PgfProgressiveDecoder.TryGetLevelLength` — a genuine independent
+    oracle, since both are just parsing the same on-wire bytes two different ways.
+  - **Cross-implementation encode leg** (plain and ROI variants, 2 × 18 = 36 more cases): encode the
+    *same* source image with both `PgfImageEncoder.TryEncode`/`TryEncode(roi: true)` and
+    `NativePgfOracle.TryEncode`/`TryEncodeRoi`, then compare the managed encoder's own level lengths
+    (via its own decode accessor, already proven self-consistent in Stage 3) against the native
+    encoder's reported values for its independently-produced file.
+- **Resolved Open Question 2** empirically: all 54 cross-implementation cases matched **byte-for-byte
+  identical**, level-by-level, on the first run — not just "each implementation's own number is
+  self-consistent." This confirms the base codec's own established byte-exact bitstream-identity
+  proof (managed-pgf-codec.md) extends to level lengths too, since they're a deterministic function
+  of where macroblock boundaries land in that identical bitstream. No fallback to the weaker
+  self-consistency-only bar was needed.
+- Full regression suite: 1349/1349 passed (1295 existing + 54 new).

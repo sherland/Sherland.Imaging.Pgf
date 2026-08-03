@@ -92,13 +92,16 @@ internal static class PgfModeInfo
     };
 
     /// <summary>Expected tightly-packed source byte length for <see cref="PgfImageEncoder.
-    /// TryEncodeMode"/>'s input contract - <c>width * height * (bpp/8)</c> works for every mode with
-    /// a whole-byte-or-more bpp, but breaks for Bitmap's 1bpp (integer division truncates
-    /// <c>1/8</c> to 0): Bitmap packs 8 pixels per byte, MSB-first, <c>(width+7)/8</c> bytes per row
-    /// (matching <c>RgbToYuv</c>'s own <c>w2</c> - PGFimage.cpp:1405), not a per-pixel byte count at
-    /// all.</summary>
+    /// TryEncodeMode"/>'s input contract - ceiling bits-to-bytes-per-row (<c>(width*bpp+7)/8</c>),
+    /// times <paramref name="height"/>. Equivalent to the simpler <c>width * height * (bpp/8)</c> for
+    /// every byte-aligned bpp (no remainder possible when <c>bpp%8==0</c>), but also correctly
+    /// handles the two packed sub-byte-or-non-byte-aligned-per-pixel modes this formula would
+    /// otherwise silently truncate to 0 or an undersized count via integer division: Bitmap's 1bpp
+    /// (<c>(width+7)/8</c> bytes/row, matching <c>RgbToYuv</c>'s own <c>w2</c> - PGFimage.cpp:1405)
+    /// and RGB12's 12bpp (2 pixels packed into 3 bytes - PGFimage.cpp:1702-1719's own per-row byte
+    /// count for an odd <paramref name="width"/>'s dangling final pixel). Row-by-row, not a single
+    /// whole-image division, because each row's own packing restarts independently (no packing
+    /// carries across a row boundary) - confirmed against both cited case blocks, not assumed.</summary>
     public static int ExpectedSourceByteLength(byte mode, byte bpp, int width, int height) =>
-        mode == PgfConstants.ImageModeBitmap
-            ? checked(((width + 7) / 8) * height)
-            : checked(width * height * (bpp / 8));
+        checked(((width * bpp) + 7) / 8 * height);
 }

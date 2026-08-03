@@ -752,4 +752,144 @@ internal static class PgfColorConversion
             cnt += 4;
         }
     }
+
+    // ---- Group H (pgf-all-image-modes.md): RGB12/RGB16 - genuinely bespoke packed sub-byte/
+    // sub-word formats, never downsample-eligible (ASSERT(!m_downsample) in both GetBitmap cases,
+    // PGFimage.cpp:2445,2488 - confirmed, matching PgfModeInfo.SupportsDownsample). Neither mode's
+    // GetBitmap case offers a downscale-free BGRA convenience the way Gray16/RGB48/etc's bpp%8==0
+    // branch does (both have an unconditional ASSERT(bpp == <native bpp>), no branch at all) - so
+    // decode here goes straight from the internal Y/U/V DataT channels to 8-bit BGRA (skipping a
+    // native-packed-shape intermediate this port's output never needs), expanding the reconstructed
+    // 4-bit (RGB12) / 5-6-bit (RGB16, RGB565) channel values to 8-bit via standard bit replication
+    // (<c>(v &lt;&lt; n) | (v &gt;&gt; (bits-n))</c> - preserves the full 0-255 range exactly, the
+    // conventional N-bit-to-8-bit expansion used everywhere from GPUs to image libraries for exactly
+    // this RGB565/RGB444-style unpacking) - this port's own design choice for Goal 1's mandatory BGRA
+    // output, the same category of addition as Group A's GrayScale broadcast, not a native behavior.
+    //
+    // Encode's RGB12 packing (2 pixels per 3 bytes) is addressed per-pixel via closed-form byte/
+    // nibble-position arithmetic (<c>pairIndex = j/2</c>) rather than replicating RgbToYuv's own
+    // stateful across-iterations <c>rgb</c>/<c>cnt</c> variable carry - verified equivalent by hand
+    // (including the odd-width dangling-final-pixel case, PGFimage.cpp:1701-1719) before writing it
+    // this way, not assumed simpler-is-equivalent.
+
+    private const int YuvOffset4 = 8; // 2^3
+    private const int YuvOffset6 = 32; // 2^5
+
+    private static byte Clamp4(int v) => v < 0 ? (byte)0 : v > 15 ? (byte)15 : (byte)v;
+
+    private static byte Clamp6(int v) => v < 0 ? (byte)0 : v > 63 ? (byte)63 : (byte)v;
+
+    /// <summary>Direct port of <c>RgbToYuv</c>'s <c>ImageModeRGB12</c> case (PGFimage.cpp:1683-1730):
+    /// 2 pixels packed into 3 bytes - byte0 = B0 | (G0&lt;&lt;4), byte1 = R0 | (B1&lt;&lt;4),
+    /// byte2 = G1 | (R1&lt;&lt;4) per pair (confirmed by tracing the original's even/odd-pixel
+    /// branches, not assumed from the shape alone). <paramref name="packed"/> is tightly packed,
+    /// <c>(width*12+7)/8</c> bytes per row (<see cref="PgfModeInfo.ExpectedSourceByteLength"/>).</summary>
+    public static void EncodeRgb12ToYuv(ReadOnlySpan<byte> packed, int width, int height, Span<int> y, Span<int> u, Span<int> v)
+    {
+        int rowBytes = ((width * 12) + 7) / 8;
+        int pos = 0;
+        int rowStart = 0;
+
+        for (int row = 0; row < height; row++)
+        {
+            for (int j = 0; j < width; j++)
+            {
+                int byteBase = rowStart + ((j / 2) * 3);
+                int b, g, r;
+                if ((j & 1) == 0)
+                {
+                    byte byte0 = packed[byteBase];
+                    b = byte0 & 0x0F;
+                    g = (byte0 & 0xF0) >> 4;
+                    r = packed[byteBase + 1] & 0x0F;
+                }
+                else
+                {
+                    b = (packed[byteBase + 1] & 0xF0) >> 4;
+                    g = packed[byteBase + 2] & 0x0F;
+                    r = (packed[byteBase + 2] & 0xF0) >> 4;
+                }
+
+                y[pos] = unchecked(((b + (g << 1) + r) >> 2) - YuvOffset4);
+                u[pos] = unchecked(r - g);
+                v[pos] = unchecked(b - g);
+                pos++;
+            }
+
+            rowStart += rowBytes;
+        }
+    }
+
+    /// <summary>Decode side of RGB12: reconstructs <c>GetBitmap</c>'s <c>ImageModeRGB12</c> per-pixel
+    /// 4-bit R/G/B math (PGFimage.cpp:2456-2472's <c>Clamp4</c> formulas, not its packed-nibble byte
+    /// layout - see class remarks above), then expands 4-bit to 8-bit via bit replication
+    /// (<c>(v &lt;&lt; 4) | v</c>). A=255.</summary>
+    public static void DecodeYuvToRgb12Bgra(ReadOnlySpan<int> y, ReadOnlySpan<int> u, ReadOnlySpan<int> v, int width, int height, Span<byte> bgra)
+    {
+        int pixelCount = width * height;
+        int cnt = 0;
+        for (int pos = 0; pos < pixelCount; pos++)
+        {
+            int uAvg = u[pos];
+            int vAvg = v[pos];
+            byte yval = Clamp4(y[pos] + YuvOffset4 - ((uAvg + vAvg) >> 2));
+            byte rVal = Clamp4(uAvg + yval);
+            byte bVal = Clamp4(vAvg + yval);
+
+            bgra[cnt] = (byte)((bVal << 4) | bVal);
+            bgra[cnt + 1] = (byte)((yval << 4) | yval);
+            bgra[cnt + 2] = (byte)((rVal << 4) | rVal);
+            bgra[cnt + 3] = 255;
+            cnt += 4;
+        }
+    }
+
+    /// <summary>Direct port of <c>RgbToYuv</c>'s <c>ImageModeRGB16</c> case (PGFimage.cpp:1731-1765):
+    /// classic RGB565 unpacking (<c>R = bits[15:11]&lt;&lt;... </c> effectively scaled to a 0-62 even
+    /// range via the <c>&gt;&gt;10</c> instead of <c>&gt;&gt;11</c> shift, <c>G</c> the full 6-bit
+    /// <c>bits[10:5]</c>, <c>B</c> scaled the same way as R) - <see cref="YuvOffset6"/> centers the
+    /// transform around this ~6-bit scale. <paramref name="interleaved"/> is tightly packed, 2
+    /// bytes/pixel, little-endian.</summary>
+    public static void EncodeRgb16ToYuv(ReadOnlySpan<byte> interleaved, int width, int height, Span<int> y, Span<int> u, Span<int> v)
+    {
+        int pixelCount = width * height;
+        int cnt = 0;
+        for (int pos = 0; pos < pixelCount; pos++)
+        {
+            ushort rgb = BinaryPrimitives.ReadUInt16LittleEndian(interleaved[cnt..]);
+            int r = (rgb & 0xF800) >> 10;
+            int g = (rgb & 0x07E0) >> 5;
+            int b = (rgb & 0x001F) << 1;
+
+            y[pos] = unchecked(((b + (g << 1) + r) >> 2) - YuvOffset6);
+            u[pos] = unchecked(r - g);
+            v[pos] = unchecked(b - g);
+
+            cnt += 2;
+        }
+    }
+
+    /// <summary>Decode side of RGB16: reconstructs <c>GetBitmap</c>'s <c>ImageModeRGB16</c> per-pixel
+    /// math (PGFimage.cpp:2497-2514's <c>Clamp6</c> formulas and <c>&gt;&gt;1</c> rescale back to the
+    /// real 5-bit R/B range, not its packed-565 byte layout - see class remarks above), then expands
+    /// 5-/6-bit to 8-bit via standard RGB565-to-888 bit replication. A=255.</summary>
+    public static void DecodeYuvToRgb16Bgra(ReadOnlySpan<int> y, ReadOnlySpan<int> u, ReadOnlySpan<int> v, int width, int height, Span<byte> bgra)
+    {
+        int pixelCount = width * height;
+        int cnt = 0;
+        for (int pos = 0; pos < pixelCount; pos++)
+        {
+            int uAvg = u[pos];
+            int vAvg = v[pos];
+            int yval = Clamp6(y[pos] + YuvOffset6 - ((uAvg + vAvg) >> 2));
+            int rVal5 = Clamp6(uAvg + yval) >> 1;
+            int bVal5 = Clamp6(vAvg + yval) >> 1;
+
+            bgra[cnt] = (byte)((bVal5 << 3) | (bVal5 >> 2));
+            bgra[cnt + 1] = (byte)((yval << 2) | (yval >> 4));
+            bgra[cnt + 2] = (byte)((rVal5 << 3) | (rVal5 >> 2));
+            bgra[cnt + 3] = 255;
+            cnt += 4;
+        }
+    }
 }

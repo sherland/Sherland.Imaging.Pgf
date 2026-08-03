@@ -54,6 +54,8 @@ public static class PgfImageDecoder
         PgfConstants.ImageModeCMYK64 => true,
         PgfConstants.ImageModeGray32 => true,
         PgfConstants.ImageModeBitmap => true,
+        PgfConstants.ImageModeRGB12 => true,
+        PgfConstants.ImageModeRGB16 => true,
         _ => false,
     };
 
@@ -128,6 +130,12 @@ public static class PgfImageDecoder
                 break;
             case PgfConstants.ImageModeBitmap:
                 PgfColorConversion.DecodeYToBitmapBgra(channelData[0].Data, width, height, bgra);
+                break;
+            case PgfConstants.ImageModeRGB12:
+                PgfColorConversion.DecodeYuvToRgb12Bgra(channelData[0].Data, channelData[1].Data, channelData[2].Data, width, height, bgra);
+                break;
+            case PgfConstants.ImageModeRGB16:
+                PgfColorConversion.DecodeYuvToRgb16Bgra(channelData[0].Data, channelData[1].Data, channelData[2].Data, width, height, bgra);
                 break;
             default:
                 throw new InvalidOperationException($"Unreachable: IsModeSupported should have rejected mode {session.Mode} before this point.");

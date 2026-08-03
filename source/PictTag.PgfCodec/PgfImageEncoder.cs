@@ -124,6 +124,12 @@ internal static class PgfImageEncoder
             case PgfConstants.ImageModeBitmap:
                 PgfColorConversion.EncodeBitmapToY(source, width, height, channelBuffers[0]);
                 break;
+            case PgfConstants.ImageModeRGB12:
+                PgfColorConversion.EncodeRgb12ToYuv(source, width, height, channelBuffers[0], channelBuffers[1], channelBuffers[2]);
+                break;
+            case PgfConstants.ImageModeRGB16:
+                PgfColorConversion.EncodeRgb16ToYuv(source, width, height, channelBuffers[0], channelBuffers[1], channelBuffers[2]);
+                break;
             default:
                 return false;
         }

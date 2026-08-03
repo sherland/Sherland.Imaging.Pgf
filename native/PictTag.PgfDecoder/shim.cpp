@@ -493,10 +493,12 @@ PICTTAG_EXPORT bool pgf_debug_decode_raw(
     const uint8_t* data, size_t dataLen, uint8_t bpp, const int32_t* channelMap, int32_t channelMapLen,
     uint8_t* outBuffer, size_t outBufferLen, uint32_t* outWidth, uint32_t* outHeight)
 {
-    // bpp==1 (Bitmap - the only mode GetBitmap accepts a sub-byte bpp for, ASSERT(bpp==1) unconditional,
-    // PGFimage.cpp:1402) is a real, valid request, not rejected alongside bpp==0.
+    // bpp==1 (Bitmap, PGFimage.cpp:1402) and bpp==12 (RGB12, PGFimage.cpp:1687) are both real,
+    // unconditional (ASSERT(bpp == <mode's own native bpp>), no caller choice) requests neither
+    // %8==0 nor %16==0 - bpp%4==0 covers every real bpp this shim is ever asked for (1/4/8/12/16/24/
+    // 32/40/48/64), rejecting only genuinely nonsensical requests.
     if (data == nullptr || dataLen == 0 || channelMap == nullptr || outBuffer == nullptr ||
-        outWidth == nullptr || outHeight == nullptr || bpp == 0 || (bpp != 1 && bpp % 8 != 0))
+        outWidth == nullptr || outHeight == nullptr || bpp == 0 || (bpp != 1 && bpp % 4 != 0))
     {
         return false;
     }

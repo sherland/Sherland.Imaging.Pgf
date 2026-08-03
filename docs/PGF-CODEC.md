@@ -54,7 +54,7 @@ not permanent decisions.
   production-relevant shape; `TryEncodeMode` (every other mode) exists as test infrastructure to
   produce real fixtures to decode-test against, not a second production path.
 - Proven byte-exact against the real native decoder/encoder across a wide fixture/dimension/quality
-  matrix, every mode, both directions (`PictTag.PgfCodec.Tests`, 1259 tests) — see
+  matrix, every mode, both directions (`PictTag.PgfCodec.Tests`, 1349 tests) — see
   `managed-pgf-codec.md`'s Stage 7-9 progress log entries for the original RGBA-only verification and
   `pgf-all-image-modes.md`'s own Progress log for the per-mode extension.
 - **Header metadata: user data, and the `nLevels=0` "raw/uncoded" small-image path** — arbitrary
@@ -107,6 +107,20 @@ not permanent decisions.
   ROI-aware *decode* export — a deliberate scope boundary, not a gap, since the higher-risk leg was
   the managed decoder, already proven against that independent reference). See
   [`new-features/pgf-roi-support.md`](../new-features/pgf-roi-support.md) for the full record.
+- **Real per-level byte lengths on encode** — the encoder tracks real per-macroblock byte accounting
+  (`PgfEncoderCore`'s `levelLength`/`currLevelIndex`/`bufferStartPos`, direct ports of `CEncoder`'s
+  same-named fields) and patches the real, accumulated values into the level-length placeholder after
+  encoding finishes (`PgfImageEncoder`, mirroring `CEncoder::UpdateLevelLength`'s seek-write
+  sequence) — for both the plain and ROI-flagged paths. Decode exposes the values `PgfHeaderIO.Read`
+  already parsed (previously discarded) via `PgfProgressiveDecoder.TryGetLevelLength(level, out
+  length)`, matching `TryGetLevelSize`'s own level-0-is-full-resolution convention. Proven two ways:
+  self-consistency (encode → the new decode accessor → matches what was actually accumulated) and
+  cross-implementation against the real native encoder's own already-working
+  `CPGFImage::GetEncodedLevelLength` (via a new `pgf_debug_get_level_lengths` shim export) — the
+  cross-implementation values matched **byte-for-byte identical**, level by level, across every
+  fixture/quality/plain-or-ROI case tried, not just self-consistently. See
+  [`new-features/pgf-real-level-lengths.md`](../new-features/pgf-real-level-lengths.md) for the full
+  record.
 
 ## Permanently out of scope
 
@@ -157,21 +171,6 @@ to actually hit them:
   this bullet used to imply, and `PgfDecodeSession`'s channel *allocation* turned out not to need any
   change at all (both sub-variants size channel 0 identically); the real fix is entirely in
   `PgfColorConversion`'s reading semantics.
-- **Real per-level byte lengths on encode** — confirmed by tracing the actual native call chain
-  (`CPGFImage::WriteImage` → `UpdatePostHeaderSize`/`CEncoder::WriteLevelLength` writes a placeholder
-  → every real `WriteMacroBlock` call accumulates into `m_levelLength[]` → `CEncoder::UpdateLevelLength`
-  seeks back and patches in the real values) that the native encoder genuinely computes and writes
-  correct values, not a stub. This port's encoder always writes zero placeholders and never patches
-  them (`PgfImageEncoder.cs:15`). Nothing in this app's own decode path (native or managed) reads
-  level lengths back (`CDecoder::ReadEncodedData` is the only real reader anywhere in `libpgf`, and
-  it's never called from `Open`/`Read`/`GetBitmap` or this app's shim) — but a general NuGet consumer
-  building their own tooling against this format's real, documented structure could reasonably expect
-  a value the format itself defines to be correct, not silently zeroed. The gap is narrower than it
-  first looks: the *decode* side already correctly parses level lengths off the wire
-  (`PgfHeaderIO.Read`) and just discards them — this is almost entirely an encode-side fix plus a thin
-  decode-side accessor, with a real, already-working native oracle to verify against
-  (`CPGFImage::GetEncodedLevelLength`). See [`new-features/pgf-real-level-lengths.md`](../new-features/pgf-real-level-lengths.md)
-  for the full grounding.
 - **Big-endian hosts** (`PGF_USE_BIG_ENDIAN`) — not handled; this port assumes a little-endian host
   throughout (`PgfDecoderCore.cs:128-131`). Every real deployment target *this app* runs on is
   little-endian, but a general NuGet consumer's target isn't this app's to assume. Lowest-priority
@@ -185,17 +184,18 @@ to actually hit them:
 
 ## If a real need for any of these shows up
 
-Large-image ROI was the previous version of this section's own flagged candidate for "gets more
-likely to matter under the NuGet framing" — it's done now (see the Supported section above and
-`pgf-roi-support.md`'s own Progress log). The four items in "Not yet ported" above each now have
-their own staged implementation PRD (linked above), grounded the same way `pgf-roi-support.md` was —
-none started yet. Publishing as a NuGet also raises a real, separate question this list doesn't
-cover: this port is a close derivative of digiKam's vendored `libpgf`, LGPL-2.1+ — external
-distribution likely needs the license text/attribution bundled and a real compliance check, which is
-a legal question for someone else to own, not a technical gap to close here.
+Large-image ROI and real per-level byte lengths were this section's own previously-flagged candidates
+for "gets more likely to matter under the NuGet framing" — both are done now (see the Supported
+section above and `pgf-roi-support.md`/`pgf-real-level-lengths.md`'s own Progress logs). The three
+remaining items in "Not yet ported" above each still have their own staged implementation PRD (linked
+above), grounded the same way those two were — none started yet. Publishing as a NuGet also raises a
+real, separate question this list doesn't cover: this port is a close derivative of digiKam's
+vendored `libpgf`, LGPL-2.1+ — external distribution likely needs the license text/attribution
+bundled and a real compliance check, which is a legal question for someone else to own, not a
+technical gap to close here.
 
 Every gap this codebase's own *completed* staged PRDs (`pgf-cancellation-and-progress.md`,
-`pgf-all-image-modes.md`, `pgf-user-data-and-small-images.md`, `pgf-roi-support.md`) originally
-tracked is closed — see each
-one's own Progress log for the full record. The four "Not yet ported" items above each have a staged
-PRD now (linked above) but haven't started implementation yet.
+`pgf-all-image-modes.md`, `pgf-user-data-and-small-images.md`, `pgf-roi-support.md`,
+`pgf-real-level-lengths.md`) originally tracked is closed — see each one's own Progress log for the
+full record. The three remaining "Not yet ported" items above each have a staged PRD now (linked
+above) but haven't started implementation yet.

@@ -1,7 +1,9 @@
 # PGF codec: real per-level byte lengths on encode — PRD
 
-**Status: not started.** Closes a gap documented in [`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md)'s
-"Not yet ported — real gaps against full C++ parity" list ("Real per-level byte lengths on encode").
+**Status: done, all 6 stages shipped.** Closed the gap documented in
+[`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md)'s "Not yet ported — real gaps against full C++ parity"
+list ("Real per-level byte lengths on encode") — moved to "Supported". See the "Progress log" section
+below for the full per-stage record.
 
 ## Context
 

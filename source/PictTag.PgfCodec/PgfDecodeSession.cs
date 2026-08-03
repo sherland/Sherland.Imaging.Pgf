@@ -27,7 +27,8 @@ internal sealed class PgfDecodeSession
     private PgfDecodeSession(
         PgfWaveletTransform[] channels, PgfDecoderCore decoder, int quant, bool downsample,
         int fullWidth, int fullHeight, int chromaWidth, byte levels, byte mode, byte[]? colorTable,
-        PgfUserData userData, (int[] Data, int Width, int Height)[]? rawChannelData, bool roiSupported)
+        PgfUserData userData, (int[] Data, int Width, int Height)[]? rawChannelData, bool roiSupported,
+        uint[] levelLengths)
     {
         Channels = channels;
         Decoder = decoder;
@@ -42,6 +43,7 @@ internal sealed class PgfDecodeSession
         UserData = userData;
         RawChannelData = rawChannelData;
         RoiSupported = roiSupported;
+        LevelLengths = levelLengths;
     }
 
     /// <summary>Mirrors <c>CPGFImage::ROIisSupported</c> (PGFimage.h:466) - whether this file's own
@@ -99,13 +101,21 @@ internal sealed class PgfDecodeSession
     /// something to decode.</summary>
     public (int[] Data, int Width, int Height)[]? RawChannelData { get; }
 
+    /// <summary>The file's real per-level byte-length table, in on-wire/native order (index 0 =
+    /// coarsest level - <see cref="PgfEncoderCore.LevelLength"/>'s own doc comment) - already parsed
+    /// correctly by <see cref="PgfHeaderIO.Read"/> regardless of whether anything ever consumes it
+    /// (it has to skip past this section to reach whatever follows either way), previously discarded
+    /// here. <see cref="PgfProgressiveDecoder.TryGetLevelLength"/> is the public accessor built on
+    /// top of this. pgf-real-level-lengths.md Stage 3/Goal 2.</summary>
+    public uint[] LevelLengths { get; }
+
     public static PgfDecodeSession? TryOpen(
         ReadOnlyMemory<byte> pgfData, PgfUserDataPolicy userDataPolicy = PgfUserDataPolicy.CacheAll, uint userDataPrefixSize = 0)
     {
         try
         {
             PgfMemoryReader reader = new(pgfData);
-            (PgfPreHeader preHeader, PgfHeader header, _, byte[]? colorTable, PgfUserData userData) =
+            (PgfPreHeader preHeader, PgfHeader header, uint[] levelLengths, byte[]? colorTable, PgfUserData userData) =
                 PgfHeaderIO.Read(reader, userDataPolicy, userDataPrefixSize);
 
             bool roiSupported = (preHeader.VersionFlags & PgfVersionFlags.PGFROI) == PgfVersionFlags.PGFROI;
@@ -172,7 +182,7 @@ internal sealed class PgfDecodeSession
 
                 return new PgfDecodeSession(
                     [], new PgfDecoderCore(reader), quant, downsample, fullWidth, fullHeight, chromaWidth, header.NLevels,
-                    header.Mode, colorTable, userData, rawChannelData, roiSupported);
+                    header.Mode, colorTable, userData, rawChannelData, roiSupported, levelLengths);
             }
 
             PgfWaveletTransform[] channels = new PgfWaveletTransform[header.Channels];
@@ -186,7 +196,7 @@ internal sealed class PgfDecodeSession
 
             return new PgfDecodeSession(
                 channels, decoder, quant, downsample, fullWidth, fullHeight, chromaWidth, header.NLevels, header.Mode, colorTable,
-                userData, rawChannelData: null, roiSupported);
+                userData, rawChannelData: null, roiSupported, levelLengths);
         }
         catch (PgfFormatException)
         {

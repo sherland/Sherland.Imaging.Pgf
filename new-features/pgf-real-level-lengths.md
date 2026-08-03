@@ -261,3 +261,51 @@ parsed" step, not new parsing logic or a new native oracle to prove correctness 
 - No output-visible behavior change yet by design (Stage 1's own exit test) — the accounting runs on
   every encode, but nothing reads `PgfEncoderCore.LevelLength` yet and the on-disk placeholder is
   still all zeros. Full regression suite: 1259/1259 passed, unchanged from before this stage.
+
+### Stage 2: patch real values into the output
+
+- `PgfHeaderIO.Write` now returns the `long` stream position where the level-length placeholder
+  begins (its zero-fill loop's own start position) instead of `void` — the seek target Stage 2's
+  patch needs, and confirmation in code of Stage 1's resolved Open Question 1 (one placeholder
+  region, reused, not duplicated).
+- `PgfImageEncoder.TryEncodeMode`'s main (non-`nLevels==0`) path captures that position, and after
+  `encoder.Flush()`, seeks back (`PgfByteWriter.SetPos`) and writes `encoder.LevelLength`'s real
+  accumulated values — direct port of `CEncoder::UpdateLevelLength`'s seek-write sequence
+  (Encoder.cpp:202-234). No position restore afterward (unlike the native): nothing writes to the
+  writer again after this point, and `WrittenSpan` reads the stream's backing buffer directly,
+  independent of the current seek position — a real, harmless simplification, not a divergence in
+  observable behavior.
+- The `nLevels==0` raw-path call site (`PgfHeaderIO.Write(rawWriter, header, colorTable, userData)`)
+  discards the new return value unchanged — that path returns before the main level loop, so no
+  placeholder exists to patch (`header.NLevels == 0` means the zero-fill loop above it already wrote
+  zero bytes).
+- Rewrote both of this PRD's cited stale doc comments (`PgfImageEncoder.cs`'s class summary,
+  `PgfHeader.cs`'s `Write` summary) to describe the new real-values behavior instead of the old
+  "deliberate scope cut" framing.
+- Checked existing tests referencing level lengths for an assumption this stage would break:
+  `PgfUserDataTests.InsertUserData` re-serializes a fresh zero-filled placeholder when splicing user
+  data into an already-encoded file (it never copies the original real values forward) — confirmed
+  harmless, since every test using it only asserts on decoded pixels/user data, never level lengths.
+  No test changes needed.
+- Full regression suite: 1259/1259 passed (build succeeded; self-consistency verification deferred to
+  Stage 3's own test, per this PRD's own Stage 2 exit-test wording — see that stage's entry below).
+
+### Stage 3: decode-side accessor
+
+- Added `PgfDecodeSession.LevelLengths` (`uint[]`, on-wire/native order), threaded through both
+  `TryOpen` constructor call sites from `PgfHeaderIO.Read`'s previously-discarded (`_`) return value —
+  no new parsing, just plumbing, exactly as this PRD's Goal 2 anticipated.
+- Added `PgfProgressiveDecoder.TryGetLevelLength(int level, out uint length)` — direct port of
+  `CPGFImage::GetEncodedLevelLength` (PGFimage.h:367), including its coarsest-first-array/
+  finest-first-public-API index flip (`levelLengths.Length - level - 1`), matching this type's own
+  `TryGetLevelSize`-style level-0-is-full-resolution convention.
+- **Wrote the combined Stage 2+3 self-consistency exit test** (`PgfLevelLengthTests.cs`, new file):
+  for every `TestBitmaps.EdgeCaseDimensions()` × {quality 0, 8, `MaxQuality`} × {plain, ROI} — 36
+  cases — confirms (a) the level lengths `PgfHeaderIO.Read` parses back sum to exactly the real
+  bitstream byte count after the placeholder, (b) every level's length is nonzero, and (c)
+  `PgfProgressiveDecoder.TryGetLevelLength` reports the same values in its own level-numbering
+  convention, plus out-of-range (`-1`, `NLevels`) both correctly returning `false`. This is the
+  self-consistency proof Stage 2's own exit-test wording named as depending on Stage 3's
+  not-yet-built accessor — writing it here, once the accessor existed, is what actually verified
+  Stage 2's patch logic is correct (all 36 cases passed on the first run, both plain and ROI).
+- Full regression suite: 1295/1295 passed (1259 existing + 36 new).

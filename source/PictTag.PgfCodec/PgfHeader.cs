@@ -217,13 +217,17 @@ internal static class PgfHeaderIO
     /// <c>SetHeader</c> any), and a zeroed level-length placeholder array - matching the
     /// header-writing portion of <c>CEncoder</c>'s constructor plus <c>WriteLevelLength</c>
     /// (Encoder.cpp:70,112-128,177) and <c>SetHeader</c>'s own userData copy (PGFimage.cpp:940-947).
-    /// Unlike the original, the level-length placeholder is never patched with real values afterward
-    /// (no <c>UpdateLevelLength</c> equivalent) - see <see cref="PgfImageEncoder"/>'s doc comment for
-    /// why that's a deliberate, permanent scope cut rather than unfinished work: nothing in this
-    /// codebase's real decode path ever reads level lengths. <c>PGFPostHeader ::= [ColorTable]
-    /// [UserData]</c> (Encoder.cpp:38) - color table always precedes user data when both are
-    /// present, matching <see cref="Read"/>'s own read order.</summary>
-    public static void Write(
+    /// <c>PGFPostHeader ::= [ColorTable] [UserData]</c> (Encoder.cpp:38) - color table always
+    /// precedes user data when both are present, matching <see cref="Read"/>'s own read order.
+    ///
+    /// pgf-real-level-lengths.md Stage 1/2: the level-length placeholder written here is the same
+    /// byte range <c>WriteLevelLength</c> reserves in the native (resolved Open Question 1 - this
+    /// method already zero-fills exactly that range, so no second placeholder write exists anywhere
+    /// in this port). <see cref="PgfImageEncoder"/> patches real accumulated values into it after
+    /// encoding finishes (<c>UpdateLevelLength</c>'s own seek-write-restore, Encoder.cpp:202-234) -
+    /// this method's own <see langword="long"/> return value is that patch's seek target: the stream
+    /// position where the placeholder begins.</summary>
+    public static long Write(
         PgfByteWriter writer, PgfHeader header, ReadOnlySpan<byte> colorTable = default, ReadOnlySpan<byte> userData = default,
         bool roi = false)
     {
@@ -268,11 +272,15 @@ internal static class PgfHeaderIO
             writer.Write(userData);
         }
 
+        long levelLengthPos = writer.Position;
+
         Span<byte> zero = stackalloc byte[4];
         for (int i = 0; i < header.NLevels; i++)
         {
             writer.Write(zero);
         }
+
+        return levelLengthPos;
     }
 
     /// <summary>Builds a complete <see cref="PgfHeader"/> for a fresh BGRA encode, replicating

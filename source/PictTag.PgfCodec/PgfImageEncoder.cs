@@ -12,17 +12,18 @@ namespace PictTag.PgfCodec;
 /// <see cref="PgfImageDecoder.IsModeSupported"/> covers - test infrastructure (Goal 2), not a second
 /// production path.
 ///
-/// <b>Level-length bytes are always written as zero placeholders, never patched with real values</b>
-/// (unlike <c>CEncoder::UpdateLevelLength</c>) - a deliberate scope cut, not an oversight. Grepping
-/// every real consumer in this codebase (<c>CPGFImage::Read</c>/<c>GetBitmap</c>, this port's own
-/// <see cref="PgfImageDecoder"/>, and digiKam's own documented call sequence in shim.cpp's header
-/// comment) confirms level lengths are read only by <c>CPGFImage::ReadEncodedData</c> - a
-/// raw-bytes-without-decoding extraction utility nothing in this codebase's scope calls - and
-/// <c>Decoder.cpp`'s own comment states outright that "level length information is optional." Getting
-/// the real values byte-exact would require porting <c>CEncoder</c>'s macroblock/level-boundary
-/// deferred-accounting (a value spans macroblocks that don't align with level boundaries) for a field
-/// nothing decodes or asserts on - this PRD's "decode-correctness, not bitstream-identity" guarantee
-/// (see managed-pgf-codec.md) explicitly does not require byte-identical files anyway.
+/// <b>Level-length bytes are real, patched-in values</b> (pgf-real-level-lengths.md, direct port of
+/// <c>CEncoder::UpdateLevelLength</c>, Encoder.cpp:202-234) - not a permanent zero placeholder.
+/// Although nothing in this codebase's own decode path (native or managed) ever reads level lengths
+/// back (<c>CPGFImage::ReadEncodedData</c> is the only native consumer, a raw-bytes-without-decoding
+/// utility outside this codebase's scope), <see cref="PgfImageDecoder"/>'s own NuGet-publishing goal
+/// (see docs/PGF-CODEC.md's opening note) means a general consumer building their own tooling against
+/// this format's real, documented structure could reasonably expect a value the format itself defines
+/// to be correct - so the placeholder-only shape was a real gap this PRD closes, not a permanent one.
+/// <see cref="PgfEncoderCore"/> tracks the real per-macroblock byte accounting
+/// (<c>m_levelLength</c>/<c>m_currLevelIndex</c>/<c>m_bufferStartPos</c> equivalents); this class
+/// patches the accumulated values into the placeholder <see cref="PgfHeaderIO.Write"/> already
+/// reserved, after <c>encoder.Flush()</c>.
 ///
 /// pgf-cancellation-and-progress.md: <c>progress</c>/<c>cancellationToken</c>
 /// mirror <see cref="PgfImageDecoder.TryDecode{TResult}"/>'s own semantics exactly (once per level,
@@ -220,7 +221,7 @@ internal static class PgfImageEncoder
         }
 
         PgfByteWriter writer = new();
-        PgfHeaderIO.Write(writer, header, colorTable, userData, roi);
+        long levelLengthPos = PgfHeaderIO.Write(writer, header, colorTable, userData, roi);
 
         PgfEncoderCore encoder = new(writer);
 
@@ -327,6 +328,22 @@ internal static class PgfImageEncoder
         }
 
         encoder.Flush();
+
+        // pgf-real-level-lengths.md Stage 2: direct port of CEncoder::UpdateLevelLength
+        // (Encoder.cpp:202-234) - seek back to the placeholder PgfHeaderIO.Write reserved and
+        // overwrite it with the real accumulated values. By this point every level has been
+        // processed, so encoder.LevelLength's index has reached header.NLevels (matches the
+        // native's own "m_currLevelIndex has reached m_nLevels" end state) - every entry gets
+        // patched. No position restore afterward (unlike the native): WrittenSpan below reads the
+        // stream's full backing buffer directly, independent of the current seek position, and
+        // nothing writes to this writer again after this point.
+        writer.SetPos(SeekOrigin.Begin, levelLengthPos);
+        Span<byte> levelLengthBytes = stackalloc byte[4];
+        foreach (uint length in encoder.LevelLength!)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(levelLengthBytes, length);
+            writer.Write(levelLengthBytes);
+        }
 
         pgfBytes = writer.WrittenSpan.ToArray();
         return true;

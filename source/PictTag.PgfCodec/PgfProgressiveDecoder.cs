@@ -91,6 +91,31 @@ public sealed class PgfProgressiveDecoder
 
     private static int LevelSize(int size, int level) => (size + (1 << level) - 1) >> level;
 
+    /// <summary>Direct port of <c>CPGFImage::GetEncodedLevelLength</c> (PGFimage.h:367): the real,
+    /// encoded byte count of <paramref name="level"/> (0 = full resolution, matching
+    /// <see cref="TryGetLevelSize"/>'s own convention), read directly off the wire by
+    /// <see cref="PgfHeaderIO.Read"/> - independent of how much has actually been decoded so far on
+    /// this instance (unlike <see cref="TryDecodeLevel{TResult}"/>, this is pure header data, valid
+    /// immediately after <see cref="TryOpen"/>). The native's own array is indexed coarsest-first
+    /// (<c>nLevels - level - 1</c>); mirrors that exactly. pgf-real-level-lengths.md Stage 3/Goal 2 -
+    /// closes a public-API parity gap for a general NuGet consumer (see
+    /// <see cref="PictTag.PgfCodec.PgfImageEncoder"/>'s own class doc comment); no production caller
+    /// inside this app needs this (matches this PRD's own Non-goals, the same "for completeness, not
+    /// a current internal need" framing pgf-roi-support.md and pgf-cancellation-and-progress.md use
+    /// for their own new API surface).</summary>
+    public bool TryGetLevelLength(int level, out uint length)
+    {
+        uint[] levelLengths = session.LevelLengths;
+        if (level < 0 || level >= levelLengths.Length)
+        {
+            length = 0;
+            return false;
+        }
+
+        length = levelLengths[levelLengths.Length - level - 1];
+        return true;
+    }
+
     /// <summary>Enables ROI decoding for the rest of this instance's lifetime, mirroring
     /// <c>CPGFImage::Read(rect,...)</c>'s <c>SetROI(rect)</c> call (PGFimage.cpp:517) - clamps
     /// <paramref name="roi"/> to <see cref="Width"/>/<see cref="Height"/> exactly like the native's

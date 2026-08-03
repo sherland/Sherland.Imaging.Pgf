@@ -38,8 +38,9 @@ internal static class PgfImageEncoder
     /// through <see cref="PgfHeaderIO.Read"/> on the decode side.</summary>
     public static bool TryEncode(
         ReadOnlySpan<byte> bgra, int width, int height, byte quality, out byte[]? pgfBytes,
-        IProgress<double>? progress = null, CancellationToken cancellationToken = default, ReadOnlySpan<byte> userData = default) =>
-        TryEncodeMode(bgra, width, height, quality, PgfConstants.ImageModeRGBA, out pgfBytes, colorTable: default, progress, cancellationToken, userData);
+        IProgress<double>? progress = null, CancellationToken cancellationToken = default, ReadOnlySpan<byte> userData = default,
+        bool roi = false) =>
+        TryEncodeMode(bgra, width, height, quality, PgfConstants.ImageModeRGBA, out pgfBytes, colorTable: default, progress, cancellationToken, userData, roi);
 
     /// <summary>General form of <see cref="TryEncode"/>, for any mode <see cref="PgfImageDecoder.
     /// IsModeSupported"/> covers - test infrastructure only (Goal 2), used to produce real fixtures
@@ -50,10 +51,17 @@ internal static class PgfImageEncoder
     /// every mode). <paramref name="colorTable"/> is required (and only meaningful) for
     /// <see cref="PgfConstants.ImageModeIndexedColor"/>. <paramref name="userData"/>: see
     /// <see cref="TryEncode"/>'s own doc comment.</summary>
+    /// <summary><paramref name="roi"/> (pgf-roi-support.md Goal 2): opts into producing an
+    /// ROI-flagged, tile-structured file (setting <see cref="PgfVersionFlags.PGFROI"/>) - every tile
+    /// still gets encoded either way (see <c>WriteLevel</c>'s own ROI branch, PGFimage.cpp:1067-1119:
+    /// unconditional, no relevance check on the encode side), so this is purely a bitstream-layout
+    /// and version-flag choice, not "encode only part of the image." Ignored (no effect) when
+    /// <paramref name="mode"/>'s header ends up with <see cref="PgfHeader.NLevels"/> 0 - the
+    /// wavelet-transform-free raw path has no tiles to structure at all.</summary>
     public static bool TryEncodeMode(
         ReadOnlySpan<byte> source, int width, int height, byte quality, byte mode, out byte[]? pgfBytes,
         ReadOnlySpan<byte> colorTable = default, IProgress<double>? progress = null, CancellationToken cancellationToken = default,
-        ReadOnlySpan<byte> userData = default)
+        ReadOnlySpan<byte> userData = default, bool roi = false)
     {
         pgfBytes = null;
 
@@ -181,6 +189,22 @@ internal static class PgfImageEncoder
             channels[c] = new PgfWaveletTransform(chromaWidth, chromaHeight, header.NLevels, buffer);
         }
 
+        if (roi)
+        {
+            // Direct port of WriteHeader's own unconditional per-channel SetROI(fullRect) call
+            // (PGFimage.cpp:1011-1013) - always the *whole* channel, regardless of what a real ROI
+            // decode request would later ask for (this PRD's own Goal 2 framing: "the whole image is
+            // always encoded, just tile-structured"). This is what populates each subband's NTiles
+            // (via SetROI's own per-level SetNTiles calls) that the tile-based ExtractTile calls
+            // below need - ExtractTile itself never consults TileIsRelevant/AlignedRoi the way
+            // decode-side PlaceTile does (this class's own doc comment on the per-tile loop below).
+            channels[0].SetROI(new PgfRoi(0, 0, width, height));
+            for (int c = 1; c < channelCount; c++)
+            {
+                channels[c].SetROI(new PgfRoi(0, 0, chromaWidth, chromaHeight));
+            }
+        }
+
         // Direct port of WriteHeader's per-channel forward-transform loop (PGFimage.cpp:1016-1019):
         // every level of every channel is transformed before any entropy encoding starts.
         for (int c = 0; c < channelCount; c++)
@@ -196,9 +220,13 @@ internal static class PgfImageEncoder
         }
 
         PgfByteWriter writer = new();
-        PgfHeaderIO.Write(writer, header, colorTable, userData);
+        PgfHeaderIO.Write(writer, header, colorTable, userData, roi);
 
         PgfEncoderCore encoder = new(writer);
+        if (roi)
+        {
+            encoder.SetRoi();
+        }
 
         int totalLevels = header.NLevels;
         int levelsCompleted = 0;
@@ -215,6 +243,50 @@ internal static class PgfImageEncoder
         for (int currentLevel = header.NLevels; currentLevel > 0; currentLevel--)
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            if (roi)
+            {
+                // Direct port of WriteLevel's ROI branch (PGFimage.cpp:1073-1097). Unlike the plain
+                // branch below, LL gets its own explicit EncodeTileBuffer flush (there's only ever
+                // one LL "tile," but it still needs to end its own macroblock so the decoder's
+                // GetNextMacroBlock/SkipTileBuffer sequencing lines up with the first HL tile that
+                // follows), and every HL/LH/HH tile flushes its own macroblock immediately after
+                // extraction, tile-end always true - no relevance check on the encode side (every
+                // tile is always encoded; see this method's own doc comment on `roi`).
+                //
+                // CEncoder::SetEncodedLevel (called once per level in the native, on the very last
+                // tile of the very last channel) is deliberately not ported: it only feeds
+                // m_lastLevelIndex/m_forceWriting, both level-length bookkeeping this port already
+                // never tracks (PgfImageEncoder's own class doc comment) and m_forceWriting is only
+                // ever read in the multi-macroblock/OpenMP branch this port's build never reaches -
+                // a real no-op for this port's scope, not an omission.
+                for (int c = 0; c < channelCount; c++)
+                {
+                    PgfWaveletTransform wt = channels[c];
+                    int nTiles = wt.GetNofTiles(currentLevel);
+
+                    if (currentLevel == header.NLevels)
+                    {
+                        wt.GetSubband(currentLevel, PgfSubbandOrientation.Ll).ExtractTile(encoder);
+                        encoder.EncodeTileBuffer();
+                    }
+
+                    for (int tileY = 0; tileY < nTiles; tileY++)
+                    {
+                        for (int tileX = 0; tileX < nTiles; tileX++)
+                        {
+                            wt.GetSubband(currentLevel, PgfSubbandOrientation.Hl).ExtractTile(encoder, tile: true, tileX, tileY);
+                            wt.GetSubband(currentLevel, PgfSubbandOrientation.Lh).ExtractTile(encoder, tile: true, tileX, tileY);
+                            wt.GetSubband(currentLevel, PgfSubbandOrientation.Hh).ExtractTile(encoder, tile: true, tileX, tileY);
+                            encoder.EncodeTileBuffer();
+                        }
+                    }
+                }
+
+                levelsCompleted++;
+                progress?.Report(PgfProgressCurve.FractionAfter(levelsCompleted, totalLevels));
+                continue;
+            }
 
             for (int c = 0; c < channelCount; c++)
             {

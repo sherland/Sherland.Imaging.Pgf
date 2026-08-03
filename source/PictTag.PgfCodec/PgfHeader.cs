@@ -224,7 +224,8 @@ internal static class PgfHeaderIO
     /// [UserData]</c> (Encoder.cpp:38) - color table always precedes user data when both are
     /// present, matching <see cref="Read"/>'s own read order.</summary>
     public static void Write(
-        PgfByteWriter writer, PgfHeader header, ReadOnlySpan<byte> colorTable = default, ReadOnlySpan<byte> userData = default)
+        PgfByteWriter writer, PgfHeader header, ReadOnlySpan<byte> colorTable = default, ReadOnlySpan<byte> userData = default,
+        bool roi = false)
     {
         bool hasColorTable = header.Mode == PgfConstants.ImageModeIndexedColor && !colorTable.IsEmpty;
         if (hasColorTable && colorTable.Length != PgfConstants.ColorTableSize)
@@ -234,9 +235,14 @@ internal static class PgfHeaderIO
 
         uint hSize = PgfConstants.HeaderSize + (hasColorTable ? (uint)PgfConstants.ColorTableSize : 0) + (uint)userData.Length;
 
+        // pgf-roi-support.md Goal 3: PGFROI is the one version-flag bit this port's encoder can now
+        // set, opting a file into the tile-structured ROI encoding scheme (CPGFImage::SetHeader,
+        // PGFimage.cpp:905, writes PGFVersion | flags the same way).
+        PgfVersionFlags versionFlags = PgfConstants.EncoderVersionFlags | (roi ? PgfVersionFlags.PGFROI : PgfVersionFlags.None);
+
         Span<byte> preHeaderBytes = stackalloc byte[PgfConstants.PreHeaderSize];
         PgfConstants.Magic.CopyTo(preHeaderBytes);
-        preHeaderBytes[3] = (byte)PgfConstants.EncoderVersionFlags;
+        preHeaderBytes[3] = (byte)versionFlags;
         BinaryPrimitives.WriteUInt32LittleEndian(preHeaderBytes[4..8], hSize);
         writer.Write(preHeaderBytes);
 

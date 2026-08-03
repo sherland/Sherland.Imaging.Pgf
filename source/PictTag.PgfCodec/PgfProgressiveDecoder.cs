@@ -31,6 +31,7 @@ public sealed class PgfProgressiveDecoder
     private int currentLevel;
     private bool roiEnabled;
     private bool roiSetRoiCalled;
+    private PgfRoi? requestedRoi;
 
     private PgfProgressiveDecoder(PgfDecodeSession session)
     {
@@ -135,18 +136,22 @@ public sealed class PgfProgressiveDecoder
         int right = roi.Right <= 0 || roi.Right > Width ? Width : roi.Right;
         int bottom = roi.Bottom <= 0 || roi.Bottom > Height ? Height : roi.Bottom;
 
-        session.SetRoi(new PgfRoi(roi.Left, roi.Top, right, bottom));
+        requestedRoi = new PgfRoi(roi.Left, roi.Top, right, bottom);
+        session.SetRoi(requestedRoi.Value);
         roiEnabled = true;
         return true;
     }
 
     /// <summary>Direct port of <c>CWaveletTransform::GetAlignedROI</c> as exposed through channel 0
-    /// (luma/full-resolution) - the actual, tile/wavelet-aligned pixel rectangle
-    /// <paramref name="level"/>'s most recent <see cref="TryDecodeLevel{TResult}"/> call reconstructed
-    /// (per this PRD's "Why this needs to be grounded" section: the caller's requested rectangle
-    /// "might be cropped" - never assume the whole decoded buffer is valid content without checking
-    /// this). Only meaningful after <see cref="TrySetRoi"/> returned <see langword="true"/> and
-    /// <paramref name="level"/> has actually been decoded on this instance.</summary>
+    /// (luma/full-resolution) - the tile/wavelet-margin-aligned pixel rectangle that's actually
+    /// <i>allocated and decoded</i> at <paramref name="level"/> (the full extent of the buffer
+    /// <see cref="TryDecodeLevel{TResult}"/>'s callback receives). <b>Not a per-pixel correctness
+    /// guarantee</b> - the wavelet transform isn't tile-independent, so pixels near this rectangle's
+    /// own edges may reflect boundary-filter padding rather than the exact value a full decode would
+    /// produce (confirmed by comparing against a full non-ROI decode during this PRD's Stage 4
+    /// development: only <see cref="TryGetAccurateRoi"/>'s own, smaller rectangle is bit-exact - see
+    /// its doc comment). Only meaningful after <see cref="TrySetRoi"/> returned <see langword="true"/>
+    /// and <paramref name="level"/> has actually been decoded on this instance.</summary>
     public bool TryGetAlignedRoi(int level, out PgfRoi alignedRoi)
     {
         if (!roiEnabled || level < 0 || level > Levels)
@@ -156,6 +161,37 @@ public sealed class PgfProgressiveDecoder
         }
 
         alignedRoi = session.Channels[0].GetAlignedROI(level);
+        return true;
+    }
+
+    /// <summary>Direct port of <c>CPGFImage::ComputeLevelROI</c> (PGFimage.cpp:583-593) - the
+    /// sub-rectangle of <see cref="TryGetAlignedRoi"/>'s buffer that's actually guaranteed
+    /// pixel-exact to a full non-ROI decode of the same image: the caller's own originally requested
+    /// rectangle (clamped to image bounds, exactly as passed to <see cref="TrySetRoi"/>) at level 0,
+    /// or that same rectangle scaled down via <c>LevelSizeL</c> (<c>ceil(size / 2^level)</c>, the same
+    /// formula <see cref="TryGetLevelSize"/> uses) at coarser levels. <see cref="TryGetAlignedRoi"/>'s
+    /// own rectangle is generally <i>larger</i> than this one - the extra margin exists to give the
+    /// wavelet transform enough boundary context to reconstruct <i>this</i> smaller rectangle
+    /// correctly, not because every pixel out to the tile boundary is itself guaranteed accurate.</summary>
+    public bool TryGetAccurateRoi(int level, out PgfRoi accurateRoi)
+    {
+        if (!roiEnabled || level < 0 || level > Levels || requestedRoi is not { } roi)
+        {
+            accurateRoi = default;
+            return false;
+        }
+
+        if (level == 0)
+        {
+            accurateRoi = roi;
+            return true;
+        }
+
+        int left = LevelSize(roi.Left, level);
+        int top = LevelSize(roi.Top, level);
+        int right = LevelSize(roi.Right, level);
+        int bottom = LevelSize(roi.Bottom, level);
+        accurateRoi = new PgfRoi(left, top, right, bottom);
         return true;
     }
 

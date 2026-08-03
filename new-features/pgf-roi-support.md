@@ -396,3 +396,61 @@ testable at this stage.
 Regression gate: full `PictTag.PgfCodec.Tests` suite - **1154/1154 passed** (1147 existing + 7 new,
 zero regressions) - the load-bearing result for this stage, given the `InverseTransform` generalization's
 risk.
+
+### Stage 4: Encode-side ROI + the round-trip test that finally exercises Stage 3 for real
+
+Implementation: `PgfEncoderCore` gained `SetRoi`/`EncodeTileBuffer` (direct ports of `CEncoder::SetROI`/
+`EncodeTileBuffer`) and `WriteMacroBlock` became ROI-gated (writes the extra 2 header bytes only when
+`roi` is set - the write-side mirror of Stage 3's `PgfDecoderCore.ReadMacroBlock`). `PgfHeaderIO.Write`
+gained a `roi` parameter that ORs `PgfVersionFlags.PGFROI` into the written preheader byte.
+`PgfImageEncoder.TryEncodeMode`/`TryEncode` gained a `roi` parameter: when true, calls `SetROI(fullRect)`
+on every channel (mirroring `CPGFImage::WriteHeader`'s own unconditional full-rect `SetROI` call - this
+is what populates each subband's `NTiles` via `SetROI`'s own `SetNTiles` side effect; `ExtractTile`
+itself never consults `TileIsRelevant`/`AlignedRoi` the way decode's `PlaceTile` does) and switches the
+per-level loop to the tile-based extraction (`WriteLevel`'s ROI branch, PGFimage.cpp:1073-1097): every
+tile is *always* extracted and immediately flushed via `EncodeTileBuffer` (tile-end always true, no
+relevance check on the encode side - matches this PRD's own Goal 2 framing exactly). `CEncoder::
+SetEncodedLevel` is deliberately not ported: it only feeds level-length bookkeeping this port already
+never tracks (`PgfImageEncoder`'s pre-existing class doc comment) and its other effect
+(`m_forceWriting`) is only ever read in the multi-macroblock/OpenMP branch this port's build never
+reaches - confirmed dead for this port's scope by re-reading `EncodeBuffer`'s branch structure, not
+assumed.
+
+**Real finding #1 (expected, already flagged in Stage 3's own entry)**: real ROI decoding only
+activates against a `PGFROI`-flagged file, and this stage is the first point one exists - so Stage 4's
+own exit test (the encode-then-decode round trip) is, by construction, also the *first real functional
+test of every Stage 3 decode-side code path*. A new `PgfRoiRoundTripTests` covers: full-image ROI
+matching a plain non-ROI decode byte-for-byte at 5 (size, quality) combinations (proving tiling is
+purely a bitstream-layout choice - the identical forward transform runs either way, so this holds at
+every quality level, not just lossless); a version-flag check; a "non-ROI-aware reader on an
+ROI-flagged file must not silently misdecode" guard; and 5 partial-ROI cases (interior, all four
+corners, odd/unaligned) comparing pixel content against the corresponding region of a plain decode.
+
+**Real finding #2 (a genuine bug hunt that turned out to be a wrong test expectation, not a port
+defect)**: the first version of the partial-ROI test compared every pixel within
+`TryGetAlignedRoi`'s full (tile-aligned) rectangle against a plain decode, and 2 of 5 cases failed -
+small, consistent, boundary-column-only discrepancies (e.g. pixel (31,0) off by 3-4 out of 255,
+always at the last column/row of the aligned buffer). Chased this by: (1) re-verifying the raw,
+undecoded HL(1) subband coefficients were byte-identical between a plain and an ROI decode of the same
+file (confirmed identical via a direct `PlaceTile` comparison, bypassing `InverseTransform` so the
+subband buffer wasn't freed before inspection) - ruling out a data-placement bug in `PlaceTile`/tile
+addressing; (2) hand-tracing `SetROI`'s tile-index/margin-expansion arithmetic for the exact failing
+case (64x64, 1 level, requesting the (0,0,8,8) corner) - confirmed `delta`/`TileIndex` matched the
+native formula exactly; (3) re-deriving from first principles why a *global* (non-tile-independent)
+wavelet transform's boundary-lifting formula at a position like column 31 (interior to the full image,
+edge-of-buffer for a 32-wide tile-aligned crop) genuinely needs one more source coefficient than a
+tile-granular crop alone provides. Re-reading `CPGFImage::ComputeLevelROI` (PGFimage.cpp:583-593,
+already cited in this PRD's "Why this needs to be grounded" section, but under-used in the first test
+draft) resolved it: at level 0 it returns `m_roi` - the caller's **original, unaligned** request, not
+the tile-snapped `GetAlignedROI()` rectangle. The native contract was always "the *aligned* rectangle
+is the allocated buffer's extent; only the *accurate* (`ComputeLevelROI`) sub-rectangle within it is
+pixel-exact" - the margin beyond that exists to give the wavelet filter boundary context, not because
+every pixel out to the tile edge is itself a correctness claim. The test's own expectation was wrong,
+not the port. Ported `ComputeLevelROI` as `PgfProgressiveDecoder.TryGetAccurateRoi` (new public API,
+alongside `TryGetAlignedRoi` - both doc comments now cross-reference this exact finding) and fixed the
+test to compare only within the accurate sub-rectangle - all 5 partial-ROI cases now pass, and (per
+finding #1) this is real, hard evidence that Stage 3's decode-side code is correct, not just
+"didn't throw."
+
+Regression gate: full `PictTag.PgfCodec.Tests` suite - **1166/1166 passed** (1154 existing + 12 new
+round-trip tests, zero regressions).

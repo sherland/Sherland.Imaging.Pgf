@@ -221,6 +221,50 @@ comparison, intermediate-stage comparison, 4-way round-trip matrix) with an ROI 
 
 ## Progress log
 
-_(Empty — fill in as each stage above is actually implemented and tested, following
-`managed-pgf-codec.md`'s own progress-log convention: what was built, what was found, what broke and
-how it was fixed, real test counts.)_
+### Stage 1: `ROIBlockHeader` becomes real
+
+Verified every native citation in this PRD's "Context"/"Why this needs to be grounded" sections
+against the real `native/PictTag.PgfDecoder/libpgf` sources before writing any code (`PGFplatform.h`
+still `#define __PGFROISUPPORT__` unconditionally, zero `NPGFROI` hits; `ROIBlockHeader`/`PGFRect` at
+the cited `PGFtypes.h` lines; `SetROI`/`GetAlignedROI`/`ComputeLevelROI`/`WriteLevel`'s ROI branch in
+`PGFimage.cpp`; `GetNofTiles`/`m_indices`/`TileIsRelevant`/`SetROI` in `WaveletTransform.h/.cpp`;
+`CDecoder::SkipTileBuffer` in `Decoder.cpp`) - all matched. Also traced the full `ROIBlockHeader`
+lifecycle end to end (`CEncoder::WriteValue`/`Flush`/`EncodeTileBuffer` → `EncodeBuffer(ROIBlockHeader)`
+→ `WriteMacroBlock`'s `if (m_roi)`-guarded 2-byte write; the decode-side mirror in
+`CDecoder::ReadMacroBlock`) to confirm a key fact this stage depends on: outside ROI mode the header's
+`bufferSize` field is *always* the full `BufferSize` (every real `EncodeBuffer` call in the non-ROI
+path passes either `(BufferSize, false)` on a full-buffer flush or `(BufferSize, true)` on the final,
+zero-padded `Flush()` - never a partial count), and the extra 2 header bytes are only ever written to
+/ read from the wire when `m_roi` is true. That confirms making the header "real" in this stage is a
+behavior-preserving refactor for every real file this app produces/consumes today, not a functional
+change - exactly the isolation the PRD calls for.
+
+Added `PgfRoiBlockHeader` (new file) - a `readonly record struct` mirroring the `ROIBlockHeader`
+union/bitfield exactly (15-bit `BufferSize` low, 1-bit `TileEnd` high, matching
+`PgfConstants.RLblockSizeLen`), with both the raw-value constructor and the `(bufferSize, tileEnd)`
+constructor the native type has. `PgfMacroBlock` (decode) replaced its old hardcoded
+`bufferSizeInUse` field with a real `Header` property, `IsCompletelyRead`/`BitplaneDecode` now read
+`Header.BufferSize` instead of the old always-`BufferSize` constant. `PgfEncodeMacroBlock` (encode)
+gained the same `Header` property (previously had no header concept at all - the encode side's
+`BitplaneEncode` already took `bufferSize` as an explicit parameter, so this is purely additive
+bookkeeping, not a behavior change). `PgfDecoderCore.ReadMacroBlock` now constructs a real
+`PgfRoiBlockHeader((uint)BufferSize, tileEnd: false)` (mirroring the native's own
+`ROIBlockHeader h(BufferSize)` default) and passes it to `MarkReadyToDecode`, instead of a no-arg
+method that hardcoded the same value internally. `PgfEncoderCore.WriteValue`/`Flush` now construct
+the same two real headers the native `WriteValue`/`Flush` construct
+(`(BufferSize, false)`/`(BufferSize, true)`) and pass them through a renamed `EncodeBuffer(PgfRoiBlockHeader)`
+that stamps the header onto the block before encoding, mirroring `m_currentBlock->m_header = h;`.
+
+Deliberately scoped narrower than "wire read/write the extra 2 bytes conditioned on an `m_roi` flag"
+- that flag doesn't exist anywhere in this port yet, and wiring it in now would mean dead,
+unverifiable code. Stage 3 (decode) and Stage 4 (encode) are where a real `m_roi`-equivalent gets
+introduced and the conditional extra-byte wire (de)serialization actually gets added to
+`PgfDecoderCore`/`PgfEncoderCore`, at the same time as the tile machinery that's the only thing that
+ever sets it true. This stage's job was just making the per-macroblock header *value* real and
+correctly modeled, which is now done and independently verified.
+
+Regression gate: full `PictTag.PgfCodec.Tests` suite, before and after -
+**1130/1130 passed both times** (the PRD's "567 tests as of this PRD's writing" figure was stale -
+other PRDs' work landed more tests between then and now, confirmed by running the suite rather than
+trusting the cited count). No regressions; behavior is bit-identical for every non-ROI file, as
+expected from the above analysis.

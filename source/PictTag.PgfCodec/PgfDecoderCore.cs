@@ -60,10 +60,12 @@ internal sealed class PgfDecoderCore
         macroBlocksAvailable = 1;
     }
 
-    /// <summary>Direct port of <c>CDecoder::ReadMacroBlock</c> (Decoder.cpp:545), the non-ROI branch
-    /// only (<c>m_roi</c> is always false for this port - see <see cref="PgfMacroBlock"/>'s doc
-    /// comment): <c>&lt;wordLen&gt;(16 bits) data</c>, no ROI block header ever actually read from
-    /// the stream.</summary>
+    /// <summary>Direct port of <c>CDecoder::ReadMacroBlock</c> (Decoder.cpp:545). Outside ROI mode
+    /// (this port never enables it yet as of Stage 1 - <c>pgf-roi-support.md</c>'s remaining stages
+    /// wire real ROI decoding through this same header machinery): <c>&lt;wordLen&gt;(16 bits)
+    /// data</c>, matching the original's own default <c>ROIBlockHeader h(BufferSize)</c> - i.e. the
+    /// header value is never actually read off the wire, but it's still real per-macroblock
+    /// bookkeeping (see <see cref="PgfRoiBlockHeader"/>), not a hardcoded shortcut.</summary>
     private void ReadMacroBlock(PgfMacroBlock block)
     {
         Span<byte> wordLenBytes = stackalloc byte[2];
@@ -77,6 +79,11 @@ internal sealed class PgfDecoderCore
         {
             throw new PgfFormatException($"Macroblock word length {wordLen} exceeds BufferSize.");
         }
+
+        // Mirrors ROIBlockHeader h(BufferSize) (Decoder.cpp:548) - the default used whenever this
+        // block isn't part of an ROI-flagged stream (always true for now; a real ROI-enabled read
+        // of the extra 2 header bytes is wired in once something actually calls SetROI).
+        var header = new PgfRoiBlockHeader((uint)PgfConstants.BufferSize, tileEnd: false);
 
         Span<byte> codeBufferBytes = System.Runtime.InteropServices.MemoryMarshal.AsBytes(block.CodeBuffer.AsSpan());
         int byteCount = wordLen * 4;
@@ -92,7 +99,7 @@ internal sealed class PgfDecoderCore
 
         // Matches the original setting block->m_header = h right here (Decoder.cpp:574) - see
         // PgfMacroBlock.MarkReadyToDecode's doc comment for why this specific timing matters.
-        block.MarkReadyToDecode();
+        block.MarkReadyToDecode(header);
     }
 
     /// <summary>Direct port of <c>CDecoder::Partition</c> (Decoder.cpp:276) - the LL/HH subband

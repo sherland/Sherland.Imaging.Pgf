@@ -6,13 +6,20 @@ namespace PictTag.PgfCodec;
 /// <see cref="WriteValue"/>, then <see cref="BitplaneEncode"/> compresses them into
 /// <see cref="CodeBuffer"/> using the same bitplane/significance-map scheme in reverse.
 ///
-/// Same two simplifications as <see cref="PgfMacroBlock"/>, for the same reasons (this port's
-/// encoder never sets <see cref="PgfVersionFlags.PGFROI"/>; this build always compiles with
-/// <c>LIBPGF_DISABLE_OPENMP</c>): no ROI header modeling, single-macroblock orchestration only
-/// (see <see cref="PgfEncoderCore"/>).
+/// Same OpenMP simplification as <see cref="PgfMacroBlock"/>, for the same reason (this build
+/// always compiles with <c>LIBPGF_DISABLE_OPENMP</c>): single-macroblock orchestration only (see
+/// <see cref="PgfEncoderCore"/>). Unlike <see cref="PgfMacroBlock"/>'s note, <see cref="Header"/>
+/// *is* modeled here (<c>pgf-roi-support.md</c> Goal 3) - see <see cref="PgfRoiBlockHeader"/>'s own
+/// doc comment for when the extra 2 header bytes are actually written to the stream.
 /// </summary>
 internal sealed class PgfEncodeMacroBlock
 {
+    /// <summary>Mirrors <c>CMacroBlock::m_header</c> - set by <see cref="PgfEncoderCore"/>'s
+    /// <c>EncodeBuffer</c> immediately before <see cref="BitplaneEncode"/>, exactly like the
+    /// original's <c>m_currentBlock-&gt;m_header = h;</c> (Encoder.cpp:348).</summary>
+    public PgfRoiBlockHeader Header { get; private set; }
+
+    public void SetHeader(PgfRoiBlockHeader header) => Header = header;
     /// <summary>Raw (post-quantization, pre-entropy-coding) coefficients collected via
     /// <see cref="WriteValue"/>, index <c>[0, BufferSize)</c>. <c>DataT</c> in the original -
     /// <see cref="int"/> in this build (real <c>__PGF32SUPPORT__</c> build, see

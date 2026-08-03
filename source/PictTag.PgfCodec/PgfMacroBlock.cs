@@ -7,14 +7,12 @@ namespace PictTag.PgfCodec;
 /// (<see cref="Value"/>) via the Malvar "Fast Progressive Wavelet Coder" bitplane/significance-map
 /// scheme (comment at Decoder.h:90) - not arithmetic coding.
 ///
-/// <b>ROI is deliberately not ported</b> (managed-pgf-codec.md's "ROI is always compiled in" trap):
-/// this port's encoder never sets the <see cref="PgfVersionFlags.PGFROI"/> bit, so every real file
-/// this codebase produces or consumes has <c>m_roi == false</c> in the original, which means the
-/// native <c>ROIBlockHeader</c> is *never actually read from the stream* - it stays at its
-/// constructor default (<c>ROIBlockHeader(BufferSize)</c>, i.e. <c>bufferSize = BufferSize</c>,
-/// <c>tileEnd = false</c>) for every macroblock. This port hard-codes that same default instead of
-/// modeling the 15-bit/1-bit <c>ROIBlockHeader</c> bitfield at all - a real simplification the real
-/// code's own dead branches justify, not an assumption.
+/// <b>ROI wire (de)serialization</b> is <see cref="PgfDecoderCore"/>'s job, not this class's - see
+/// <see cref="PgfRoiBlockHeader"/>'s own doc comment for when the extra 2 header bytes are actually
+/// read from the stream (only when ROI decoding is enabled - <c>pgf-roi-support.md</c>). This class
+/// just holds the resulting <see cref="Header"/> value and uses its <see cref="PgfRoiBlockHeader.BufferSize"/>
+/// field to drive <see cref="IsCompletelyRead"/>/<see cref="BitplaneDecode"/>, exactly like the
+/// original's <c>m_header.rbh.bufferSize</c>.
 ///
 /// <b>Also not ported</b>: the OpenMP multi-macroblock-array path (<c>CDecoder::m_macroBlocks</c>) -
 /// this build always compiles with <c>LIBPGF_DISABLE_OPENMP</c> (CMakeLists.txt), so
@@ -35,25 +33,24 @@ internal sealed class PgfMacroBlock
     /// consumption (<see cref="PgfDecoderCore"/>).</summary>
     public uint ValuePos;
 
-    // Mirrors the real ROIBlockHeader.bufferSize field's role exactly, including its starting value:
-    // the original's CMacroBlock constructor deliberately initializes m_header to
-    // ROIBlockHeader(0) - not BufferSize - specifically "to make sure IsCompletelyRead() returns
-    // true for an empty macro block" (Decoder.h's own constructor comment). A freshly-constructed
-    // block has decoded nothing yet, so it must report "completely read" immediately, forcing the
-    // first DequantizeValue call to decode a real block before reading Value[0] - getting this
-    // wrong (as this port initially did, hardcoding BufferSize from the start) means the very
-    // first read silently pulls from an undecoded, all-zero Value array instead of ever calling
-    // BitplaneDecode at all. Sizing is fixed at BufferSize once a real decode happens (ROI is not
-    // ported - see class doc comment - so every decoded block's true bufferSize is always the
-    // full BufferSize, never a smaller ROI-tile size).
-    private uint bufferSizeInUse;
+    // Default value Value=0 (PgfRoiBlockHeader's own struct default) mirrors the original's
+    // CMacroBlock constructor deliberately initializing m_header to ROIBlockHeader(0) - not
+    // BufferSize - specifically "to make sure IsCompletelyRead() returns true for an empty macro
+    // block" (Decoder.h's own constructor comment). A freshly-constructed block has decoded nothing
+    // yet, so it must report "completely read" immediately, forcing the first DequantizeValue call
+    // to decode a real block before reading Value[0] - getting this wrong (as this port initially
+    // did, hardcoding BufferSize from the start) means the very first read silently pulls from an
+    // undecoded, all-zero Value array instead of ever calling BitplaneDecode at all.
+    public PgfRoiBlockHeader Header { get; private set; }
 
-    public bool IsCompletelyRead => ValuePos >= bufferSizeInUse;
+    public bool IsCompletelyRead => ValuePos >= Header.BufferSize;
 
     /// <summary>Called by <see cref="PgfDecoderCore"/>'s <c>ReadMacroBlock</c> at the same point the
     /// original sets <c>block-&gt;m_header = h</c> (Decoder.cpp:574) - marks this block as holding a
-    /// real, freshly-read <see cref="CodeBuffer"/> ready for <see cref="BitplaneDecode"/>.</summary>
-    public void MarkReadyToDecode() => bufferSizeInUse = PgfConstants.BufferSize;
+    /// real, freshly-read <see cref="CodeBuffer"/> ready for <see cref="BitplaneDecode"/>, with the
+    /// real per-macroblock header (always <c>(BufferSize, tileEnd: false)</c> outside ROI mode -
+    /// <see cref="PgfDecoderCore"/> is the only caller and the only place that ever varies this).</summary>
+    public void MarkReadyToDecode(PgfRoiBlockHeader header) => Header = header;
 
     /// <summary>Significance flag vector (Malvar's paper) - true once a coefficient position has
     /// been found significant in an earlier (higher) bitplane, so later bitplanes only need to read
@@ -69,7 +66,7 @@ internal sealed class PgfMacroBlock
     /// original's own coding-scheme comment (Decoder.cpp:651-659) for the exact bitstream grammar.</summary>
     public void BitplaneDecode()
     {
-        uint bufferSize = bufferSizeInUse;
+        uint bufferSize = Header.BufferSize;
 
         Array.Clear(sigFlagVector, 0, (int)bufferSize);
         sigFlagVector[bufferSize] = true; // sentinel

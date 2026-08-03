@@ -23,7 +23,9 @@ internal sealed class PgfEncoderCore
     {
         if (currentBlock.IsFull)
         {
-            EncodeBuffer();
+            // Mirrors ROIBlockHeader(BufferSize, false) (Encoder.cpp:328) - a buffer-full flush is
+            // never a tile boundary outside ROI mode (nothing calls SetRoi yet).
+            EncodeBuffer(new PgfRoiBlockHeader((uint)PgfConstants.BufferSize, tileEnd: false));
         }
 
         currentBlock.WriteValue(value);
@@ -39,21 +41,31 @@ internal sealed class PgfEncoderCore
         {
             Array.Clear(currentBlock.Value, (int)currentBlock.ValuePos, PgfConstants.BufferSize - (int)currentBlock.ValuePos);
             currentBlock.ValuePos = PgfConstants.BufferSize;
-            EncodeBuffer();
+
+            // Mirrors ROIBlockHeader(m_currentBlock->m_valuePos, true) (Encoder.cpp:316) - always
+            // tileEnd:true (the last macroblock of the whole image, in the absence of any earlier
+            // tile boundary), and valuePos is BufferSize here since it was just padded above.
+            EncodeBuffer(new PgfRoiBlockHeader(currentBlock.ValuePos, tileEnd: true));
         }
     }
 
     /// <summary>Direct port of <c>CEncoder::EncodeBuffer</c>'s single-macroblock branch
-    /// (Encoder.cpp:341-353): encode what's currently buffered, write it, reset for the next block.</summary>
-    private void EncodeBuffer()
+    /// (Encoder.cpp:341-353): stamps <paramref name="header"/> onto the block (mirrors
+    /// <c>m_currentBlock-&gt;m_header = h;</c>, Encoder.cpp:348), encodes what's currently buffered
+    /// using its real <see cref="PgfRoiBlockHeader.BufferSize"/>, writes it, resets for the next
+    /// block.</summary>
+    private void EncodeBuffer(PgfRoiBlockHeader header)
     {
-        currentBlock.BitplaneEncode(PgfConstants.BufferSize);
+        currentBlock.SetHeader(header);
+        currentBlock.BitplaneEncode(header.BufferSize);
         WriteMacroBlock(currentBlock);
     }
 
     /// <summary>Direct port of <c>CEncoder::WriteMacroBlock</c> (Encoder.cpp:406), the non-ROI,
-    /// non-big-endian branch: <c>&lt;wordLen&gt;(16 bits) data</c>, no ROI block header ever
-    /// actually written (mirrors <see cref="PgfDecoderCore"/>'s equally simplified read side).</summary>
+    /// non-big-endian branch: <c>&lt;wordLen&gt;(16 bits) data</c>. The block's real
+    /// <see cref="PgfEncodeMacroBlock.Header"/> is never written to the stream here (mirrors the
+    /// original's own <c>if (m_roi)</c> guard around those 2 bytes - <see cref="PgfDecoderCore"/>'s
+    /// equally guarded read side), since nothing enables ROI encoding yet.</summary>
     private void WriteMacroBlock(PgfEncodeMacroBlock block)
     {
         ushort wordLen = (ushort)BitStream.NumberOfWords(block.CodePos);

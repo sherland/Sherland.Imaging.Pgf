@@ -204,3 +204,11 @@ next. Don't re-paste the PRD's own content back at the user; they already have i
   of the same logic.
 - **`dotnet test` filtering** in this repo is xUnit v3/Microsoft.Testing.Platform, not VSTest:
   `dotnet test <project> -- --filter-class "*.ClassName"`, never bare `--filter`.
+- **Progress log entries written all at once at the end, instead of per stage**: during
+  `pgf-all-image-modes.md`'s run, every stage's code/tests/commit landed correctly one at a time, but
+  the PRD's own "Progress log" section was left empty until the final Documentation stage and then
+  written in one pass from memory of the whole run. The user caught this and it's why section 2 step
+  7 and section 4 point 1 above are phrased the way they are — write each entry when that stage
+  actually happens (it's fresher, cheaper, and each stage's commit becomes self-contained), and treat
+  the Documentation-stage pass over the log as verification against real `git log`/diffs, not first
+  authorship.

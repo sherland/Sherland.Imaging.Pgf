@@ -46,6 +46,7 @@ public static class PgfImageDecoder
         PgfConstants.ImageModeIndexedColor => true,
         PgfConstants.ImageModeHSLColor => true,
         PgfConstants.ImageModeHSBColor => true,
+        PgfConstants.ImageModeRGBColor => true,
         _ => false,
     };
 
@@ -86,6 +87,11 @@ public static class PgfImageDecoder
             case PgfConstants.ImageModeHSBColor:
                 PgfColorConversion.DecodeYuvOffsetToTripleChannel(
                     channelData[0].Data, channelData[1].Data, channelData[2].Data, width, height, bgra);
+                break;
+            case PgfConstants.ImageModeRGBColor:
+                PgfColorConversion.DecodeYuvToBgra(
+                    channelData[0].Data, channelData[1].Data, channelData[2].Data,
+                    width, height, channelData[1].Width, session.Downsample, bgra);
                 break;
             default:
                 throw new InvalidOperationException($"Unreachable: IsModeSupported should have rejected mode {session.Mode} before this point.");

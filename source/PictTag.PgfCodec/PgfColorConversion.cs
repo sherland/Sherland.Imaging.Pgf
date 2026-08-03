@@ -1,9 +1,10 @@
 namespace PictTag.PgfCodec;
 
 /// <summary>
-/// Direct port of <c>CPGFImage::RgbToYuv</c>/<c>GetBitmap</c>/<c>Downsample</c>'s <c>ImageModeRGBA</c>
-/// branches (PGFimage.cpp:1578, 2232, 809) - the only color mode this port targets (real digiKam
-/// thumbnails are always RGBA, per managed-pgf-codec.md's Non-goals). <c>channelMap</c> is not
+/// Direct port of <c>CPGFImage::RgbToYuv</c>/<c>GetBitmap</c>/<c>Downsample</c>'s per-mode branches
+/// (PGFimage.cpp:1388, 1788, 809) - one method-pair per group identified in pgf-all-image-modes.md
+/// (RGBA is the only color mode real digiKam thumbnails use, per managed-pgf-codec.md's Non-goals,
+/// but this port now also targets every other mode the format defines). <c>channelMap</c> is not
 /// ported as a parameter: every real caller in this codebase (shim.cpp's <c>pgf_decode_bgra</c>/
 /// <c>pgf_encode_bgra_alloc</c>, and this port's own top-level decode/encode) uses the identity map
 /// <c>{0,1,2,3}</c> (BGRA byte order, little-endian host), so it's hardcoded rather than threaded
@@ -127,6 +128,79 @@ internal static class PgfColorConversion
                 bgra[rowStart + cnt + 2] = Clamp8(uAvg + g);
                 bgra[rowStart + cnt] = Clamp8(vAvg + g);
                 bgra[rowStart + cnt + 3] = aAvg;
+
+                cnt += 4;
+                if (!downsample || (j & 1) != 0)
+                {
+                    uPos++;
+                }
+
+                yPos++;
+            }
+
+            if (!downsample || (i & 1) != 0)
+            {
+                uOffset += chromaWidth;
+            }
+
+            yOffset += width;
+            rowStart += width * 4;
+        }
+    }
+
+    // ---- Group C (pgf-all-image-modes.md): RGBColor - the genuine 3-channel version of RGBA's YUV
+    // transform, just without an alpha channel.
+
+    /// <summary>Direct port of <c>RgbToYuv</c>'s <c>ImageModeRGBColor</c> case (PGFimage.cpp:1505-1538):
+    /// identical <c>Y</c>/<c>U</c>/<c>V</c> formulas to <see cref="EncodeBgraToYuva"/>, minus alpha.
+    /// <paramref name="interleaved"/> is tightly packed BGR (3 bytes/pixel) - this port's own encode
+    /// input contract (see class doc comment).</summary>
+    public static void EncodeRgbToYuv(ReadOnlySpan<byte> interleaved, int width, int height, Span<int> y, Span<int> u, Span<int> v)
+    {
+        int pixelCount = width * height;
+        int cnt = 0;
+        for (int pos = 0; pos < pixelCount; pos++)
+        {
+            byte b = interleaved[cnt];
+            byte g = interleaved[cnt + 1];
+            byte r = interleaved[cnt + 2];
+
+            y[pos] = unchecked(((b + (g << 1) + r) >> 2) - YuvOffset8);
+            u[pos] = unchecked(r - g);
+            v[pos] = unchecked(b - g);
+
+            cnt += 3;
+        }
+    }
+
+    /// <summary>Direct port of <c>GetBitmap</c>'s <c>ImageModeRGBColor</c> case (PGFimage.cpp:1975-2046):
+    /// identical reconstruction to <see cref="DecodeYuvaToBgra"/> (same <c>uPos</c>/<c>uOffset</c>
+    /// chroma-upsampling bookkeeping), minus alpha - A is always 255 (this mode has no real alpha
+    /// channel, matching Goal 1's "output stays BGRA32" contract).</summary>
+    public static void DecodeYuvToBgra(
+        ReadOnlySpan<int> y, ReadOnlySpan<int> u, ReadOnlySpan<int> v,
+        int width, int height, int chromaWidth, bool downsample, Span<byte> bgra)
+    {
+        int yOffset = 0;
+        int uOffset = 0;
+        int rowStart = 0;
+
+        for (int i = 0; i < height; i++)
+        {
+            int uPos = uOffset;
+            int yPos = yOffset;
+            int cnt = 0;
+
+            for (int j = 0; j < width; j++)
+            {
+                int uAvg = u[uPos];
+                int vAvg = v[uPos];
+
+                byte g = Clamp8(y[yPos] + YuvOffset8 - ((uAvg + vAvg) >> 2));
+                bgra[rowStart + cnt + 1] = g;
+                bgra[rowStart + cnt + 2] = Clamp8(uAvg + g);
+                bgra[rowStart + cnt] = Clamp8(vAvg + g);
+                bgra[rowStart + cnt + 3] = 255;
 
                 cnt += 4;
                 if (!downsample || (j & 1) != 0)

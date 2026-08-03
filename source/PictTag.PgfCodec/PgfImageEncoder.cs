@@ -99,6 +99,9 @@ internal static class PgfImageEncoder
             case PgfConstants.ImageModeHSBColor:
                 PgfColorConversion.EncodeTripleChannelToYuvOffset(source, width, height, channelBuffers[0], channelBuffers[1], channelBuffers[2]);
                 break;
+            case PgfConstants.ImageModeRGBColor:
+                PgfColorConversion.EncodeRgbToYuv(source, width, height, channelBuffers[0], channelBuffers[1], channelBuffers[2]);
+                break;
             default:
                 return false;
         }

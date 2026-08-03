@@ -72,7 +72,7 @@ public class PgfModeHeaderTests
         PgfHeaderIO.Write(writer, original);
 
         PgfMemoryReader reader = new(writer.WrittenSpan.ToArray());
-        (PgfPreHeader _, PgfHeader roundTripped, uint[] levelLengths, byte[]? colorTable) = PgfHeaderIO.Read(reader);
+        (PgfPreHeader _, PgfHeader roundTripped, uint[] levelLengths, byte[]? colorTable, PgfUserData _) = PgfHeaderIO.Read(reader);
 
         Assert.Equal(original, roundTripped);
         Assert.Equal(original.NLevels, levelLengths.Length);
@@ -116,7 +116,7 @@ public class PgfModeHeaderTests
         PgfHeaderIO.Write(writer, header, colorTable);
 
         PgfMemoryReader reader = new(writer.WrittenSpan.ToArray());
-        (PgfPreHeader _, PgfHeader _, uint[] _, byte[]? roundTripped) = PgfHeaderIO.Read(reader);
+        (PgfPreHeader _, PgfHeader _, uint[] _, byte[]? roundTripped, PgfUserData _) = PgfHeaderIO.Read(reader);
 
         Assert.NotNull(roundTripped);
         Assert.Equal(colorTable, roundTripped);

@@ -38,8 +38,20 @@ internal static class PgfHeaderIO
     /// <summary>Reads pre-header, header, level-length array, and (pgf-all-image-modes.md Stage 1)
     /// <see cref="PgfConstants.ImageModeIndexedColor"/>'s post-header color table, from the current
     /// stream position - the same sequence <c>CDecoder</c>'s constructor reads (minus macroblock/
-    /// thread setup, which belongs to Stage 5's entropy decoder, not header parsing).</summary>
-    public static (PgfPreHeader PreHeader, PgfHeader Header, uint[] LevelLengths, byte[]? ColorTable) Read(PgfMemoryReader reader)
+    /// thread setup, which belongs to Stage 5's entropy decoder, not header parsing).
+    ///
+    /// pgf-user-data-and-small-images.md Stage 1: also reads the post-header's user data (the other
+    /// half of <c>PGFPostHeader</c>, PGFtypes.h:173-178), respecting <paramref name="policy"/>/
+    /// <paramref name="prefixSize"/> exactly like <c>CDecoder</c>'s constructor does
+    /// (Decoder.cpp:143-186) - previously this just skipped over those bytes unconditionally
+    /// (matching <c>UP_Skip</c> only). Goal 3's untrusted-length defense lives here: the post-header
+    /// size is derived from <paramref name="reader"/>'s own <c>hSize</c> field, which is attacker-
+    /// controlled for a general (non-digiKam) caller - before caching anything, the declared user
+    /// data length is checked against the stream's real remaining length so a corrupted/malicious
+    /// header claiming far more data than actually exists fails closed (<see cref="PgfFormatException"/>)
+    /// instead of attempting an oversized allocation that would then silently short-read.</summary>
+    public static (PgfPreHeader PreHeader, PgfHeader Header, uint[] LevelLengths, byte[]? ColorTable, PgfUserData UserData) Read(
+        PgfMemoryReader reader, PgfUserDataPolicy policy = PgfUserDataPolicy.CacheAll, uint prefixSize = 0)
     {
         Span<byte> magicVersion = stackalloc byte[PgfConstants.MagicVersionSize];
         if (reader.Read(magicVersion) != magicVersion.Length)
@@ -105,6 +117,7 @@ internal static class PgfHeaderIO
 
         uint[] levelLengths = [];
         byte[]? colorTable = null;
+        PgfUserData userData = PgfUserData.None;
 
         // CDecoder: "be ready to read all versions including version 0" - version 0 (a malformed/
         // placeholder pre-header byte, not a real historical PGF version) skips post-header and
@@ -134,10 +147,52 @@ internal static class PgfHeaderIO
 
             if (postHeaderSize > 0)
             {
-                // Whatever remains is user data/metadata, which this port has no use for
-                // (pgf-user-data-and-small-images.md's scope, not this PRD's). Skip it, matching
-                // CDecoder's own UP_Skip policy path, to land at the correct level-length offset.
-                reader.SetPos(SeekOrigin.Current, postHeaderSize);
+                // Whatever remains is user data (Decoder.cpp:143-186's read/skip logic).
+                //
+                // Goal 3's untrusted-length defense: postHeaderSize is derived from hSize, a
+                // header-declared field a general (non-digiKam) caller cannot trust. Bound it
+                // against the stream's real remaining length before caching anything - PgfMemoryReader.
+                // Read already truncates safely rather than overrunning the buffer, but without this
+                // check a corrupted/malicious declared length would either (a) attempt an
+                // unnecessarily huge allocation for CacheAll, or (b) silently "succeed" having cached
+                // fewer bytes than userDataLen claims, indistinguishable from a well-formed short
+                // read. Fail closed instead, matching this codec's existing Tier 5 philosophy.
+                long remaining = reader.Length - reader.Position;
+                if (postHeaderSize > remaining)
+                {
+                    throw new PgfFormatException(
+                        $"User data length {postHeaderSize} exceeds remaining stream length {remaining}.");
+                }
+
+                uint userDataLen = postHeaderSize;
+
+                if (policy == PgfUserDataPolicy.Skip)
+                {
+                    reader.SetPos(SeekOrigin.Current, userDataLen);
+                    userData = new PgfUserData([], userDataLen);
+                }
+                else
+                {
+                    uint cachedLen = policy == PgfUserDataPolicy.CachePrefix
+                        ? Math.Min(userDataLen, prefixSize)
+                        : userDataLen;
+
+                    byte[] cached = new byte[cachedLen];
+                    if (reader.Read(cached) != cachedLen)
+                    {
+                        throw new PgfFormatException("Truncated stream: missing user data.");
+                    }
+
+                    if (cachedLen < userDataLen)
+                    {
+                        // CachePrefix cached fewer bytes than the file actually has - skip the rest
+                        // to land at the correct level-length offset (Decoder.cpp's own Skip(size -
+                        // cachedUserDataLen)). Already bounded above, so this SetPos cannot fail.
+                        reader.SetPos(SeekOrigin.Current, userDataLen - cachedLen);
+                    }
+
+                    userData = new PgfUserData(cached, userDataLen);
+                }
             }
 
             levelLengths = new uint[header.NLevels];
@@ -153,7 +208,7 @@ internal static class PgfHeaderIO
             }
         }
 
-        return (preHeader, header, levelLengths, colorTable);
+        return (preHeader, header, levelLengths, colorTable, userData);
     }
 
     /// <summary>Writes pre-header, header, an optional <paramref name="colorTable"/>, and a zeroed

@@ -22,8 +22,11 @@ public class PgfImageEncoderTests
     }
 
     /// <summary>Matches <see cref="TestBitmaps.MinimumSupportedDimension"/> - the same real,
-    /// vendored-library <c>nLevels=0</c> boundary the native shim rejects (managed-pgf-codec.md's
-    /// scope notes), ported here via <c>PgfHeaderIO.ComputeLevels</c> returning 0.</summary>
+    /// vendored-library <c>nLevels=0</c> boundary (managed-pgf-codec.md's scope notes), ported here
+    /// via <c>PgfHeaderIO.ComputeLevels</c> returning 0. This port's own encoder still hard-fails on
+    /// it (unlike the native oracle, which now supports it again as of
+    /// pgf-user-data-and-small-images.md's Open Question 1) until that same PRD's own Stage 5 lands
+    /// real <c>nLevels=0</c> encode support here.</summary>
     [Theory]
     [InlineData(1, 1)]
     [InlineData(1, 7)]

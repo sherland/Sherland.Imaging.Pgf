@@ -285,19 +285,20 @@ PICTTAG_EXPORT bool pgf_encode_bgra_alloc(
     // CPGFImage::ComputeLevels() (PGFimage.cpp) falls back to nLevels=0 - a completely different,
     // wavelet-transform-free "store raw/uncoded channel data" path (CPGFImage::Open/WriteImage's
     // nLevels==0 branches) - whenever min(width, height) < 2*FilterSize (10 in this build: 5*2,
-    // FilterSize=5 per WaveletTransform.h). Real digiKam thumbnails never approach this size, and
-    // this codepath was never exercised by this shim's original decode-only exports (all real
-    // fixtures decode via the normal nLevels>=1 path) - empirically, exercising it here via this
-    // test-only encoder produced a real, repeatable heap corruption (a delayed
-    // STATUS_ACCESS_VIOLATION in a later, unrelated call - AddressSanitizer found no report before
-    // the crash, so root-causing the exact corrupted write was not pursued further; this guard
-    // avoids the whole trigger class instead). Rejecting degenerate sizes here matches this PRD's
-    // actual scope: new-features/managed-pgf-codec.md's C# port only needs to handle real
-    // thumbnail-sized images, not this near-zero-pixel edge case.
-    if (width < 10 || height < 10)
-    {
-        return false;
-    }
+    // FilterSize=5 per WaveletTransform.h). This guard used to reject that range unconditionally
+    // (managed-pgf-codec.md Stage 1): exercising it here, at the time, produced a real, repeatable
+    // heap corruption. pgf-user-data-and-small-images.md's Open Question 1 revisited that finding
+    // once this function's own realloc()/delete[] mismatch (the very next paragraph below) was
+    // fixed, since both bugs were found in the same investigation and never conclusively
+    // disentangled at the time - a deliberately isolated experiment (a scratch copy of this shim
+    // with only this guard removed, stress-tested via 5000 encode-then-decode round trips across
+    // ten sizes down to 1x1, mixed gradient/solid-color content, quality=0) reproduced no crash and
+    // no pixel mismatch. That result is consistent with the original corruption having been the
+    // realloc()/delete[] bug (already fixed) rather than anything specific to the nLevels==0 path
+    // itself - the guard is removed accordingly. `pgf_debug_decode_channel`'s own, separate,
+    // still-unresolved repeated-call crash (this file's later doc comment) is not affected either
+    // way: that finding was independently narrowed to its own GetChannel()/memcpy read, a code path
+    // this function never calls. (width/height == 0 is already rejected above.)
 
     *outData = nullptr;
     *outLen = 0;
@@ -386,12 +387,10 @@ PICTTAG_EXPORT bool pgf_encode_raw_alloc(
         return false;
     }
 
-    // Same degenerate-size guard as pgf_encode_bgra_alloc, same reason (real, repeatable heap
-    // corruption in the nLevels==0 raw/uncoded path - see that function's doc comment).
-    if (width < 10 || height < 10)
-    {
-        return false;
-    }
+    // Guard removed for the same reason as pgf_encode_bgra_alloc's own doc comment
+    // (pgf-user-data-and-small-images.md Open Question 1): the original heap corruption attributed
+    // to this size range didn't reproduce once isolated from the (separately fixed)
+    // realloc()/delete[] bug. (width/height == 0 already rejected above.)
 
     *outData = nullptr;
     *outLen = 0;

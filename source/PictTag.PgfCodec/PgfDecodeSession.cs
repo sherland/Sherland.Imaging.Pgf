@@ -24,7 +24,8 @@ internal sealed class PgfDecodeSession
 {
     private PgfDecodeSession(
         PgfWaveletTransform[] channels, PgfDecoderCore decoder, int quant, bool downsample,
-        int fullWidth, int fullHeight, int chromaWidth, byte levels, byte mode, byte[]? colorTable)
+        int fullWidth, int fullHeight, int chromaWidth, byte levels, byte mode, byte[]? colorTable,
+        PgfUserData userData)
     {
         Channels = channels;
         Decoder = decoder;
@@ -36,6 +37,7 @@ internal sealed class PgfDecodeSession
         Levels = levels;
         Mode = mode;
         ColorTable = colorTable;
+        UserData = userData;
     }
 
     /// <summary>The mode's channels' wavelet pyramids, in the header's own channel order (e.g. Y, U,
@@ -69,12 +71,19 @@ internal sealed class PgfDecodeSession
     /// <see langword="null"/>.</summary>
     public byte[]? ColorTable { get; }
 
-    public static PgfDecodeSession? TryOpen(ReadOnlyMemory<byte> pgfData)
+    /// <summary>The file's post-header user data (pgf-user-data-and-small-images.md Goal 1), read
+    /// according to whatever <see cref="PgfUserDataPolicy"/> <see cref="TryOpen"/> was called
+    /// with.</summary>
+    public PgfUserData UserData { get; }
+
+    public static PgfDecodeSession? TryOpen(
+        ReadOnlyMemory<byte> pgfData, PgfUserDataPolicy userDataPolicy = PgfUserDataPolicy.CacheAll, uint userDataPrefixSize = 0)
     {
         try
         {
             PgfMemoryReader reader = new(pgfData);
-            (_, PgfHeader header, _, byte[]? colorTable) = PgfHeaderIO.Read(reader);
+            (_, PgfHeader header, _, byte[]? colorTable, PgfUserData userData) =
+                PgfHeaderIO.Read(reader, userDataPolicy, userDataPrefixSize);
 
             if (!PgfImageDecoder.IsModeSupported(header.Mode) ||
                 !PgfModeInfo.TryGetBppAndChannels(header.Mode, out byte expectedBpp, out byte expectedChannels) ||
@@ -119,7 +128,8 @@ internal sealed class PgfDecodeSession
             PgfDecoderCore decoder = new(reader);
 
             return new PgfDecodeSession(
-                channels, decoder, quant, downsample, fullWidth, fullHeight, chromaWidth, header.NLevels, header.Mode, colorTable);
+                channels, decoder, quant, downsample, fullWidth, fullHeight, chromaWidth, header.NLevels, header.Mode, colorTable,
+                userData);
         }
         catch (PgfFormatException)
         {

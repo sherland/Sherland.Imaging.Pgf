@@ -125,25 +125,32 @@ public class NativeEncodeExportsTests
         Assert.Null(pgfBytes);
     }
 
-    /// <summary>Below <see cref="TestBitmaps.MinimumSupportedDimension"/>, the native shim
-    /// deliberately rejects encoding rather than exercise the wavelet-transform-free "very small
-    /// image" fallback path - see shim.cpp's <c>pgf_encode_bgra_alloc</c> doc comment for why
-    /// (a real heap-corruption risk found during this test rig's development, unrelated to the
-    /// actual decode/encode logic this PRD ports). This is an intentional, tested boundary, not an
-    /// oversight - real digiKam thumbnails never approach this size.</summary>
+    /// <summary>Below <see cref="TestBitmaps.MinimumSupportedDimension"/>, <c>CPGFImage::
+    /// ComputeLevels()</c> falls back to the wavelet-transform-free <c>nLevels=0</c> "raw/uncoded"
+    /// path. The native shim used to reject this range unconditionally rather than exercise it (a
+    /// real heap-corruption risk found during this test rig's original development) - re-tested
+    /// under `pgf-user-data-and-small-images.md`'s Open Question 1 once isolated from the (by then
+    /// separately fixed) `realloc()`/`delete[]` bug found in the same investigation: a 5000-call
+    /// encode-then-decode stress test across ten sizes down to 1x1 reproduced no crash and no pixel
+    /// mismatch, so the guard was removed (`shim.cpp`'s own doc comment has the full account). This
+    /// oracle now round-trips these sizes correctly, same as every other size.</summary>
     [Theory]
     [InlineData(1, 1)]
     [InlineData(1, 7)]
     [InlineData(7, 1)]
     [InlineData(9, 9)]
-    public void BelowMinimumDimension_EncodeFailsClosed_WithoutThrowing(int width, int height)
+    public void BelowMinimumDimension_EncodeThenDecode_Lossless_MatchesOriginalExactly(int width, int height)
     {
         (byte[] bgra, int w, int h) = TestBitmaps.Gradient(width, height);
 
         bool encoded = NativePgfOracle.TryEncode(bgra, w, h, quality: 0, out byte[]? pgfBytes);
+        Assert.True(encoded, $"Expected {width}x{height} (below MinimumSupportedDimension) to encode now that the native guard is gone.");
 
-        Assert.False(encoded, $"Expected {width}x{height} (below MinimumSupportedDimension) to be rejected.");
-        Assert.Null(pgfBytes);
+        bool decoded = NativePgfOracle.TryDecode(pgfBytes!, out byte[]? decodedBgra, out int decodedWidth, out int decodedHeight);
+        Assert.True(decoded, $"Decode failed for {width}x{height}.");
+        Assert.Equal(w, decodedWidth);
+        Assert.Equal(h, decodedHeight);
+        Assert.Equal(bgra, decodedBgra);
     }
 
     public static TheoryData<int, int> EdgeCaseDimensions()

@@ -1,6 +1,6 @@
 # PGF codec: user data + small-image (nLevels=0) support — PRD
 
-**Status: not started.** Closes two gaps documented in
+**Status: in progress (Stage 1 of 6 done).** Closes two gaps documented in
 [`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md)'s "Explicitly out of scope" list ("Header metadata" —
 the user-data half specifically, not the color table, which `pgf-all-image-modes.md` already owns —
 and "The `nLevels=0` 'raw/uncoded' path"). Two genuinely distinct features bundled into one PRD
@@ -205,6 +205,63 @@ same goal this PRD is in service of.
 
 ## Progress log
 
-_(Empty — fill in as each stage above is actually implemented and tested, following
-`managed-pgf-codec.md`'s own progress-log convention: what was built, what was found, what broke and
-how it was fixed, real test counts.)_
+**Stage 0 (verification) — done.** Every citation in this PRD's "Why this needs to be grounded in the
+real algorithm" section was re-checked against the real files before implementing anything:
+`PGFtypes.h`'s `PGFPostHeader`/`UserdataPolicy`/`MaxUserDataSize`, `PGFimage.h`'s `ConfigureDecoder`,
+`PGFimage.cpp`'s `GetUserData`/`SetHeader`/`Open`'s `nLevels==0` branch/`WriteImage`'s mirror, and
+`Decoder.cpp`'s constructor (not itself cited by the PRD, but where the real read/skip/cache-prefix
+logic actually lives - PGFimage.cpp only shows the call site). All matched the PRD's description.
+One correction: `PgfHeaderIO` turned out to live in `PgfHeader.cs`, not a separate `PgfHeaderIO.cs`
+file (the PRD's own citation pattern implied a dedicated file) - same class, just co-located with the
+`PgfHeader`/`PgfPreHeader` records it operates on.
+
+**Open Question 1 (native shim guard) — resolved empirically, guard removed.** Before Stage 4/5 could
+even be attempted, this had to be settled: does `pgf_encode_bgra_alloc`'s `width < 10 || height < 10`
+guard reject a real, still-live crash risk, or was it conflated with the separately-fixed
+`realloc()`/`delete[]` bug from the same Stage 1 investigation (`managed-pgf-codec.md`)? Resolved by
+isolated experiment, not by re-reading the old investigation harder: a scratch copy of `shim.cpp` with
+only that guard removed was built (CMake/Ninja, the same toolchain `docs/TESTING.md` documents), then
+stress-tested via a throwaway P/Invoke console app - 5000 encode-then-decode round trips across ten
+sizes (1x1 up to 100x1), alternating gradient and solid-color content, quality=0 - with zero crashes
+and zero pixel mismatches. That result is consistent with the original heap corruption having been the
+realloc()/delete[] bug (already fixed) rather than anything inherent to the `nLevels==0` path itself,
+so the guard was removed for real in `shim.cpp`'s `pgf_encode_bgra_alloc` and `pgf_encode_raw_alloc`
+(same reasoning, same fix) - both functions' doc comments now record this finding in full.
+`pgf_debug_decode_channel`'s own, separate, still-unresolved repeated-call crash is untouched and
+unaffected either way (independently narrowed to its own `GetChannel()`/`memcpy` read, a code path
+neither encode function calls). Two existing tests that asserted the old rejection behavior were
+updated to assert successful round-trips instead: `NativeEncodeExportsTests.
+BelowMinimumDimension_EncodeThenDecode_Lossless_MatchesOriginalExactly` (renamed from
+`..._EncodeFailsClosed_WithoutThrowing`) and `PgfImageEncoderTests.BelowMinimumDimension_FailsClosed_
+WithoutThrowing`'s doc comment (assertion itself unchanged - this port's own encoder still hard-fails
+on `nLevels=0` until Stage 5). Full suite re-run after the native DLL rebuild: 1043/1043 green.
+
+**Stage 1 (user data — decode side) — done.** `PgfUserDataPolicy` (Skip/CachePrefix/CacheAll, matching
+`UserdataPolicy` exactly) and `PgfUserData` (`CachedBytes`/`TotalLength`) added as new public types.
+`PgfHeaderIO.Read` gained `policy`/`prefixSize` parameters and now really reads (or skips, or
+prefix-caches) the post-header user data instead of unconditionally skipping it - the untrusted-length
+defense (Goal 3) lives here: the post-header size is derived from the file's own `hSize` field, which
+a general (non-digiKam) caller cannot trust, so it's bounds-checked against the stream's actual
+remaining length *before* any allocation or read is attempted, throwing `PgfFormatException` (fail
+closed) otherwise. `PgfDecodeSession.TryOpen` threads the policy through and exposes `UserData` as a
+property (alongside its existing `ColorTable`). Public API surface, resolving Open Question 2:
+`PgfImageDecoder.TryDecode` gained a second overload (`out PgfUserData` + policy parameters) rather
+than widening the existing signature in place - C# forbids a required (`out`) parameter after optional
+ones, so the only backward-compatible option was a new overload, with the original delegating to it
+(`out _`) to avoid duplicating the decode loop. `PgfProgressiveDecoder.TryOpen` gained the same policy
+parameters directly (no `out`-vs-overload conflict there, since it returns a nullable object) and
+exposes `UserData` as a plain property, matching how it already exposes `Width`/`Height`/`Levels`.
+Open Question 3 (whether exposing the skip/prefix/cache-all distinction is worth the API surface) is
+resolved by Goal 2 itself, which already mandates exposing it - implemented as designed, defaulting to
+`CacheAll` so no existing call site needs to change.
+
+New tests: `PgfUserDataTests.cs` (15 tests) - decode-only round trips against hand-assembled synthetic
+headers (Stage 2 hasn't added encoder-side user data yet, matching this stage's own exit-test wording
+of "a real-or-synthetic file"), covering all three policies, the color-table-plus-user-data
+combination, the skip-path landing at the correct level-length offset afterward, two corrupted-`hSize`
+fail-closed cases (one specifically sized to prove the check happens before any oversized allocation
+would be attempted), and two full-pipeline tests (a real encoded image with user data spliced in,
+decoded through both `PgfImageDecoder.TryDecode` and `PgfProgressiveDecoder`, proving pixel data and
+user data both come back correctly together) plus one confirming the simpler `TryDecode` overload
+still compiles and behaves unchanged. Full regression: `PictTag.PgfCodec.Tests` 1043 → 1058 (15 new,
+0 failed), `PictTag.Data.Tests` 15/15 unchanged (facade untouched by this stage).

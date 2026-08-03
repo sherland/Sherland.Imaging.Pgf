@@ -144,15 +144,32 @@ public static class PgfImageDecoder
 
     public static bool TryDecode<TResult>(
         ReadOnlyMemory<byte> pgfData, PgfDecodedCallback<TResult> onDecoded, out TResult? result,
+        IProgress<double>? progress = null, CancellationToken cancellationToken = default) =>
+        TryDecode(pgfData, onDecoded, out result, out _, progress: progress, cancellationToken: cancellationToken);
+
+    /// <summary>pgf-user-data-and-small-images.md Goal 1/2: same decode as the simpler overload above,
+    /// plus the file's post-header user data. A separate overload rather than widening that
+    /// signature in place - C# forbids a required parameter (an <see langword="out"/> parameter can't
+    /// have a default value) after optional ones, and every existing call site (this codebase's own
+    /// facade plus every test) must keep compiling and behaving unchanged.
+    /// <paramref name="userDataPolicy"/>/<paramref name="userDataPrefixSize"/> default to caching
+    /// everything, matching <c>ConfigureDecoder</c>'s own default - a caller that doesn't care about
+    /// user data pays nothing extra to ignore <paramref name="userData"/>.</summary>
+    public static bool TryDecode<TResult>(
+        ReadOnlyMemory<byte> pgfData, PgfDecodedCallback<TResult> onDecoded, out TResult? result, out PgfUserData userData,
+        PgfUserDataPolicy userDataPolicy = PgfUserDataPolicy.CacheAll, uint userDataPrefixSize = 0,
         IProgress<double>? progress = null, CancellationToken cancellationToken = default)
     {
         result = default;
+        userData = PgfUserData.None;
 
-        PgfDecodeSession? session = PgfDecodeSession.TryOpen(pgfData);
+        PgfDecodeSession? session = PgfDecodeSession.TryOpen(pgfData, userDataPolicy, userDataPrefixSize);
         if (session is null)
         {
             return false;
         }
+
+        userData = session.UserData;
 
         (int[] Data, int Width, int Height)[] channelData = new (int[], int, int)[session.Channels.Length];
 

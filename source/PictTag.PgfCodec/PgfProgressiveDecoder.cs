@@ -47,9 +47,18 @@ public sealed class PgfProgressiveDecoder
 
     public int Levels => session.Levels;
 
-    public static PgfProgressiveDecoder? TryOpen(ReadOnlyMemory<byte> pgfData)
+    /// <summary>pgf-user-data-and-small-images.md Goal 1: the file's post-header user data, read
+    /// according to whatever <see cref="PgfUserDataPolicy"/> <see cref="TryOpen"/> was called with -
+    /// a property (rather than an <see langword="out"/> parameter, as <see cref="PgfImageDecoder"/>'s
+    /// callback-based <c>TryDecode</c> uses) since this type already exposes header-derived facts
+    /// this way (<see cref="Width"/>/<see cref="Height"/>/<see cref="Levels"/>), not through a
+    /// callback.</summary>
+    public PgfUserData UserData => session.UserData;
+
+    public static PgfProgressiveDecoder? TryOpen(
+        ReadOnlyMemory<byte> pgfData, PgfUserDataPolicy userDataPolicy = PgfUserDataPolicy.CacheAll, uint userDataPrefixSize = 0)
     {
-        PgfDecodeSession? session = PgfDecodeSession.TryOpen(pgfData);
+        PgfDecodeSession? session = PgfDecodeSession.TryOpen(pgfData, userDataPolicy, userDataPrefixSize);
         return session is null ? null : new PgfProgressiveDecoder(session);
     }
 

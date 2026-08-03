@@ -11,6 +11,18 @@ made, what was tried, what broke and how it was fixed), see
 [`new-features/managed-pgf-codec.md`](../new-features/managed-pgf-codec.md) — that PRD's own
 "Progress log" is the authoritative narrative; this page is the lookup table distilled from it.
 
+**The plan is to publish `PictTag.PgfCodec` as a standalone NuGet package.** That's a real, stated
+goal, not a hypothetical — and it changes the bar for "out of scope" below. Everything up to this
+point was scoped against *this app's own* real usage (digiKam's own thumbnail shape: small, RGBA,
+metadata-free) — "nothing in this codebase's own usage exercises X" was a legitimate reason to skip
+X. A general NuGet consumer isn't constrained to that shape, so that reasoning alone no longer
+justifies leaving something unported. What used to be one "Explicitly out of scope" section below is
+now split accordingly: items that are **dead in the native C++ reference implementation too** (confirmed by
+reading the real source, not assumed) are permanently safe to skip regardless of who's consuming this
+library; items that are **real, working capabilities in the C++ reference this port just hasn't
+ported yet** are genuine gaps against full parity and become real backlog items under the NuGet goal,
+not permanent decisions.
+
 ## Where it's used
 
 - `PictTag.Data.PgfDecoding.PgfDecoder` — a thin facade over `PictTag.PgfCodec` for the desktop/
@@ -96,54 +108,77 @@ made, what was tried, what broke and how it was fixed), see
   the managed decoder, already proven against that independent reference). See
   [`new-features/pgf-roi-support.md`](../new-features/pgf-roi-support.md) for the full record.
 
-## Explicitly out of scope
+## Permanently out of scope
 
-Each of these was a deliberate decision made by grepping this codebase's own real usage (this app's
-encoder, every real digiKam thumbnail encountered) and confirming the feature is never actually
-exercised — not an oversight, and not silently dropped.
+These are dead in the *native C++ reference implementation itself* — confirmed by reading the real
+source, not inferred from this app's own usage — so no amount of "publish as a general NuGet package"
+framing makes them real gaps. Porting them would mean reimplementing something `libpgf` itself never
+implements.
 
 - **Four reserved Adobe image modes with no real-world PGF usage** — `Multichannel`(7)/`Duotone`(8)/
-  `DeepMultichannel`(14)/`Duotone16`(15) — never defined by any real encoder, PGF-specific or
-  otherwise; `PgfModeInfo.TryGetBppAndChannels` returns `false` for them, matching this PRD's own
-  Non-goals.
-- **Bitmap's legacy pre-Version7 packed sub-variant** — the modern ("new unpacked since Version7")
-  sub-variant is fully supported (decode and encode); the older packed format is real, reachable
-  decode-side code in the native source, but stores channel data at a different width entirely (one
-  `DataT` per *byte*, not per *pixel*), which would need `PgfDecodeSession`'s channel-allocation logic
-  to special-case a file's own historical version flag, for a shape no real digiKam thumbnail or this
-  port's own encoder (which always sets `Version7`) could ever produce — deliberately left unported,
-  not silently dropped (`PgfColorConversion`'s Group G doc comment has the full reasoning).
+  `DeepMultichannel`(14)/`Duotone16`(15). Not just "never defined by any real encoder" — the native
+  reference's own mode-support switches have `ImageModeDuotone`/`ImageModeDuotone16` **commented out**
+  in the source (`PGFimage.cpp`, the `size`/mode-support table around line 1316), i.e. the original
+  authors never implemented color-conversion support for them either. `PgfModeInfo.TryGetBppAndChannels`
+  returns `false` for them, matching this reality.
 - **OpenMP multi-macroblock parallelism** — dead in the *native* build too (`CMakeLists.txt:22`,
   `LIBPGF_DISABLE_OPENMP`), so this port only implements the single-macroblock sequential path
-  (same doc comment, `PgfMacroBlock.cs:19`).
-- **Legacy pre-Version5 entropy coding** (`DecodeInterleaved`, the older HL/LH interleaved scheme) —
-  not ported; this port's encoder always sets the Version5 flag, and so does every modern real PGF
-  file (`PgfDecoderCore.cs:104-105`).
-- **Real per-level byte lengths on encode** — the encoder always writes zero placeholders instead of
-  patching in the real values after encoding (`PgfImageEncoder.cs:10`) — grepping every consumer in
-  this codebase found level-length data is genuinely optional/unused by the real decode path
-  (`CDecoder::ReadEncodedData`, the only real reader, is itself never called from anywhere this app
-  touches).
-- **`CSubband::Dequantize`** — confirmed dead code even in the original (only called from an
-  encode-time "verify what I just wrote" helper nothing here calls) — not ported
-  (`PgfSubband.cs:11`).
+  (`PgfMacroBlock.cs:17-18`'s own doc comment).
+- **`CSubband::Dequantize`** — reachable only via the public `CPGFImage::Reconstruct` method (a
+  decode-what-you-just-encoded self-verification helper, `PGFimage.h:118`) — technically callable by
+  a NuGet consumer, but it duplicates a capability this port already fully provides (encode, then
+  decode normally through the already-supported `Read`/`GetBitmap` path) rather than adding a new
+  one. Not ported (`PgfSubband.cs:11`); revisit only if a real caller specifically wants the
+  single-call "verify what I just wrote" convenience method itself, not the underlying capability.
+
+## Not yet ported — real gaps against full C++ parity
+
+Unlike the section above, each of these is a real, working capability in the native reference that
+this port simply hasn't gotten to — safe to defer only while consumption was scoped to this app's own
+narrow usage (digiKam's thumbnail shape). Publishing as a general-purpose NuGet package removes that
+justification; treat these as the real backlog, roughly in order of how likely a general consumer is
+to actually hit them:
+
+- **Legacy pre-Version5 entropy coding** (`DecodeInterleaved`, the older HL/LH interleaved decode
+  scheme) — real, reachable native decode-side code (the non-`Version5` `else` branch of
+  `CPGFImage::Read`, `PgfDecoderCore.cs:188-189`'s own doc comment cites the exact spot) for genuinely
+  older PGF files; this port's decoder only implements the modern Version5+ tile-based scheme. A
+  general library claiming PGF decode support would be expected to open files from before this scheme
+  existed.
+- **Bitmap's legacy pre-Version7 packed sub-variant** — the modern ("new unpacked since Version7")
+  sub-variant is fully supported; the older packed format is real, reachable decode-side code in the
+  native source, storing channel data at a different width entirely (one `DataT` per *byte*, not per
+  *pixel*) that would need `PgfDecodeSession`'s channel-allocation logic to special-case a file's own
+  historical version flag (`PgfColorConversion`'s Group G doc comment has the full reasoning for why
+  it was deferred, not why it's impossible).
+- **Real per-level byte lengths on encode** — confirmed by tracing the actual native call chain
+  (`CPGFImage::WriteImage` → `UpdatePostHeaderSize`/`CEncoder::WriteLevelLength` writes a placeholder
+  → every real `WriteMacroBlock` call accumulates into `m_levelLength[]` → `CEncoder::UpdateLevelLength`
+  seeks back and patches in the real values) that the native encoder genuinely computes and writes
+  correct values, not a stub. This port's encoder always writes zero placeholders and never patches
+  them (`PgfImageEncoder.cs:15`). Nothing in this app's own decode path (native or managed) reads
+  level lengths back (`CDecoder::ReadEncodedData` is the only real reader anywhere in `libpgf`, and
+  it's never called from `Open`/`Read`/`GetBitmap` or this app's shim) — but a general NuGet consumer
+  building their own tooling against this format's real, documented structure could reasonably expect
+  a value the format itself defines to be correct, not silently zeroed.
 - **Big-endian hosts** (`PGF_USE_BIG_ENDIAN`) — not handled; this port assumes a little-endian host
-  throughout (`PgfDecoderCore.cs:88-91`), matching every real deployment target here.
+  throughout (`PgfDecoderCore.cs:128-131`). Every real deployment target *this app* runs on is
+  little-endian, but a general NuGet consumer's target isn't this app's to assume. Lowest-priority
+  item on this list in practice (real big-endian .NET targets are rare), but a genuine correctness gap
+  if one is ever hit, not just an untested path.
 
 ## If a real need for any of these shows up
 
-None of the above are architectural dead ends — they're scope cuts based on *today's* real usage,
-not permanent limitations of the approach. If a real digiKam library or a future feature ever needs
-one of them (a non-RGBA thumbnail mode, say), start from the equivalent native code path cited above
-and the doc comment at the matching C# file — each one already explains exactly what would need to
-change and why it was safe to skip until now. (Large-image ROI — the one candidate this section used
-to flag as "gets noticeably more likely to matter if `PictTag.PgfCodec` is ever published as a
-standalone NuGet package" — is done; see the Supported section above and `pgf-roi-support.md`'s own
-Progress log. Publishing as a NuGet still raises a real, separate question this list doesn't cover:
-this port is a close derivative of digiKam's vendored `libpgf`, LGPL-2.1+ — external distribution
-likely needs the license text/attribution bundled and a real compliance check, which is a legal
-question for someone else to own, not a technical gap to close here.)
+Large-image ROI was the previous version of this section's own flagged candidate for "gets more
+likely to matter under the NuGet framing" — it's done now (see the Supported section above and
+`pgf-roi-support.md`'s own Progress log). The four items in "Not yet ported" above are this doc's
+current, honest answer to "what does full C++ parity still require" — each one's doc comment at the
+matching C# file already explains exactly what would need to change. Publishing as a NuGet also
+raises a real, separate question this list doesn't cover: this port is a close derivative of
+digiKam's vendored `libpgf`, LGPL-2.1+ — external distribution likely needs the license text/
+attribution bundled and a real compliance check, which is a legal question for someone else to own,
+not a technical gap to close here.
 
 Every gap this codebase's own staged PRDs (`pgf-cancellation-and-progress.md`, `pgf-all-image-modes.md`,
-`pgf-user-data-and-small-images.md`, `pgf-roi-support.md`) originally tracked is now closed — see each
-one's own Progress log for the full record.
+`pgf-user-data-and-small-images.md`, `pgf-roi-support.md`) originally tracked is closed — see each
+one's own Progress log for the full record. The four "Not yet ported" items above don't have PRDs yet.

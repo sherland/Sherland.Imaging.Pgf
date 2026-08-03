@@ -361,9 +361,10 @@ PICTTAG_EXPORT void pgf_free_encoded(uint8_t* data)
     delete[] data;
 }
 
-// Dumps one channel's raw post-decode/pre-colorconversion DataT buffer (DataT = INT16 in this
-// build - see PGFtypes.h, confirmed no __PGF32SUPPORT__ anywhere in CMakeLists.txt) after decoding
-// down to the given level. Lets the C# port's own intermediate YUV channel data be compared
+// Dumps one channel's raw post-decode/pre-colorconversion DataT buffer (DataT = INT32 in this
+// build - see PGFtypes.h; __PGF32SUPPORT__ is active by PGFplatform.h's own default, since NPGF32
+// is never defined anywhere - pgf-all-image-modes.md's DataT correction) after decoding down to
+// the given level. Lets the C# port's own intermediate YUV channel data be compared
 // stage-by-stage against this real oracle (entropy decode -> inverse transform, before color
 // conversion even exists in the port) instead of only diffing final BGRA end to end.
 //
@@ -429,6 +430,47 @@ PICTTAG_EXPORT bool pgf_debug_decode_channel(
 
         *outWidth = width;
         *outHeight = height;
+        return true;
+    }
+    catch (...)
+    {
+        return false;
+    }
+}
+
+// pgf-all-image-modes.md Stage 1: reports back every raw header field after a real Open() - unlike
+// pgf_get_dimensions/pgf_open, deliberately WITHOUT their hardcoded Channels()==4 (RGBA-only)
+// restriction, since this port now needs to prove CompleteHeader()'s real validation accepts a
+// C#-written header for every mode it covers, not just RGBA. Only touches Open() plus plain header
+// accessors (Mode()/Channels()/Width()/Height()/Levels(), GetHeader()->bpp/usedBitsPerChannel) -
+// none of pgf_debug_decode_channel's GetChannel()/Read(level) path, so this doesn't share that
+// function's unresolved repeated-call crash risk (see that function's doc comment above).
+PICTTAG_EXPORT bool pgf_debug_get_header_info(
+    const uint8_t* data, size_t dataLen,
+    uint32_t* outWidth, uint32_t* outHeight, int32_t* outLevels,
+    uint8_t* outMode, uint8_t* outBpp, uint8_t* outChannels, uint8_t* outUsedBitsPerChannel)
+{
+    if (data == nullptr || dataLen == 0 || outWidth == nullptr || outHeight == nullptr ||
+        outLevels == nullptr || outMode == nullptr || outBpp == nullptr || outChannels == nullptr ||
+        outUsedBitsPerChannel == nullptr)
+    {
+        return false;
+    }
+
+    try
+    {
+        CPGFMemoryStream stream(const_cast<UINT8*>(data), dataLen);
+        CPGFImage img;
+        img.ConfigureDecoder(false);
+        img.Open(&stream);
+
+        *outWidth = img.Width();
+        *outHeight = img.Height();
+        *outLevels = img.Levels();
+        *outMode = img.Mode();
+        *outBpp = img.GetHeader()->bpp;
+        *outChannels = img.Channels();
+        *outUsedBitsPerChannel = img.UsedBitsPerChannel();
         return true;
     }
     catch (...)

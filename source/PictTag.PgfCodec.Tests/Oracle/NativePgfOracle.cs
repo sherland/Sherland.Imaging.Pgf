@@ -39,6 +39,12 @@ internal static partial class NativePgfOracle
         nint outBuffer, nuint outBufferLen, out uint outWidth, out uint outHeight);
 
     [LibraryImport(LibraryName)]
+    [return: MarshalAs(UnmanagedType.U1)]
+    private static partial bool pgf_debug_get_header_info(
+        nint data, nuint dataLen, out uint outWidth, out uint outHeight, out int outLevels,
+        out byte outMode, out byte outBpp, out byte outChannels, out byte outUsedBitsPerChannel);
+
+    [LibraryImport(LibraryName)]
     private static partial nint pgf_open(nint data, nuint dataLen, out uint outWidth, out uint outHeight, out int outLevels);
 
     [LibraryImport(LibraryName)]
@@ -138,6 +144,29 @@ internal static partial class NativePgfOracle
         fixed (byte* dataPtr = pgfData)
         {
             ok = pgf_get_dimensions((nint)dataPtr, (nuint)pgfData.Length, out w, out h);
+        }
+
+        width = (int)w;
+        height = (int)h;
+        return ok;
+    }
+
+    /// <summary>pgf-all-image-modes.md Stage 1's header-round-trip oracle: opens via real
+    /// <c>CPGFImage::Open()</c> (so <c>CompleteHeader</c>'s real validation genuinely runs) and
+    /// reports back every raw header field, for any mode - unlike <see cref="TryGetDimensions"/>/
+    /// <see cref="OpenHandle"/>, which both hardcode an RGBA-only (<c>Channels()==4</c>)
+    /// restriction the base PRD's test rig never needed to lift.</summary>
+    public static unsafe bool TryGetHeaderInfo(
+        ReadOnlySpan<byte> pgfData, out int width, out int height, out int levels,
+        out byte mode, out byte bpp, out byte channels, out byte usedBitsPerChannel)
+    {
+        bool ok;
+        uint w, h;
+        fixed (byte* dataPtr = pgfData)
+        {
+            ok = pgf_debug_get_header_info(
+                (nint)dataPtr, (nuint)pgfData.Length, out w, out h, out levels,
+                out mode, out bpp, out channels, out usedBitsPerChannel);
         }
 
         width = (int)w;

@@ -19,7 +19,7 @@ public class PgfHeaderTests
         Assert.True(NativePgfOracle.TryGetDimensions(pgfBytes, out int oracleWidth, out int oracleHeight));
 
         PgfMemoryReader reader = new(pgfBytes);
-        (PgfPreHeader _, PgfHeader header, uint[] _) = PgfHeaderIO.Read(reader);
+        (PgfPreHeader _, PgfHeader header, uint[] _, byte[]? _) = PgfHeaderIO.Read(reader);
 
         Assert.Equal((uint)oracleWidth, header.Width);
         Assert.Equal((uint)oracleHeight, header.Height);
@@ -32,7 +32,7 @@ public class PgfHeaderTests
         Assert.True(NativePgfOracle.TryGetLevelCount(pgfBytes, out int oracleLevels));
 
         PgfMemoryReader reader = new(pgfBytes);
-        (PgfPreHeader _, PgfHeader header, uint[] levelLengths) = PgfHeaderIO.Read(reader);
+        (PgfPreHeader _, PgfHeader header, uint[] levelLengths, byte[]? _) = PgfHeaderIO.Read(reader);
 
         Assert.Equal((byte)oracleLevels, header.NLevels);
         Assert.Equal(oracleLevels, levelLengths.Length);
@@ -44,7 +44,7 @@ public class PgfHeaderTests
         byte[] pgfBytes = File.ReadAllBytes(TestFixtures.SampleThumbnailPath);
 
         PgfMemoryReader reader = new(pgfBytes);
-        (PgfPreHeader preHeader, PgfHeader header, uint[] levelLengths) = PgfHeaderIO.Read(reader);
+        (PgfPreHeader preHeader, PgfHeader header, uint[] levelLengths, byte[]? _) = PgfHeaderIO.Read(reader);
 
         // The existing pgf_decode_bgra oracle (PictTag.Data.Tests.PgfDecoderTests, already passing)
         // requires Channels()==4 to succeed at all - this fixture is proven RGBA-compatible already.
@@ -115,7 +115,7 @@ public class PgfHeaderTests
         PgfHeaderIO.Write(writer, original);
 
         PgfMemoryReader reader = new(writer.WrittenSpan.ToArray());
-        (PgfPreHeader preHeader, PgfHeader roundTripped, uint[] levelLengths) = PgfHeaderIO.Read(reader);
+        (PgfPreHeader preHeader, PgfHeader roundTripped, uint[] levelLengths, byte[]? _) = PgfHeaderIO.Read(reader);
 
         Assert.Equal(original, roundTripped);
         Assert.Equal(original.NLevels, levelLengths.Length);

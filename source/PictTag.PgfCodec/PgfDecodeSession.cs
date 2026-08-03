@@ -58,7 +58,7 @@ internal sealed class PgfDecodeSession
         try
         {
             PgfMemoryReader reader = new(pgfData);
-            (_, PgfHeader header, _) = PgfHeaderIO.Read(reader);
+            (_, PgfHeader header, _, _) = PgfHeaderIO.Read(reader);
 
             if (header.Mode != PgfConstants.ImageModeRGBA || header.Channels != 4 || header.Bpp != 32)
             {

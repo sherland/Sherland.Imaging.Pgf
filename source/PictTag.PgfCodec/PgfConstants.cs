@@ -57,8 +57,27 @@ internal static class PgfConstants
     /// <summary>Number of subbands per wavelet transform level (LL, HL, LH, HH).</summary>
     public const int NSubbands = 4;
 
+    /// <summary>Adobe image mode byte values (PGFplatform.h:98-119) - the full set this port covers
+    /// per pgf-all-image-modes.md, not just RGBA. Values verified directly against the real header
+    /// (not assumed): note the real byte values are non-contiguous (7/8/14-16 are reserved Adobe
+    /// modes - Multichannel/Duotone/DeepMultichannel/Duotone16 - never ported, matching this PRD's
+    /// Non-goals).</summary>
+    public const byte ImageModeBitmap = 0;
+    public const byte ImageModeGrayScale = 1;
     public const byte ImageModeIndexedColor = 2;
+    public const byte ImageModeRGBColor = 3;
+    public const byte ImageModeCMYKColor = 4;
+    public const byte ImageModeHSLColor = 5;
+    public const byte ImageModeHSBColor = 6;
+    public const byte ImageModeLabColor = 9;
+    public const byte ImageModeGray16 = 10;
+    public const byte ImageModeRGB48 = 11;
+    public const byte ImageModeLab48 = 12;
+    public const byte ImageModeCMYK64 = 13;
     public const byte ImageModeRGBA = 17;
+    public const byte ImageModeGray32 = 18;
+    public const byte ImageModeRGB12 = 19;
+    public const byte ImageModeRGB16 = 20;
     public const byte ImageModeUnknown = 255;
 
     /// <summary>This codec's fixed major/year/week build identifiers (PGFtypes.h:

@@ -1,0 +1,69 @@
+namespace PictTag.PgfCodec;
+
+/// <summary>
+/// Canonical (bpp, channels) per image mode this port supports beyond RGBA (pgf-all-image-modes.md).
+///
+/// Deliberately NOT a port of <c>CPGFImage::CompleteHeader</c>'s own bpp/channels-defaulting
+/// switches (PGFimage.cpp:224-233, 237-271, 294-317) - direct inspection found those two switches
+/// have a real, confirmed gap for <see cref="PgfConstants.ImageModeHSLColor"/>/
+/// <see cref="PgfConstants.ImageModeHSBColor"/>: neither switch has a case for them (the bpp-switch
+/// falls through to <c>default: ASSERT(false); bpp = 24</c>; the channels-switch falls through to
+/// <c>default: return false</c>, i.e. <c>CompleteHeader</c> flatly rejects a header for either mode
+/// whenever a caller leaves <c>channels</c> at its auto-detect value of 0). This means a real caller
+/// of the native encoder can only ever use HSL/HSB by supplying <c>bpp</c>/<c>channels</c> explicitly
+/// - the "auto" path genuinely doesn't support them. Rather than reproduce that gap, this table is
+/// sourced from what the actual per-mode transform code requires (the ASSERTs in
+/// <c>RgbToYuv</c>/<c>GetBitmap</c>, PGFimage.cpp:1388,1788 - the real authority on "what shape does
+/// this mode's data need to be", not the defaulting switch): HSL/HSB are conventional 3-component
+/// color spaces, and <c>RgbToYuv</c>'s Group-A case block (PGFimage.cpp:1445-1473) is generic over
+/// channel count, so 3 channels x 8 bits works for them exactly as it does for
+/// <see cref="PgfConstants.ImageModeLabColor"/> - this port always supplies bpp/channels explicitly
+/// (never relies on native's auto-detect), so the real gap never actually blocks anything here.
+/// </summary>
+internal static class PgfModeInfo
+{
+    /// <summary>Every mode's (bpp, channels), keyed by mode byte. Returns <see langword="false"/> for
+    /// a mode this port doesn't cover (matching this PRD's Non-goals: the reserved Adobe modes
+    /// Multichannel(7)/Duotone(8)/DeepMultichannel(14)/Duotone16(15), or any unrecognized byte).</summary>
+    public static bool TryGetBppAndChannels(byte mode, out byte bpp, out byte channels)
+    {
+        switch (mode)
+        {
+            case PgfConstants.ImageModeBitmap:
+                bpp = 1; channels = 1; return true;
+            case PgfConstants.ImageModeGrayScale:
+            case PgfConstants.ImageModeIndexedColor:
+                bpp = 8; channels = 1; return true;
+            case PgfConstants.ImageModeHSLColor:
+            case PgfConstants.ImageModeHSBColor:
+            case PgfConstants.ImageModeLabColor:
+            case PgfConstants.ImageModeRGBColor:
+                bpp = 24; channels = 3; return true;
+            case PgfConstants.ImageModeGray16:
+                bpp = 16; channels = 1; return true;
+            case PgfConstants.ImageModeLab48:
+            case PgfConstants.ImageModeRGB48:
+                bpp = 48; channels = 3; return true;
+            case PgfConstants.ImageModeRGBA:
+            case PgfConstants.ImageModeCMYKColor:
+                bpp = 32; channels = 4; return true;
+            case PgfConstants.ImageModeCMYK64:
+                bpp = 64; channels = 4; return true;
+            case PgfConstants.ImageModeGray32:
+                bpp = 32; channels = 1; return true;
+            case PgfConstants.ImageModeRGB12:
+                bpp = 12; channels = 3; return true;
+            case PgfConstants.ImageModeRGB16:
+                bpp = 16; channels = 3; return true;
+            default:
+                bpp = 0; channels = 0; return false;
+        }
+    }
+
+    /// <summary>Direct port of <c>CompleteHeader</c>'s <c>usedBitsPerChannel</c> derivation
+    /// (PGFimage.cpp:320-325): <c>bpp/channels</c>, capped at 31 (<see cref="PgfConstants.MaxBitPlanes"/>).
+    /// Meaningless for the packed sub-byte/sub-word formats (RGB12/RGB16/Bitmap) that don't divide
+    /// evenly and don't actually reference this field in their own transform code - harmless either
+    /// way since native only ever uses it to cap, never to reject.</summary>
+    public static byte UsedBitsPerChannel(byte bpp, byte channels) => (byte)Math.Min(bpp / channels, 31);
+}

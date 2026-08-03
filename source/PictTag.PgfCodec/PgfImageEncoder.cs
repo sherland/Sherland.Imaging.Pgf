@@ -106,6 +106,21 @@ internal static class PgfImageEncoder
             case PgfConstants.ImageModeRGBColor:
                 PgfColorConversion.EncodeRgbToYuv(source, width, height, channelBuffers[0], channelBuffers[1], channelBuffers[2]);
                 break;
+            case PgfConstants.ImageModeGray16:
+                PgfColorConversion.EncodeSingleChannel16ToYuvOffset(source, width, height, channelBuffers[0]);
+                break;
+            case PgfConstants.ImageModeLab48:
+                PgfColorConversion.EncodeTripleChannel16ToYuvOffset(source, width, height, channelBuffers[0], channelBuffers[1], channelBuffers[2]);
+                break;
+            case PgfConstants.ImageModeRGB48:
+                PgfColorConversion.EncodeRgb48ToYuv(source, width, height, channelBuffers[0], channelBuffers[1], channelBuffers[2]);
+                break;
+            case PgfConstants.ImageModeCMYK64:
+                PgfColorConversion.EncodeCmyk64ToYuva(source, width, height, channelBuffers[0], channelBuffers[1], channelBuffers[2], channelBuffers[3]);
+                break;
+            case PgfConstants.ImageModeGray32:
+                PgfColorConversion.EncodeSingleChannel32ToYuvOffset(source, width, height, channelBuffers[0]);
+                break;
             default:
                 return false;
         }

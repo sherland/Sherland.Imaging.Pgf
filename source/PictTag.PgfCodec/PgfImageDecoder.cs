@@ -48,6 +48,11 @@ public static class PgfImageDecoder
         PgfConstants.ImageModeHSBColor => true,
         PgfConstants.ImageModeRGBColor => true,
         PgfConstants.ImageModeLabColor => true,
+        PgfConstants.ImageModeGray16 => true,
+        PgfConstants.ImageModeLab48 => true,
+        PgfConstants.ImageModeRGB48 => true,
+        PgfConstants.ImageModeCMYK64 => true,
+        PgfConstants.ImageModeGray32 => true,
         _ => false,
     };
 
@@ -98,6 +103,27 @@ public static class PgfImageDecoder
                 PgfColorConversion.DecodeYuvOffsetToTripleChannelWithUpsample(
                     channelData[0].Data, channelData[1].Data, channelData[2].Data,
                     width, height, channelData[1].Width, session.Downsample, bgra);
+                break;
+            case PgfConstants.ImageModeGray16:
+                PgfColorConversion.DecodeYuvOffset16ToGray(channelData[0].Data, width, height, bgra);
+                break;
+            case PgfConstants.ImageModeLab48:
+                PgfColorConversion.DecodeYuvOffset16ToTripleChannelWithUpsample(
+                    channelData[0].Data, channelData[1].Data, channelData[2].Data,
+                    width, height, channelData[1].Width, session.Downsample, bgra);
+                break;
+            case PgfConstants.ImageModeRGB48:
+                PgfColorConversion.DecodeYuv48ToBgra(
+                    channelData[0].Data, channelData[1].Data, channelData[2].Data,
+                    width, height, channelData[1].Width, session.Downsample, bgra);
+                break;
+            case PgfConstants.ImageModeCMYK64:
+                PgfColorConversion.DecodeYuv64ToBgra(
+                    channelData[0].Data, channelData[1].Data, channelData[2].Data, channelData[3].Data,
+                    width, height, channelData[1].Width, session.Downsample, bgra);
+                break;
+            case PgfConstants.ImageModeGray32:
+                PgfColorConversion.DecodeYuvOffset31ToGray(channelData[0].Data, width, height, bgra);
                 break;
             default:
                 throw new InvalidOperationException($"Unreachable: IsModeSupported should have rejected mode {session.Mode} before this point.");

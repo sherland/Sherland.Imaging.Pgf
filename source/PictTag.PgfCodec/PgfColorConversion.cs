@@ -1,3 +1,5 @@
+using System.Buffers.Binary;
+
 namespace PictTag.PgfCodec;
 
 /// <summary>
@@ -372,6 +374,307 @@ internal static class PgfColorConversion
             bgra[cnt] = Clamp8(c0[pos] + YuvOffset8);
             bgra[cnt + 1] = Clamp8(c1[pos] + YuvOffset8);
             bgra[cnt + 2] = Clamp8(c2[pos] + YuvOffset8);
+            bgra[cnt + 3] = 255;
+            cnt += 4;
+        }
+    }
+
+    // ---- Groups B/D/F (pgf-all-image-modes.md): Gray16/Lab48 (Group B), RGB48 (Group D),
+    // CMYK64 (Group F), plus Gray32 - the 16-/32-bit-per-channel scaled versions of Groups A/C/E.
+    // This is exactly the territory Stage 0's DataT short->int widening exists for: encode's
+    // yuvOffset16 (32768) alone exceeds Int16.MaxValue, and RgbToYuv/GetBitmap's own real
+    // UsedBitsPerChannel()-driven shift is always 0 on encode (native bit depth == this port's own
+    // canonical PgfModeInfo.UsedBitsPerChannel for every mode it ever writes, so the "0 means no-op"
+    // case is the only one these methods need to model - not a simplification, just what's real).
+    //
+    // Decode always downscales to this port's mandatory 8-bit BGRA32 output (Goal 1) using exactly
+    // the same <c>bpp%8==0</c>/<c>bpp==8</c> branch GetBitmap itself offers real callers
+    // (PGFimage.cpp:1949-1972, 2091-2121, 2201-2229, 2321-2353, 2419-2436) - not an invented
+    // downscale, the native codec's own documented "caller picks the output bpp" contract
+    // (PGFimage.cpp:1772-1787's doc comment), just always exercised at 8bpp since that's this port's
+    // only public decode shape. The cross-channel transform (RGB48/CMYK64) always happens at full
+    // 16-bit precision *before* the final <c>Clamp8(value &gt;&gt; shift)</c> downscale - confirmed
+    // directly in the source order, not assumed.
+
+    private const int YuvOffset16 = 1 << 15; // 1 << (UsedBitsPerChannel()-1), UsedBitsPerChannel()=16
+    private const int Yuv16To8Shift = 8; // max(0, UsedBitsPerChannel()-8) = max(0, 16-8)
+    private const int YuvOffset31 = 1 << 30; // 1 << (UsedBitsPerChannel()-1), UsedBitsPerChannel()=31 (Gray32, capped)
+    private const int Yuv32To8Shift = 23; // max(0, UsedBitsPerChannel()-8) = max(0, 31-8)
+
+    /// <summary>Encode side of Gray16: direct port of <c>RgbToYuv</c>'s <c>ImageModeGray16</c>/
+    /// <c>ImageModeLab48</c> case (PGFimage.cpp:1474-1504), 1-channel form. <paramref
+    /// name="channelBytes"/> is tightly packed 16-bit-per-pixel, little-endian (2 bytes/pixel) - this
+    /// port's own encode input contract for every 16-bit-per-channel mode (matching real 16-bit
+    /// image data's natural byte layout, e.g. a 16-bit-per-channel TIFF/PNG source).</summary>
+    public static void EncodeSingleChannel16ToYuvOffset(ReadOnlySpan<byte> channelBytes, int width, int height, Span<int> channel)
+    {
+        int pixelCount = width * height;
+        int cnt = 0;
+        for (int pos = 0; pos < pixelCount; pos++)
+        {
+            ushort value = BinaryPrimitives.ReadUInt16LittleEndian(channelBytes[cnt..]);
+            channel[pos] = unchecked(value - YuvOffset16);
+            cnt += 2;
+        }
+    }
+
+    /// <summary>Encode side of Lab48: direct port of the same <c>RgbToYuv</c> case as
+    /// <see cref="EncodeSingleChannel16ToYuvOffset"/> (PGFimage.cpp:1474-1504), 3-channel form -
+    /// each of 3 interleaved 16-bit source values per pixel independently offset, no cross-channel
+    /// transform (same relationship to <see cref="EncodeSingleChannel16ToYuvOffset"/> as Group A's
+    /// <see cref="EncodeTripleChannelToYuvOffset"/> has to <see cref="EncodeSingleChannelToYuvOffset"/>).</summary>
+    public static void EncodeTripleChannel16ToYuvOffset(
+        ReadOnlySpan<byte> interleaved, int width, int height, Span<int> c0, Span<int> c1, Span<int> c2)
+    {
+        int pixelCount = width * height;
+        int cnt = 0;
+        for (int pos = 0; pos < pixelCount; pos++)
+        {
+            c0[pos] = unchecked(BinaryPrimitives.ReadUInt16LittleEndian(interleaved[cnt..]) - YuvOffset16);
+            c1[pos] = unchecked(BinaryPrimitives.ReadUInt16LittleEndian(interleaved[(cnt + 2)..]) - YuvOffset16);
+            c2[pos] = unchecked(BinaryPrimitives.ReadUInt16LittleEndian(interleaved[(cnt + 4)..]) - YuvOffset16);
+            cnt += 6;
+        }
+    }
+
+    /// <summary>Encode side of RGB48: direct port of <c>RgbToYuv</c>'s <c>ImageModeRGB48</c> case
+    /// (PGFimage.cpp:1539-1577) - the 16-bit-per-channel version of <see cref="EncodeRgbToYuv"/>'s
+    /// real YUV transform. <paramref name="interleaved"/> is tightly packed BGR, 16 bits/channel,
+    /// little-endian (6 bytes/pixel).</summary>
+    public static void EncodeRgb48ToYuv(ReadOnlySpan<byte> interleaved, int width, int height, Span<int> y, Span<int> u, Span<int> v)
+    {
+        int pixelCount = width * height;
+        int cnt = 0;
+        for (int pos = 0; pos < pixelCount; pos++)
+        {
+            int b = BinaryPrimitives.ReadUInt16LittleEndian(interleaved[cnt..]);
+            int g = BinaryPrimitives.ReadUInt16LittleEndian(interleaved[(cnt + 2)..]);
+            int r = BinaryPrimitives.ReadUInt16LittleEndian(interleaved[(cnt + 4)..]);
+
+            y[pos] = unchecked(((b + (g << 1) + r) >> 2) - YuvOffset16);
+            u[pos] = unchecked(r - g);
+            v[pos] = unchecked(b - g);
+
+            cnt += 6;
+        }
+    }
+
+    /// <summary>Encode side of CMYK64: direct port of <c>RgbToYuv</c>'s <c>ImageModeCMYK64</c> case
+    /// (PGFimage.cpp:1614-1653) - the 16-bit-per-channel version of <see cref="EncodeBgraToYuva"/>'s
+    /// real transform (same established "4th channel treated as alpha-like" precedent as
+    /// <see cref="PgfConstants.ImageModeCMYKColor"/> - PgfImageEncoder's own dispatch comment).
+    /// <paramref name="interleaved"/> is tightly packed, 16 bits/channel, little-endian (8 bytes/pixel).</summary>
+    public static void EncodeCmyk64ToYuva(
+        ReadOnlySpan<byte> interleaved, int width, int height, Span<int> y, Span<int> u, Span<int> v, Span<int> a)
+    {
+        int pixelCount = width * height;
+        int cnt = 0;
+        for (int pos = 0; pos < pixelCount; pos++)
+        {
+            int b = BinaryPrimitives.ReadUInt16LittleEndian(interleaved[cnt..]);
+            int g = BinaryPrimitives.ReadUInt16LittleEndian(interleaved[(cnt + 2)..]);
+            int r = BinaryPrimitives.ReadUInt16LittleEndian(interleaved[(cnt + 4)..]);
+            int alpha = BinaryPrimitives.ReadUInt16LittleEndian(interleaved[(cnt + 6)..]);
+
+            y[pos] = unchecked(((b + (g << 1) + r) >> 2) - YuvOffset16);
+            u[pos] = unchecked(r - g);
+            v[pos] = unchecked(b - g);
+            a[pos] = unchecked(alpha - YuvOffset16);
+
+            cnt += 8;
+        }
+    }
+
+    /// <summary>Encode side of Gray32: direct port of <c>RgbToYuv</c>'s <c>ImageModeGray32</c> case
+    /// (PGFimage.cpp:1655-1681, <c>__PGF32SUPPORT__</c> - active in this build, see
+    /// <see cref="PgfConstants"/>'s doc comment). <paramref name="channelBytes"/> is tightly packed
+    /// 32-bit-per-pixel, little-endian (4 bytes/pixel).</summary>
+    public static void EncodeSingleChannel32ToYuvOffset(ReadOnlySpan<byte> channelBytes, int width, int height, Span<int> channel)
+    {
+        int pixelCount = width * height;
+        int cnt = 0;
+        for (int pos = 0; pos < pixelCount; pos++)
+        {
+            uint value = BinaryPrimitives.ReadUInt32LittleEndian(channelBytes[cnt..]);
+            channel[pos] = unchecked((int)(value - YuvOffset31));
+            cnt += 4;
+        }
+    }
+
+    /// <summary>Decode side of Gray16: direct port of <c>GetBitmap</c>'s <c>ImageModeGray16</c>
+    /// case's <c>bpp%8==0</c> (8-bit output) branch (PGFimage.cpp:1949-1972) - reconstructs then
+    /// downscales (<c>Clamp8((channel + 32768) &gt;&gt; 8)</c>), broadcasts into B/G/R like Group A's
+    /// <see cref="DecodeYuvOffsetToGray"/>, A=255.</summary>
+    public static void DecodeYuvOffset16ToGray(ReadOnlySpan<int> channel, int width, int height, Span<byte> bgra)
+    {
+        int pixelCount = width * height;
+        int cnt = 0;
+        for (int pos = 0; pos < pixelCount; pos++)
+        {
+            byte gray = Clamp8((channel[pos] + YuvOffset16) >> Yuv16To8Shift);
+            bgra[cnt] = gray;
+            bgra[cnt + 1] = gray;
+            bgra[cnt + 2] = gray;
+            bgra[cnt + 3] = 255;
+            cnt += 4;
+        }
+    }
+
+    /// <summary>Decode side of Lab48: direct port of <c>GetBitmap</c>'s <c>ImageModeLab48</c> case's
+    /// <c>bpp%8==0</c> branch (PGFimage.cpp:2201-2229) - same <c>uPos</c>/<c>uOffset</c>
+    /// chroma-upsampling structure as <see cref="DecodeYuvOffsetToTripleChannelWithUpsample"/>
+    /// (LabColor's 8-bit decode), each channel independently reconstructed then downscaled.</summary>
+    public static void DecodeYuvOffset16ToTripleChannelWithUpsample(
+        ReadOnlySpan<int> c0, ReadOnlySpan<int> c1, ReadOnlySpan<int> c2,
+        int width, int height, int chromaWidth, bool downsample, Span<byte> bgra)
+    {
+        int yOffset = 0;
+        int uOffset = 0;
+        int rowStart = 0;
+
+        for (int i = 0; i < height; i++)
+        {
+            int uPos = uOffset;
+            int yPos = yOffset;
+            int cnt = 0;
+
+            for (int j = 0; j < width; j++)
+            {
+                bgra[rowStart + cnt] = Clamp8((c0[yPos] + YuvOffset16) >> Yuv16To8Shift);
+                bgra[rowStart + cnt + 1] = Clamp8((c1[uPos] + YuvOffset16) >> Yuv16To8Shift);
+                bgra[rowStart + cnt + 2] = Clamp8((c2[uPos] + YuvOffset16) >> Yuv16To8Shift);
+                bgra[rowStart + cnt + 3] = 255;
+
+                cnt += 4;
+                if (!downsample || (j & 1) != 0)
+                {
+                    uPos++;
+                }
+
+                yPos++;
+            }
+
+            if (!downsample || (i & 1) != 0)
+            {
+                uOffset += chromaWidth;
+            }
+
+            yOffset += width;
+            rowStart += width * 4;
+        }
+    }
+
+    /// <summary>Decode side of RGB48: direct port of <c>GetBitmap</c>'s <c>ImageModeRGB48</c> case's
+    /// <c>bpp%8==0</c> branch (PGFimage.cpp:2091-2121) - the cross-channel YUV transform happens at
+    /// full 16-bit precision (matching <see cref="DecodeYuvToBgra"/> exactly), only the final output
+    /// byte is downscaled (<c>Clamp8(value &gt;&gt; 8)</c>). A=255.</summary>
+    public static void DecodeYuv48ToBgra(
+        ReadOnlySpan<int> y, ReadOnlySpan<int> u, ReadOnlySpan<int> v,
+        int width, int height, int chromaWidth, bool downsample, Span<byte> bgra)
+    {
+        int yOffset = 0;
+        int uOffset = 0;
+        int rowStart = 0;
+
+        for (int i = 0; i < height; i++)
+        {
+            int uPos = uOffset;
+            int yPos = yOffset;
+            int cnt = 0;
+
+            for (int j = 0; j < width; j++)
+            {
+                int uAvg = u[uPos];
+                int vAvg = v[uPos];
+
+                int g = y[yPos] + YuvOffset16 - ((uAvg + vAvg) >> 2);
+                bgra[rowStart + cnt + 1] = Clamp8(g >> Yuv16To8Shift);
+                bgra[rowStart + cnt + 2] = Clamp8((uAvg + g) >> Yuv16To8Shift);
+                bgra[rowStart + cnt] = Clamp8((vAvg + g) >> Yuv16To8Shift);
+                bgra[rowStart + cnt + 3] = 255;
+
+                cnt += 4;
+                if (!downsample || (j & 1) != 0)
+                {
+                    uPos++;
+                }
+
+                yPos++;
+            }
+
+            if (!downsample || (i & 1) != 0)
+            {
+                uOffset += chromaWidth;
+            }
+
+            yOffset += width;
+            rowStart += width * 4;
+        }
+    }
+
+    /// <summary>Decode side of CMYK64: direct port of <c>GetBitmap</c>'s <c>ImageModeCMYK64</c>
+    /// case's <c>bpp%8==0</c> branch (PGFimage.cpp:2321-2353) - like <see cref="DecodeYuv48ToBgra"/>
+    /// plus a real (downscaled) alpha channel, matching <see cref="DecodeYuvaToBgra"/>'s established
+    /// "4th channel is real alpha" precedent for the RGBA/CMYK family.</summary>
+    public static void DecodeYuv64ToBgra(
+        ReadOnlySpan<int> y, ReadOnlySpan<int> u, ReadOnlySpan<int> v, ReadOnlySpan<int> a,
+        int width, int height, int chromaWidth, bool downsample, Span<byte> bgra)
+    {
+        int yOffset = 0;
+        int uOffset = 0;
+        int rowStart = 0;
+
+        for (int i = 0; i < height; i++)
+        {
+            int uPos = uOffset;
+            int yPos = yOffset;
+            int cnt = 0;
+
+            for (int j = 0; j < width; j++)
+            {
+                int uAvg = u[uPos];
+                int vAvg = v[uPos];
+                int aAvg = a[uPos] + YuvOffset16;
+
+                int g = y[yPos] + YuvOffset16 - ((uAvg + vAvg) >> 2);
+                bgra[rowStart + cnt + 1] = Clamp8(g >> Yuv16To8Shift);
+                bgra[rowStart + cnt + 2] = Clamp8((uAvg + g) >> Yuv16To8Shift);
+                bgra[rowStart + cnt] = Clamp8((vAvg + g) >> Yuv16To8Shift);
+                bgra[rowStart + cnt + 3] = Clamp8(aAvg >> Yuv16To8Shift);
+
+                cnt += 4;
+                if (!downsample || (j & 1) != 0)
+                {
+                    uPos++;
+                }
+
+                yPos++;
+            }
+
+            if (!downsample || (i & 1) != 0)
+            {
+                uOffset += chromaWidth;
+            }
+
+            yOffset += width;
+            rowStart += width * 4;
+        }
+    }
+
+    /// <summary>Decode side of Gray32: direct port of <c>GetBitmap</c>'s <c>ImageModeGray32</c>
+    /// case's <c>bpp==8</c> branch (PGFimage.cpp:2419-2436, <c>__PGF32SUPPORT__</c>). Broadcasts into
+    /// B/G/R like <see cref="DecodeYuvOffset16ToGray"/>, A=255. Genuinely needs Stage 0's DataT
+    /// widening: <see cref="YuvOffset31"/> alone (2^30) is far outside <c>short</c>'s range.</summary>
+    public static void DecodeYuvOffset31ToGray(ReadOnlySpan<int> channel, int width, int height, Span<byte> bgra)
+    {
+        int pixelCount = width * height;
+        int cnt = 0;
+        for (int pos = 0; pos < pixelCount; pos++)
+        {
+            byte gray = Clamp8((channel[pos] + YuvOffset31) >> Yuv32To8Shift);
+            bgra[cnt] = gray;
+            bgra[cnt + 1] = gray;
+            bgra[cnt + 2] = gray;
             bgra[cnt + 3] = 255;
             cnt += 4;
         }

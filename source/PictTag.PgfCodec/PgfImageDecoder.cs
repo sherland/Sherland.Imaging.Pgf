@@ -5,11 +5,11 @@ namespace PictTag.PgfCodec;
 /// <summary>
 /// Single-shot managed decode: PGF bytes to a BGRA buffer, direct equivalent of
 /// <c>CPGFImage::Open</c> + <c>Read(0)</c> + <c>GetBitmap</c> (PGFimage.cpp:141, 402, 1788) chained
-/// together, RGBA/32bpp only (managed-pgf-codec.md's Non-goals: indexed color already fails during
-/// header parse, and every real digiKam thumbnail is RGBA anyway). <see cref="PgfProgressiveDecoder"/>
-/// (Stage 9) is the level-by-level equivalent, mirroring <c>Open</c>+repeated <c>Read(level)</c> -
-/// this type always decodes straight through to level 0 in one call, sharing
-/// <see cref="PgfDecodeSession"/>'s setup/per-level decode logic with it.
+/// together. pgf-all-image-modes.md: covers every mode <see cref="IsModeSupported"/> lists (grows as
+/// that PRD's remaining groups land), not just RGBA - <see cref="ConvertToBgra"/> is the one mode
+/// dispatch point. <see cref="PgfProgressiveDecoder"/> (Stage 9) is the level-by-level equivalent,
+/// mirroring <c>Open</c>+repeated <c>Read(level)</c> - this type always decodes straight through to
+/// level 0 in one call, sharing <see cref="PgfDecodeSession"/>'s setup/per-level decode logic with it.
 ///
 /// Stage 10: <see cref="TryDecode{TResult}"/> writes into an <see cref="ArrayPool{T}"/>-rented buffer
 /// and hands it to <paramref name="onDecoded"/>-in-<see cref="TryDecode{TResult}"/> as a
@@ -34,6 +34,58 @@ namespace PictTag.PgfCodec;
 /// </summary>
 public static class PgfImageDecoder
 {
+    /// <summary>The modes <see cref="ConvertToBgra"/> knows how to turn into BGRA32 output - grows
+    /// as pgf-all-image-modes.md's remaining groups land. Checked by <see cref="PgfDecodeSession.
+    /// TryOpen"/> before allocating anything, so an unsupported (but otherwise well-formed) mode
+    /// fails closed at header-parse time, matching this port's original RGBA-only guard.</summary>
+    internal static bool IsModeSupported(byte mode) => mode switch
+    {
+        PgfConstants.ImageModeRGBA => true,
+        PgfConstants.ImageModeGrayScale => true,
+        PgfConstants.ImageModeIndexedColor => true,
+        PgfConstants.ImageModeHSLColor => true,
+        PgfConstants.ImageModeHSBColor => true,
+        _ => false,
+    };
+
+    /// <summary>Mode dispatch for the final coefficients-to-BGRA32 step (PRD Goal 1: output is always
+    /// BGRA32 regardless of source mode) - the one place a new <see cref="IsModeSupported"/> mode
+    /// needs a case added. Shared with <see cref="PgfProgressiveDecoder"/> (same assembly).
+    ///
+    /// Deliberately reads width/height/chromaWidth from <paramref name="channelData"/> itself
+    /// (channel 0's own <c>Width</c>/<c>Height</c>, channel 1's own <c>Width</c> when a mode needs a
+    /// chroma width) rather than <paramref name="session"/>'s <c>FullWidth</c>/<c>FullHeight</c>/
+    /// <c>ChromaWidth</c> - those are level-0-only, but <see cref="PgfProgressiveDecoder"/> calls this
+    /// once per (possibly coarser) level, where the real per-level dimensions live only in
+    /// <paramref name="channelData"/>.</summary>
+    internal static void ConvertToBgra(PgfDecodeSession session, (int[] Data, int Width, int Height)[] channelData, Span<byte> bgra)
+    {
+        int width = channelData[0].Width;
+        int height = channelData[0].Height;
+
+        switch (session.Mode)
+        {
+            case PgfConstants.ImageModeRGBA:
+                PgfColorConversion.DecodeYuvaToBgra(
+                    channelData[0].Data, channelData[1].Data, channelData[2].Data, channelData[3].Data,
+                    width, height, channelData[1].Width, session.Downsample, bgra);
+                break;
+            case PgfConstants.ImageModeGrayScale:
+                PgfColorConversion.DecodeYuvOffsetToGray(channelData[0].Data, width, height, bgra);
+                break;
+            case PgfConstants.ImageModeIndexedColor:
+                PgfColorConversion.DecodeYuvOffsetToIndexed(channelData[0].Data, width, height, session.ColorTable!, bgra);
+                break;
+            case PgfConstants.ImageModeHSLColor:
+            case PgfConstants.ImageModeHSBColor:
+                PgfColorConversion.DecodeYuvOffsetToTripleChannel(
+                    channelData[0].Data, channelData[1].Data, channelData[2].Data, width, height, bgra);
+                break;
+            default:
+                throw new InvalidOperationException($"Unreachable: IsModeSupported should have rejected mode {session.Mode} before this point.");
+        }
+    }
+
     public static bool TryDecode<TResult>(
         ReadOnlyMemory<byte> pgfData, PgfDecodedCallback<TResult> onDecoded, out TResult? result,
         IProgress<double>? progress = null, CancellationToken cancellationToken = default)
@@ -46,7 +98,7 @@ public static class PgfImageDecoder
             return false;
         }
 
-        (int[] Data, int Width, int Height)[] channelData = new (int[], int, int)[4];
+        (int[] Data, int Width, int Height)[] channelData = new (int[], int, int)[session.Channels.Length];
 
         int totalLevels = session.Levels;
         int levelsCompleted = 0;
@@ -78,10 +130,7 @@ public static class PgfImageDecoder
         byte[] rented = ArrayPool<byte>.Shared.Rent(bufferSize);
         try
         {
-            PgfColorConversion.DecodeYuvaToBgra(
-                channelData[0].Data, channelData[1].Data, channelData[2].Data, channelData[3].Data,
-                session.FullWidth, session.FullHeight, session.ChromaWidth, session.Downsample,
-                rented.AsSpan(0, bufferSize));
+            ConvertToBgra(session, channelData, rented.AsSpan(0, bufferSize));
 
             result = onDecoded(rented.AsSpan(0, bufferSize), session.FullWidth, session.FullHeight);
             return true;

@@ -27,12 +27,13 @@ namespace PictTag.PgfCodec;
 public sealed class PgfProgressiveDecoder
 {
     private readonly PgfDecodeSession session;
-    private readonly (int[] Data, int Width, int Height)[] lastDecoded = new (int[], int, int)[4];
+    private readonly (int[] Data, int Width, int Height)[] lastDecoded;
     private int currentLevel;
 
     private PgfProgressiveDecoder(PgfDecodeSession session)
     {
         this.session = session;
+        lastDecoded = new (int[], int, int)[session.Channels.Length];
         currentLevel = session.Levels;
     }
 
@@ -114,7 +115,7 @@ public sealed class PgfProgressiveDecoder
                 return false;
             }
 
-            Array.Copy(decoded, lastDecoded, 4);
+            Array.Copy(decoded, lastDecoded, lastDecoded.Length);
             currentLevel--;
             levelsCompleted++;
             progress?.Report(PgfProgressCurve.FractionAfter(levelsCompleted, levelsInThisCall));
@@ -122,15 +123,12 @@ public sealed class PgfProgressiveDecoder
 
         int outWidth = lastDecoded[0].Width;
         int outHeight = lastDecoded[0].Height;
-        int chromaWidth = lastDecoded[1].Width;
 
         int bufferSize = checked(outWidth * outHeight * 4);
         byte[] rented = ArrayPool<byte>.Shared.Rent(bufferSize);
         try
         {
-            PgfColorConversion.DecodeYuvaToBgra(
-                lastDecoded[0].Data, lastDecoded[1].Data, lastDecoded[2].Data, lastDecoded[3].Data,
-                outWidth, outHeight, chromaWidth, session.Downsample, rented.AsSpan(0, bufferSize));
+            PgfImageDecoder.ConvertToBgra(session, lastDecoded, rented.AsSpan(0, bufferSize));
 
             result = onDecoded(rented.AsSpan(0, bufferSize), outWidth, outHeight);
             return true;

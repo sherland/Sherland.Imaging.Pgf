@@ -66,4 +66,28 @@ internal static class PgfModeInfo
     /// evenly and don't actually reference this field in their own transform code - harmless either
     /// way since native only ever uses it to cap, never to reject.</summary>
     public static byte UsedBitsPerChannel(byte bpp, byte channels) => (byte)Math.Min(bpp / channels, 31);
+
+    /// <summary>Direct port of <c>CPGFImage::SetHeader</c>'s downsample-eligibility check
+    /// (PGFimage.cpp:921-927): exactly these 7 modes ever get chroma-subsampled (channel 0 stays
+    /// full resolution; channels 1..N-1 are 2x2 box-averaged, same structure regardless of mode -
+    /// confirmed directly, not assumed, by comparing <c>GetBitmap</c>'s <see cref="PgfConstants.
+    /// ImageModeLabColor"/> case, PGFimage.cpp:2124-2159, against its <see cref="PgfConstants.
+    /// ImageModeRGBColor"/> case, PGFimage.cpp:1975-2046 - same <c>uPos</c>/<c>uOffset</c>/
+    /// downsample-position bookkeeping, differing only in whether there's a cross-channel YUV
+    /// transform on top). Every other mode this port covers (Bitmap/GrayScale/IndexedColor/HSL/HSB/
+    /// Gray16/Gray32/RGB12/RGB16) is never downsampled, including the two 3-channel Group-A members
+    /// (HSL/HSB) that might otherwise look downsample-eligible by analogy with Lab - they aren't;
+    /// this is the real, confirmed, non-obvious boundary pgf-all-image-modes.md's own "Why grounded"
+    /// section calls out (Lab shares Group A's encode transform but not its decode structure).</summary>
+    public static bool SupportsDownsample(byte mode) => mode switch
+    {
+        PgfConstants.ImageModeRGBColor or
+        PgfConstants.ImageModeRGBA or
+        PgfConstants.ImageModeRGB48 or
+        PgfConstants.ImageModeCMYKColor or
+        PgfConstants.ImageModeCMYK64 or
+        PgfConstants.ImageModeLabColor or
+        PgfConstants.ImageModeLab48 => true,
+        _ => false,
+    };
 }

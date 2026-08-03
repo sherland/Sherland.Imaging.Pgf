@@ -148,4 +148,106 @@ internal static class PgfColorConversion
     }
 
     private static byte Clamp8(int v) => v < 0 ? (byte)0 : v > 255 ? (byte)255 : (byte)v;
+
+    // ---- Group A (pgf-all-image-modes.md): GrayScale/IndexedColor/HSLColor/HSBColor. NOT LabColor
+    // - direct inspection of GetBitmap (PGFimage.cpp:1886-1916 vs. 2124-2159) found Lab has its own
+    // decode case with real chroma-upsample bookkeeping (matching RGBColor's structure), even though
+    // it shares Group A's encode-side transform - see PgfModeInfo.SupportsDownsample's doc comment.
+    // True Group A is never downsample-eligible, so decode here never needs upsample positioning:
+    // one source pixel's channel value maps to exactly one output pixel, always.
+
+    /// <summary>Direct port of RgbToYuv's Group-A case (PGFimage.cpp:1445-1473), 1-channel form
+    /// (GrayScale/IndexedColor): the single source byte offset by <see cref="YuvOffset8"/> (128).
+    /// <paramref name="channelBytes"/> is tightly packed, one byte per pixel (this port's own encode
+    /// input contract - see class doc comment's pitch/channelMap reasoning).</summary>
+    public static void EncodeSingleChannelToYuvOffset(ReadOnlySpan<byte> channelBytes, int width, int height, Span<int> channel)
+    {
+        int pixelCount = width * height;
+        for (int pos = 0; pos < pixelCount; pos++)
+        {
+            channel[pos] = unchecked(channelBytes[pos] - YuvOffset8);
+        }
+    }
+
+    /// <summary>Direct port of RgbToYuv's Group-A case (PGFimage.cpp:1445-1473), 3-channel form
+    /// (HSLColor/HSBColor - and LabColor's identical encode step, see class remarks above):
+    /// each of 3 interleaved source bytes per pixel independently offset by <see cref="YuvOffset8"/>,
+    /// no cross-channel transform.</summary>
+    public static void EncodeTripleChannelToYuvOffset(
+        ReadOnlySpan<byte> interleaved, int width, int height, Span<int> c0, Span<int> c1, Span<int> c2)
+    {
+        int pixelCount = width * height;
+        int cnt = 0;
+        for (int pos = 0; pos < pixelCount; pos++)
+        {
+            c0[pos] = unchecked(interleaved[cnt] - YuvOffset8);
+            c1[pos] = unchecked(interleaved[cnt + 1] - YuvOffset8);
+            c2[pos] = unchecked(interleaved[cnt + 2] - YuvOffset8);
+            cnt += 3;
+        }
+    }
+
+    /// <summary>GrayScale's decode: reconstructs GetBitmap's Group-A single-channel byte
+    /// (<c>Clamp8(channel + 128)</c>), then broadcasts it into B/G/R with A=255 - the "output stays
+    /// BGRA32 regardless of source mode" expansion pgf-all-image-modes.md Goal 1 asks this port to
+    /// add on top of what GetBitmap itself does (GetBitmap only ever writes exactly the source mode's
+    /// own channel count of bytes per pixel - see native/PictTag.PgfDecoder/shim.cpp's
+    /// <c>pgf_debug_decode_raw</c> doc comment for how this port's own oracle comparison isolates the
+    /// real, verifiable reconstructed byte from this port's own broadcast).</summary>
+    public static void DecodeYuvOffsetToGray(ReadOnlySpan<int> channel, int width, int height, Span<byte> bgra)
+    {
+        int pixelCount = width * height;
+        int cnt = 0;
+        for (int pos = 0; pos < pixelCount; pos++)
+        {
+            byte gray = Clamp8(channel[pos] + YuvOffset8);
+            bgra[cnt] = gray;
+            bgra[cnt + 1] = gray;
+            bgra[cnt + 2] = gray;
+            bgra[cnt + 3] = 255;
+            cnt += 4;
+        }
+    }
+
+    /// <summary>IndexedColor's decode: reconstructs GetBitmap's Group-A single-channel byte the same
+    /// way as <see cref="DecodeYuvOffsetToGray"/>, but the byte is a palette INDEX - substituted via
+    /// <paramref name="colorTable"/> (raw RGBQUAD bytes, B/G/R/reserved per entry - the exact shape
+    /// <see cref="PgfHeaderIO.Read"/> returns) rather than used directly as a gray level. A=255 (no
+    /// real alpha channel in this mode).</summary>
+    public static void DecodeYuvOffsetToIndexed(ReadOnlySpan<int> channel, int width, int height, ReadOnlySpan<byte> colorTable, Span<byte> bgra)
+    {
+        int pixelCount = width * height;
+        int cnt = 0;
+        for (int pos = 0; pos < pixelCount; pos++)
+        {
+            byte index = Clamp8(channel[pos] + YuvOffset8);
+            int paletteOffset = index * 4;
+            bgra[cnt] = colorTable[paletteOffset]; // B
+            bgra[cnt + 1] = colorTable[paletteOffset + 1]; // G
+            bgra[cnt + 2] = colorTable[paletteOffset + 2]; // R
+            bgra[cnt + 3] = 255;
+            cnt += 4;
+        }
+    }
+
+    /// <summary>HSLColor/HSBColor's decode: reconstructs GetBitmap's Group-A 3-channel bytes and
+    /// packs them directly into B/G/R with no colorimetric HSL/HSB-to-RGB transform - this port's own
+    /// Non-goals explicitly exclude "improving" the original codec's color science, and the native
+    /// codec itself is "not semantically aware of HSL/HSB being different color spaces" at this layer
+    /// (see PgfModeInfo's own doc comment) - so raw channel-to-byte-position packing is the faithful
+    /// port, not a placeholder. A=255.</summary>
+    public static void DecodeYuvOffsetToTripleChannel(
+        ReadOnlySpan<int> c0, ReadOnlySpan<int> c1, ReadOnlySpan<int> c2, int width, int height, Span<byte> bgra)
+    {
+        int pixelCount = width * height;
+        int cnt = 0;
+        for (int pos = 0; pos < pixelCount; pos++)
+        {
+            bgra[cnt] = Clamp8(c0[pos] + YuvOffset8);
+            bgra[cnt + 1] = Clamp8(c1[pos] + YuvOffset8);
+            bgra[cnt + 2] = Clamp8(c2[pos] + YuvOffset8);
+            bgra[cnt + 3] = 255;
+            cnt += 4;
+        }
+    }
 }

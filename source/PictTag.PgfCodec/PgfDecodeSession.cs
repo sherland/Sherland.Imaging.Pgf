@@ -11,14 +11,20 @@ public delegate TResult PgfDecodedCallback<out TResult>(ReadOnlySpan<byte> bgra,
 /// Shared decode-setup logic factored out of <see cref="PgfImageDecoder"/> (single-shot) and
 /// <see cref="PgfProgressiveDecoder"/> (level-by-level, Stage 9) once both needed the identical
 /// header-parse-plus-channel-allocation preamble: direct equivalent of
-/// <c>CPGFImage::Open</c> (PGFimage.cpp:141) up to (not including) any actual level decoding -
-/// RGBA/32bpp only, matching this port's scope everywhere else.
+/// <c>CPGFImage::Open</c> (PGFimage.cpp:141) up to (not including) any actual level decoding.
+///
+/// pgf-all-image-modes.md: generalized from a hardcoded 4-channel/RGBA-only shape to
+/// <see cref="PgfHeader.Channels"/>-many channels for any mode <see cref="PgfImageDecoder"/>'s own
+/// mode dispatch covers - channel 0 is always full resolution; channels 1..N-1 are downsampled
+/// (chroma-subsampled) only when <see cref="PgfModeInfo.SupportsDownsample"/> says the mode's own
+/// real behavior downsamples them (PGFimage.cpp:921-927), not unconditionally the way the old
+/// RGBA-only version assumed.
 /// </summary>
 internal sealed class PgfDecodeSession
 {
     private PgfDecodeSession(
         PgfWaveletTransform[] channels, PgfDecoderCore decoder, int quant, bool downsample,
-        int fullWidth, int fullHeight, int chromaWidth, byte levels)
+        int fullWidth, int fullHeight, int chromaWidth, byte levels, byte mode, byte[]? colorTable)
     {
         Channels = channels;
         Decoder = decoder;
@@ -28,12 +34,15 @@ internal sealed class PgfDecodeSession
         FullHeight = fullHeight;
         ChromaWidth = chromaWidth;
         Levels = levels;
+        Mode = mode;
+        ColorTable = colorTable;
     }
 
-    /// <summary>The 4 channels' wavelet pyramids, in <c>Y, U, V, A</c> order - <see cref="Channels"/>
-    /// [1..3] are pre-sized to <see cref="ChromaWidth"/> x its matching height when
-    /// <see cref="Downsample"/> is true, matching <c>CPGFImage::Open</c>'s own per-channel
-    /// width/height setup (PGFimage.cpp:176-187).</summary>
+    /// <summary>The mode's channels' wavelet pyramids, in the header's own channel order (e.g. Y, U,
+    /// V, A for RGBA; a single channel for GrayScale/IndexedColor). <see cref="Channels"/>[1..] are
+    /// pre-sized to <see cref="ChromaWidth"/> x its matching height when <see cref="Downsample"/> is
+    /// true, matching <c>CPGFImage::Open</c>'s own per-channel width/height setup
+    /// (PGFimage.cpp:176-187).</summary>
     public PgfWaveletTransform[] Channels { get; }
 
     /// <summary>The single shared bitstream-reading state every channel's subbands are decoded
@@ -53,17 +62,26 @@ internal sealed class PgfDecodeSession
 
     public byte Levels { get; }
 
+    public byte Mode { get; }
+
+    /// <summary>Raw 1024-byte RGBQUAD color table (<see cref="PgfHeaderIO.Read"/>'s own shape) when
+    /// <see cref="Mode"/> is <see cref="PgfConstants.ImageModeIndexedColor"/>, otherwise
+    /// <see langword="null"/>.</summary>
+    public byte[]? ColorTable { get; }
+
     public static PgfDecodeSession? TryOpen(ReadOnlyMemory<byte> pgfData)
     {
         try
         {
             PgfMemoryReader reader = new(pgfData);
-            (_, PgfHeader header, _, _) = PgfHeaderIO.Read(reader);
+            (_, PgfHeader header, _, byte[]? colorTable) = PgfHeaderIO.Read(reader);
 
-            if (header.Mode != PgfConstants.ImageModeRGBA || header.Channels != 4 || header.Bpp != 32)
+            if (!PgfImageDecoder.IsModeSupported(header.Mode) ||
+                !PgfModeInfo.TryGetBppAndChannels(header.Mode, out byte expectedBpp, out byte expectedChannels) ||
+                header.Channels != expectedChannels || header.Bpp != expectedBpp)
             {
-                // Out of scope (managed-pgf-codec.md Non-goals) - real digiKam thumbnails are always
-                // RGBA; fail closed rather than silently mis-decoding a mode this port never models.
+                // Fail closed rather than silently mis-decoding a mode this port doesn't (yet) model
+                // - matches managed-pgf-codec.md's original RGBA-only guard, now mode-generic.
                 return null;
             }
 
@@ -83,25 +101,25 @@ internal sealed class PgfDecodeSession
             }
 
             // Matches CPGFImage::Open's interpretation of m_header.quality (PGFimage.cpp:161-174):
-            // downsampling only kicks in above DownsampleThreshold, and only then does m_quant drop
-            // by one relative to the stored quality value.
-            bool downsample = header.Quality > PgfConstants.DownsampleThreshold;
+            // downsampling only kicks in above DownsampleThreshold, and (pgf-all-image-modes.md) only
+            // for modes SetHeader's own mode list actually downsamples (PGFimage.cpp:921-927).
+            bool downsample = header.Quality > PgfConstants.DownsampleThreshold && PgfModeInfo.SupportsDownsample(header.Mode);
             int quant = downsample ? header.Quality - 1 : header.Quality;
 
             int chromaWidth = downsample ? (fullWidth + 1) / 2 : fullWidth;
             int chromaHeight = downsample ? (fullHeight + 1) / 2 : fullHeight;
 
-            PgfWaveletTransform[] channels =
-            [
-                new PgfWaveletTransform(fullWidth, fullHeight, header.NLevels),
-                new PgfWaveletTransform(chromaWidth, chromaHeight, header.NLevels),
-                new PgfWaveletTransform(chromaWidth, chromaHeight, header.NLevels),
-                new PgfWaveletTransform(chromaWidth, chromaHeight, header.NLevels),
-            ];
+            PgfWaveletTransform[] channels = new PgfWaveletTransform[header.Channels];
+            channels[0] = new PgfWaveletTransform(fullWidth, fullHeight, header.NLevels);
+            for (int c = 1; c < header.Channels; c++)
+            {
+                channels[c] = new PgfWaveletTransform(chromaWidth, chromaHeight, header.NLevels);
+            }
 
             PgfDecoderCore decoder = new(reader);
 
-            return new PgfDecodeSession(channels, decoder, quant, downsample, fullWidth, fullHeight, chromaWidth, header.NLevels);
+            return new PgfDecodeSession(
+                channels, decoder, quant, downsample, fullWidth, fullHeight, chromaWidth, header.NLevels, header.Mode, colorTable);
         }
         catch (PgfFormatException)
         {
@@ -113,13 +131,13 @@ internal sealed class PgfDecodeSession
         }
     }
 
-    /// <summary>Decodes every subband at <paramref name="level"/> for all 4 channels, then
-    /// inverse-transforms all 4 - direct port of one iteration of <c>CPGFImage::Read</c>'s loop body
-    /// (PGFimage.cpp:428-460). Returns the per-channel <c>(data, width, height)</c> the caller needs
-    /// for color conversion, or <see langword="null"/> on an inverse-transform allocation failure or
-    /// malformed/truncated bitstream data (<see cref="PgfDecoderCore"/>'s macroblock reads throw
-    /// <see cref="PgfFormatException"/>/<see cref="PgfStreamException"/> for the latter - caught here,
-    /// alongside <see cref="TryOpen"/>'s header-parse try/catch, so every throwing path in this
+    /// <summary>Decodes every subband at <paramref name="level"/> for every channel, then
+    /// inverse-transforms all of them - direct port of one iteration of <c>CPGFImage::Read</c>'s loop
+    /// body (PGFimage.cpp:428-460). Returns the per-channel <c>(data, width, height)</c> the caller
+    /// needs for color conversion, or <see langword="null"/> on an inverse-transform allocation
+    /// failure or malformed/truncated bitstream data (<see cref="PgfDecoderCore"/>'s macroblock reads
+    /// throw <see cref="PgfFormatException"/>/<see cref="PgfStreamException"/> for the latter - caught
+    /// here, alongside <see cref="TryOpen"/>'s header-parse try/catch, so every throwing path in this
     /// session's lifetime fails closed the same way, matching managed-pgf-codec.md's Tier 5).
     /// Shared by <see cref="PgfImageDecoder"/> (calls this once per level down to 0) and
     /// <see cref="PgfProgressiveDecoder"/> (calls this once per level down to whatever level the
@@ -128,7 +146,7 @@ internal sealed class PgfDecodeSession
     {
         try
         {
-            for (int c = 0; c < 4; c++)
+            for (int c = 0; c < Channels.Length; c++)
             {
                 PgfWaveletTransform wt = Channels[c];
                 if (level == Levels)
@@ -141,8 +159,8 @@ internal sealed class PgfDecodeSession
                 wt.GetSubband(level, PgfSubbandOrientation.Hh).PlaceTile(Decoder, Quant);
             }
 
-            (int[] Data, int Width, int Height)[] result = new (int[], int, int)[4];
-            for (int c = 0; c < 4; c++)
+            (int[] Data, int Width, int Height)[] result = new (int[], int, int)[Channels.Length];
+            for (int c = 0; c < Channels.Length; c++)
             {
                 PgfCodecError err = Channels[c].InverseTransform(level, out int w, out int h, out int[] data);
                 if (err != PgfCodecError.None)

@@ -45,6 +45,12 @@ internal static partial class NativePgfOracle
         out byte outMode, out byte outBpp, out byte outChannels, out byte outUsedBitsPerChannel);
 
     [LibraryImport(LibraryName)]
+    [return: MarshalAs(UnmanagedType.U1)]
+    private static partial bool pgf_debug_decode_raw(
+        nint data, nuint dataLen, byte bpp, nint channelMap, int channelMapLen,
+        nint outBuffer, nuint outBufferLen, out uint outWidth, out uint outHeight);
+
+    [LibraryImport(LibraryName)]
     private static partial nint pgf_open(nint data, nuint dataLen, out uint outWidth, out uint outHeight, out int outLevels);
 
     [LibraryImport(LibraryName)]
@@ -172,6 +178,54 @@ internal static partial class NativePgfOracle
         width = (int)w;
         height = (int)h;
         return ok;
+    }
+
+    /// <summary>General-purpose decode oracle for any mode (pgf-all-image-modes.md): asks
+    /// <c>GetBitmap</c> for exactly <paramref name="bpp"/>/<paramref name="channelMap"/>'s worth of
+    /// interleaving - e.g. <c>bpp:8, channelMap:[0]</c> for a single grayscale/indexed channel,
+    /// <c>bpp:24, channelMap:[0,1,2]</c> for a 3-channel HSL/HSB/Lab-family mode - rather than
+    /// <see cref="TryDecode"/>'s hardcoded RGBA/32bpp shape. Bytes GetBitmap never touches (a wider
+    /// caller-requested stride than the mode's own real channel count) come back zeroed (the native
+    /// side's own <c>memset</c>), not uninitialized, so a caller can tell "real reconstructed byte"
+    /// from "not part of this mode's own output" - see <c>pgf_debug_decode_raw</c>'s doc comment.</summary>
+    public static unsafe bool TryDecodeRaw(
+        ReadOnlySpan<byte> pgfData, byte bpp, ReadOnlySpan<int> channelMap, out byte[]? raw, out int width, out int height)
+    {
+        raw = null;
+        width = height = 0;
+
+        if (!TryGetDimensions(pgfData, out int fullWidth, out int fullHeight))
+        {
+            // TryGetDimensions itself hardcodes Channels()==4, so it can't be reused for non-RGBA
+            // modes - fall back to the header-info oracle purely for dimensions here.
+            if (!TryGetHeaderInfo(pgfData, out fullWidth, out fullHeight, out _, out _, out _, out _, out _))
+            {
+                return false;
+            }
+        }
+
+        int bufferSize = checked(fullWidth * fullHeight * (bpp / 8));
+        byte[] buffer = new byte[bufferSize];
+        bool ok;
+        uint w, h;
+        fixed (byte* dataPtr = pgfData)
+        fixed (int* channelMapPtr = channelMap)
+        fixed (byte* bufferPtr = buffer)
+        {
+            ok = pgf_debug_decode_raw(
+                (nint)dataPtr, (nuint)pgfData.Length, bpp, (nint)channelMapPtr, channelMap.Length,
+                (nint)bufferPtr, (nuint)buffer.Length, out w, out h);
+        }
+
+        if (!ok)
+        {
+            return false;
+        }
+
+        width = (int)w;
+        height = (int)h;
+        raw = buffer;
+        return true;
     }
 
     /// <summary>Decodes with the real native decoder (unmodified production code path) - the decode

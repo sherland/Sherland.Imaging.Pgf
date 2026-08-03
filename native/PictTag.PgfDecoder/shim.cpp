@@ -479,4 +479,76 @@ PICTTAG_EXPORT bool pgf_debug_get_header_info(
     }
 }
 
+// pgf-all-image-modes.md: general-purpose oracle decode for any mode, with a caller-supplied bpp/
+// channelMap - unlike pgf_decode_bgra (hardcoded bpp=32/RGBA channelMap, Channels()==4-only), this
+// lets the test rig ask for exactly the interleaving a given mode's own real shape needs (e.g.
+// bpp=8/channelMap={0} for a single grayscale/indexed channel, bpp=24/channelMap={0,1,2} for a
+// 3-channel HSL/HSB/Lab-family mode) - the same real, caller-configurable GetBitmap contract
+// PGFimage.cpp:1772-1787's own doc comment describes, just not hardcoded to one shape. Built on
+// GetBitmap, the same call this shim's other exports already make many times without incident - NOT
+// GetChannel(), so this doesn't share pgf_debug_decode_channel's unresolved repeated-call crash risk.
+// channelMap must have exactly `channelCount` entries (validated by the real Channels() below, not
+// trusted blindly from the caller).
+PICTTAG_EXPORT bool pgf_debug_decode_raw(
+    const uint8_t* data, size_t dataLen, uint8_t bpp, const int32_t* channelMap, int32_t channelMapLen,
+    uint8_t* outBuffer, size_t outBufferLen, uint32_t* outWidth, uint32_t* outHeight)
+{
+    if (data == nullptr || dataLen == 0 || channelMap == nullptr || outBuffer == nullptr ||
+        outWidth == nullptr || outHeight == nullptr || bpp == 0 || bpp % 8 != 0)
+    {
+        return false;
+    }
+
+    try
+    {
+        CPGFMemoryStream stream(const_cast<UINT8*>(data), dataLen);
+        CPGFImage img;
+        img.ConfigureDecoder(false);
+        img.Open(&stream);
+
+        if (channelMapLen != img.Channels())
+        {
+            return false;
+        }
+
+        uint32_t width = img.Width();
+        uint32_t height = img.Height();
+        int pitch = static_cast<int>(width) * (bpp / 8);
+        size_t requiredSize = static_cast<size_t>(pitch) * height;
+        if (outBufferLen < requiredSize)
+        {
+            return false;
+        }
+
+        // GetBitmap only ever writes the source mode's own real channel count worth of bytes per
+        // pixel (PGFimage.cpp:1830 onward) - any remaining bytes in a wider caller-requested stride
+        // (e.g. a 4-byte stride for a genuinely 1- or 3-channel mode) are left exactly as this
+        // memset leaves them, so the C# caller can distinguish "real reconstructed byte" from
+        // "GetBitmap never touched this position" instead of reading uninitialized memory.
+        memset(outBuffer, 0, requiredSize);
+
+        img.Read();
+
+        // Fixed-size local array, not std::vector - matches this shim's/libpgf's own established
+        // "no STL" convention (see PgfDecoderHandle's doc comment above for why that matters for the
+        // WASM build specifically). MaxChannels (PGFtypes.h) is 8; channelMapLen was already
+        // validated above to equal the real Channels(), which can never exceed that.
+        int channelMapArr[MaxChannels];
+        for (int32_t i = 0; i < channelMapLen; i++)
+        {
+            channelMapArr[i] = channelMap[i];
+        }
+
+        img.GetBitmap(pitch, outBuffer, bpp, channelMapArr);
+
+        *outWidth = width;
+        *outHeight = height;
+        return true;
+    }
+    catch (...)
+    {
+        return false;
+    }
+}
+
 } // extern "C"

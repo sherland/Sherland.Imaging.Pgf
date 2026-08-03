@@ -46,7 +46,7 @@ exercised — not an oversight, and not silently dropped.
   `ImageModeIndexedColor` (to reject it) and `ImageModeRGBA`; `PgfDecodeSession.cs:63` fails closed
   on any other mode/channel count/bpp, and `PgfHeaderIO.Read` (`PgfHeader.cs:112`) throws outright
   on indexed color specifically rather than silently mis-parsing a color table this port never
-  models.
+  models. Planned: [`new-features/pgf-all-image-modes.md`](../new-features/pgf-all-image-modes.md).
 - **The `nLevels=0` "raw/uncoded" path** — for tiny images (`min(width,height) < 10`), the original
   codec stores channel data directly with no wavelet transform at all. Not ported: both
   `PgfDecodeSession.cs:70` (decode) and `PgfImageEncoder.cs:39` (encode) treat `NLevels == 0` as a
@@ -58,6 +58,7 @@ exercised — not an oversight, and not silently dropped.
   version flag (`PgfConstants.EncoderVersionFlags`, `PgfConstants.cs:67`, never includes it), so the
   real `ROIBlockHeader` is never actually read from or written to any file this app produces or
   consumes. Not ported at all — see `PgfMacroBlock.cs:10-19`'s doc comment for the full reasoning.
+  Planned: [`new-features/pgf-roi-support.md`](../new-features/pgf-roi-support.md).
 - **OpenMP multi-macroblock parallelism** — dead in the *native* build too (`CMakeLists.txt:22`,
   `LIBPGF_DISABLE_OPENMP`), so this port only implements the single-macroblock sequential path
   (same doc comment, `PgfMacroBlock.cs:19`).
@@ -80,7 +81,8 @@ exercised — not an oversight, and not silently dropped.
   `PictTag.PgfCodec`'s public API (`PgfImageDecoder.TryDecode`, `PgfImageEncoder.TryEncode`,
   `PgfProgressiveDecoder.TryDecodeLevel`) has no equivalent parameter — no progress reporting, no
   mid-decode abort hook. (The UI loaders layer their own `CancellationToken` checks *between* level
-  calls, but that's outside the codec itself, not a substitute for it.)
+  calls, but that's outside the codec itself, not a substitute for it.) Planned:
+  [`new-features/pgf-cancellation-and-progress.md`](../new-features/pgf-cancellation-and-progress.md).
 - **Big-endian hosts** (`PGF_USE_BIG_ENDIAN`) — not handled; this port assumes a little-endian host
   throughout (`PgfDecoderCore.cs:88-91`), matching every real deployment target here.
 
@@ -91,3 +93,9 @@ not permanent limitations of the approach. If a real digiKam library or a future
 one of them (a non-RGBA thumbnail mode, say), start from the equivalent native code path cited above
 and the doc comment at the matching C# file — each one already explains exactly what would need to
 change and why it was safe to skip until now.
+
+Three of these gaps already have draft PRDs (not started, written for completeness rather than an
+urgent product need — each says so honestly in its own Context section):
+[`pgf-cancellation-and-progress.md`](../new-features/pgf-cancellation-and-progress.md),
+[`pgf-roi-support.md`](../new-features/pgf-roi-support.md), and
+[`pgf-all-image-modes.md`](../new-features/pgf-all-image-modes.md).

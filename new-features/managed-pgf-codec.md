@@ -1053,7 +1053,9 @@ what actually settled it, per this PRD's own "verify, don't recall" standard.
 - **ROI reachability — resolved (Stages 1/4/5).** Confirmed never set by any real digiKam thumbnail
   or by this port's own encoder (which never sets the `PGFROI` flag); ROI header modeling was
   deliberately not ported, documented as a justified simplification at each stage it would have
-  mattered (`PgfMacroBlock`, `PgfSubband`, `PgfWaveletTransform`'s doc comments), not a gap.
+  mattered (`PgfMacroBlock`, `PgfSubband`, `PgfWaveletTransform`'s doc comments), not a gap. A
+  deliberate follow-up PRD exists if this capability is ever wanted anyway, for completeness rather
+  than a real need: [`new-features/pgf-roi-support.md`](pgf-roi-support.md).
 - **SIMD scope — resolved (Stage 11): none.** Stage 10's real numbers didn't show the headroom the
   stage sequence's own gating condition asked for (both native and managed decode already comfortably
   clear the interactive-responsiveness bar at realistic sizes) - see Stage 11's progress log entry.

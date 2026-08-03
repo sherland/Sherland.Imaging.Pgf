@@ -221,6 +221,58 @@ internal static class PgfColorConversion
         }
     }
 
+    // ---- LabColor (pgf-all-image-modes.md): its own group, not really Group A or Group C -
+    // shares Group A's simple per-channel encode transform (no cross-channel math), but needs Group
+    // C's chroma-upsample bookkeeping on decode (channel 0/L always full-resolution, channels 1-2/
+    // a,b upsampled) since Lab is downsample-eligible and Group A's other members aren't - see
+    // PgfModeInfo.SupportsDownsample's doc comment for the real, confirmed reason.
+
+    /// <summary>Direct port of <c>GetBitmap</c>'s <c>ImageModeLabColor</c> case (PGFimage.cpp:2124-2159):
+    /// each of 3 channels independently offset by <see cref="YuvOffset8"/> like Group A's
+    /// <see cref="DecodeYuvOffsetToTripleChannel"/> (no cross-channel transform), but channels 1,2
+    /// (a,b) use the same <c>uPos</c>/<c>uOffset</c> chroma-upsampling bookkeeping as
+    /// <see cref="DecodeYuvToBgra"/>/<see cref="DecodeYuvaToBgra"/> - channel 0 (L) always stays full
+    /// resolution. A=255 (no real alpha channel).</summary>
+    public static void DecodeYuvOffsetToTripleChannelWithUpsample(
+        ReadOnlySpan<int> c0, ReadOnlySpan<int> c1, ReadOnlySpan<int> c2,
+        int width, int height, int chromaWidth, bool downsample, Span<byte> bgra)
+    {
+        int yOffset = 0;
+        int uOffset = 0;
+        int rowStart = 0;
+
+        for (int i = 0; i < height; i++)
+        {
+            int uPos = uOffset;
+            int yPos = yOffset;
+            int cnt = 0;
+
+            for (int j = 0; j < width; j++)
+            {
+                bgra[rowStart + cnt] = Clamp8(c0[yPos] + YuvOffset8);
+                bgra[rowStart + cnt + 1] = Clamp8(c1[uPos] + YuvOffset8);
+                bgra[rowStart + cnt + 2] = Clamp8(c2[uPos] + YuvOffset8);
+                bgra[rowStart + cnt + 3] = 255;
+
+                cnt += 4;
+                if (!downsample || (j & 1) != 0)
+                {
+                    uPos++;
+                }
+
+                yPos++;
+            }
+
+            if (!downsample || (i & 1) != 0)
+            {
+                uOffset += chromaWidth;
+            }
+
+            yOffset += width;
+            rowStart += width * 4;
+        }
+    }
+
     private static byte Clamp8(int v) => v < 0 ? (byte)0 : v > 255 ? (byte)255 : (byte)v;
 
     // ---- Group A (pgf-all-image-modes.md): GrayScale/IndexedColor/HSLColor/HSBColor. NOT LabColor

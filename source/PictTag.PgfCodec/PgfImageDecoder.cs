@@ -47,6 +47,7 @@ public static class PgfImageDecoder
         PgfConstants.ImageModeHSLColor => true,
         PgfConstants.ImageModeHSBColor => true,
         PgfConstants.ImageModeRGBColor => true,
+        PgfConstants.ImageModeLabColor => true,
         _ => false,
     };
 
@@ -90,6 +91,11 @@ public static class PgfImageDecoder
                 break;
             case PgfConstants.ImageModeRGBColor:
                 PgfColorConversion.DecodeYuvToBgra(
+                    channelData[0].Data, channelData[1].Data, channelData[2].Data,
+                    width, height, channelData[1].Width, session.Downsample, bgra);
+                break;
+            case PgfConstants.ImageModeLabColor:
+                PgfColorConversion.DecodeYuvOffsetToTripleChannelWithUpsample(
                     channelData[0].Data, channelData[1].Data, channelData[2].Data,
                     width, height, channelData[1].Width, session.Downsample, bgra);
                 break;

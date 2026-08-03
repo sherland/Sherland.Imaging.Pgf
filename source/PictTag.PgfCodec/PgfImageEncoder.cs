@@ -97,6 +97,10 @@ internal static class PgfImageEncoder
                 break;
             case PgfConstants.ImageModeHSLColor:
             case PgfConstants.ImageModeHSBColor:
+            case PgfConstants.ImageModeLabColor:
+                // LabColor shares Group A's exact RgbToYuv case block (PGFimage.cpp:1445-1473) - it
+                // only needs its own dedicated code on the decode side (chroma-upsample bookkeeping,
+                // see PgfColorConversion.DecodeYuvOffsetToTripleChannelWithUpsample's doc comment).
                 PgfColorConversion.EncodeTripleChannelToYuvOffset(source, width, height, channelBuffers[0], channelBuffers[1], channelBuffers[2]);
                 break;
             case PgfConstants.ImageModeRGBColor:

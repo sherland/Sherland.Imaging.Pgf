@@ -41,7 +41,15 @@ skill first to turn it into one. This skill assumes the grounding work is alread
 
 Use `TodoWrite` with one todo per item in the PRD's own **"Stage sequence"** section, verbatim or
 near-verbatim. These PRDs are written stage-by-stage on purpose (each with its own "exit test") —
-resist the urge to reorganize into a different shape. If the PRD has an **"Open questions"**
+resist the urge to reorganize into a different shape *up front*. This doesn't mean the stage list is
+frozen once work starts: if implementing a stage surfaces a real, verified finding that changes what
+needs building (a hidden prerequisite the PRD didn't anticipate, like a foundational data-type fix
+everything else depends on; or a grouping the PRD got wrong once checked against both sides of the
+real source, splitting one planned stage into two) — insert, split, or reorder stages in the todo
+list and say so in a sentence, then keep going. This is squarely within "implement, test, move to the
+next stage" (section 3), not a redesign requiring a check-in: the PRD's own "Progress log" convention
+(section 4) is exactly where this kind of mid-flight correction gets recorded, the same way Stage 0
+(DataT correction) or a Group-A/Lab split would be. If the PRD has an **"Open questions"**
 section, resolve each one for real (read the cited source, reason from the actual algorithm/code,
 or run a small experiment) at the stage that needs it — usually Stage 1 — and write the decision
 down in prose immediately (in a doc comment and/or the Progress log draft), not just in your own
@@ -89,18 +97,29 @@ For each stage:
 
 Default to continuing through the full stage sequence without pausing for approval — these PRDs
 are written to be executed, and re-confirming each stage adds friction without adding information.
+**Never stop to ask permission to continue just because the remaining scope turned out to be large,
+because a stage revealed more stages'-worth of work than expected, or because the session is
+running long** — none of these are blockers, and asking "should I keep going?" when the answer is
+always yes wastes the user's attention on a non-decision. Invoking this skill already *is* the
+standing authorization to work through the entire stage sequence, however big it turns out to be, in
+one continuous run. If a checkpoint update feels warranted, say it in a sentence or two of plain text
+(what's done, what's left) and then keep working — don't pose it as a question and wait.
+
 Stop and use `AskUserQuestion` (or just flag it in text and wait) only when:
 
 - **A stage's premise turns out to be factually wrong** once checked against the real code (a cited
   API doesn't exist, a formula doesn't match the current implementation) — this is a "verify, don't
   recall" moment, not a rubber-stamp.
-- **The only remaining path is a substantial redesign** outside the PRD's own stated scope, not
-  just "more work than expected" within it.
+- **The only remaining path is a substantial redesign** outside the PRD's own stated scope — a
+  different architecture than the PRD itself proposed, not just more stages, more files, or more
+  hours of the same kind of work the PRD already anticipated.
 - **A genuine product/design decision has no answer derivable from the code, tests, or the PRD's own
   reasoning** — as opposed to an "Open question" the PRD itself frames as resolvable empirically
   (those, resolve yourself and document the reasoning; don't punt ordinary judgment calls upward).
 
-Otherwise: implement, test, move to the next stage.
+Otherwise: implement, test, move to the next stage. A large PRD (many stages, several groups of
+near-identical verification work, a long remaining todo list) is not itself a reason to stop — it's
+exactly the shape of task this skill exists for.
 
 ## 4. Documentation, once every stage is green
 

@@ -1,7 +1,8 @@
 # PGF codec: ROI (region of interest) support — PRD
 
-**Status: not started.** Closes a gap documented in [`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md)'s
-"Explicitly out of scope" list ("Region of interest (ROI) cropped decode/encode").
+**Status: done, all 6 stages shipped** (see "Progress log" below for the full record). Closed a gap
+previously documented in [`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md)'s "Explicitly out of scope" list
+("Region of interest (ROI) cropped decode/encode") — that item has moved to "Supported".
 
 ## Context
 
@@ -207,17 +208,32 @@ comparison, intermediate-stage comparison, 4-way round-trip matrix) with an ROI 
 
 ## Open questions
 
-- **Whether enabling ROI tiling measurably hurts compression ratio** for this app's real thumbnail
-  sizes/content — confirm empirically (Stage 6's own matrix already sweeps quality; add an
-  output-size comparison against the equivalent non-ROI encode) rather than assume tile boundaries
-  are cheap.
-- **Whether the native shim needs its own ROI-capable encode export**, or whether the C# encoder
-  (once Stage 4 lands) is sufficient for the round-trip matrix's cross-implementation legs — decide
-  based on how Stage 3/4 actually goes, not upfront.
+All three resolved during implementation - kept below (not deleted) as the record of what was asked
+and what actually settled it, per this repo's own "verify, don't recall" standard.
+
+- **Whether enabling ROI tiling measurably hurts compression ratio — resolved (Stage 6): yes,
+  measurably, and sometimes severely in relative terms.** Confirmed empirically (not assumed) across
+  4 sizes x 5 quality values: modest overhead (0-14%, occasionally negative) near-lossless, but up to
+  ~930% at aggressive quality on simple/small content, since every tile boundary forces its own
+  macroblock flush regardless of how little data that tile holds. See Stage 6's own Progress log
+  entry for the full measured table. Confirms ROI must stay strictly opt-in (this PRD's own Non-goals
+  section).
+- **Whether the native shim needs its own ROI-capable encode export — resolved (Stage 5): yes, and it
+  was cheap.** `pgf_encode_bgra_alloc_roi` turned out to be a one-line change from the existing
+  `pgf_encode_bgra_alloc` (`SetHeader(header, PGFROI)` instead of `SetHeader(header)` — `PGFROI` is a
+  documented public `SetHeader` parameter; the library does the rest of the ROI setup automatically).
+  Decided worth doing specifically because it gives the managed *decoder* (the highest-risk code in
+  this PRD) a genuinely independent reference to prove itself against, not just internal
+  self-consistency - see Stage 5's own Progress log entry for the full reasoning and the 7 tests this
+  unlocked.
 - **Whether `ResetStreamPos`'s "read the same image several times with different ROIs" pattern is
-  worth porting to `PgfProgressiveDecoder`**, or whether requiring a fresh `TryOpen` call per distinct
-  ROI request (simpler, matches this port's existing session-per-open model) is an acceptable
-  divergence — resolve once a real calling pattern (if any) exists to design against.
+  worth porting — resolved: no, not carried forward.** `PgfProgressiveDecoder.TrySetRoi` requires a
+  fresh `TryOpen` per distinct ROI request (throws `InvalidOperationException` if called twice, or
+  after decoding has started on the same instance) - no real calling pattern needing the more
+  flexible native model ever materialized during this PRD's own implementation (this PRD's Non-goals
+  section already ruled out a production call site), so the simpler, already-established
+  session-per-open divergence was kept. See `TrySetRoi`'s own doc comment (Stage 3's Progress log
+  entry) for the full reasoning.
 
 ## Progress log
 

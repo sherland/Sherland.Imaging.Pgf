@@ -42,7 +42,7 @@ made, what was tried, what broke and how it was fixed), see
   production-relevant shape; `TryEncodeMode` (every other mode) exists as test infrastructure to
   produce real fixtures to decode-test against, not a second production path.
 - Proven byte-exact against the real native decoder/encoder across a wide fixture/dimension/quality
-  matrix, every mode, both directions (`PictTag.PgfCodec.Tests`, 1130 tests) — see
+  matrix, every mode, both directions (`PictTag.PgfCodec.Tests`, 1259 tests) — see
   `managed-pgf-codec.md`'s Stage 7-9 progress log entries for the original RGBA-only verification and
   `pgf-all-image-modes.md`'s own Progress log for the per-mode extension.
 - **Header metadata: user data, and the `nLevels=0` "raw/uncoded" small-image path** — arbitrary
@@ -76,6 +76,25 @@ made, what was tried, what broke and how it was fixed), see
   between per-level calls). See
   [`new-features/pgf-cancellation-and-progress.md`](../new-features/pgf-cancellation-and-progress.md)
   for the full record.
+- **Region of interest (ROI) cropped decode/encode** — an opt-in capability, not the default: every
+  real digiKam file and this app's own default encode output stays non-ROI (`PGFROI` version flag
+  unset) unless a caller explicitly asks for it. Decode: `PgfProgressiveDecoder.TrySetRoi`/
+  `TryGetAlignedRoi`/`TryGetAccurateRoi` (the tile/wavelet-margin-aligned buffer extent vs. the
+  caller's own originally-requested, pixel-exact-guaranteed sub-rectangle — `CPGFImage::
+  GetAlignedROI`/`ComputeLevelROI`'s own distinction, not interchangeable) decode only the tiles
+  relevant to a requested rectangle, skipping the rest (`PgfDecoderCore.SkipTileBuffer`). Encode:
+  `PgfImageEncoder.TryEncode`/`TryEncodeMode`'s `roi` parameter produces a tile-structured,
+  `PGFROI`-flagged file — every tile is still encoded (ROI encoding is a bitstream-layout choice, not
+  "encode only part of the image"), so this exists so a decoder can later selectively skip tiles, not
+  to shrink encode output. Enabling it has a real, sometimes large *relative* compression-ratio cost
+  at aggressive quality settings on simple content (every tile boundary forces its own macroblock
+  flush) — confirmed empirically, not assumed; see `pgf-roi-support.md`'s own Progress log for the
+  measured numbers and exactly why this must stay opt-in. Proven correct three ways: self-consistency
+  (managed encode → managed decode) across a size x quality x rectangle-shape matrix, and
+  cross-implementation against the real native C++ encoder specifically (the native shim has no
+  ROI-aware *decode* export — a deliberate scope boundary, not a gap, since the higher-risk leg was
+  the managed decoder, already proven against that independent reference). See
+  [`new-features/pgf-roi-support.md`](../new-features/pgf-roi-support.md) for the full record.
 
 ## Explicitly out of scope
 
@@ -94,13 +113,6 @@ exercised — not an oversight, and not silently dropped.
   to special-case a file's own historical version flag, for a shape no real digiKam thumbnail or this
   port's own encoder (which always sets `Version7`) could ever produce — deliberately left unported,
   not silently dropped (`PgfColorConversion`'s Group G doc comment has the full reasoning).
-- **Region of interest (ROI) cropped decode/encode** — the native codec compiles this in
-  unconditionally (`PGFplatform.h:60`'s `#define __PGFROISUPPORT__`, never suppressed in this
-  build), but it's dead code in practice: nothing that touches this codebase ever sets the `PGFROI`
-  version flag (`PgfConstants.EncoderVersionFlags`, `PgfConstants.cs:67`, never includes it), so the
-  real `ROIBlockHeader` is never actually read from or written to any file this app produces or
-  consumes. Not ported at all — see `PgfMacroBlock.cs:10-19`'s doc comment for the full reasoning.
-  Planned: [`new-features/pgf-roi-support.md`](../new-features/pgf-roi-support.md).
 - **OpenMP multi-macroblock parallelism** — dead in the *native* build too (`CMakeLists.txt:22`,
   `LIBPGF_DISABLE_OPENMP`), so this port only implements the single-macroblock sequential path
   (same doc comment, `PgfMacroBlock.cs:19`).
@@ -124,20 +136,14 @@ None of the above are architectural dead ends — they're scope cuts based on *t
 not permanent limitations of the approach. If a real digiKam library or a future feature ever needs
 one of them (a non-RGBA thumbnail mode, say), start from the equivalent native code path cited above
 and the doc comment at the matching C# file — each one already explains exactly what would need to
-change and why it was safe to skip until now. One real candidate for "a future need": if
-`PictTag.PgfCodec` is ever published as a standalone NuGet package, a general consumer's real usage
-won't be constrained to digiKam's own thumbnail shape (small, RGBA, metadata-free) the way this app's
-own usage is — large-image ROI is the remaining item above that gets noticeably more likely to matter
-under that framing (user data and tiny-image support, the other two candidates this reasoning
-originally applied to, are done — see `pgf-user-data-and-small-images.md`'s own Progress log), even
-though none of them have a current internal need. (Publishing as a NuGet also raises a real, separate
-question this list doesn't cover: this port is a close derivative of digiKam's vendored `libpgf`,
-LGPL-2.1+ — external distribution likely needs the license text/attribution bundled and a real
-compliance check, which is a legal question for someone else to own, not a technical gap to close
-here.)
+change and why it was safe to skip until now. (Large-image ROI — the one candidate this section used
+to flag as "gets noticeably more likely to matter if `PictTag.PgfCodec` is ever published as a
+standalone NuGet package" — is done; see the Supported section above and `pgf-roi-support.md`'s own
+Progress log. Publishing as a NuGet still raises a real, separate question this list doesn't cover:
+this port is a close derivative of digiKam's vendored `libpgf`, LGPL-2.1+ — external distribution
+likely needs the license text/attribution bundled and a real compliance check, which is a legal
+question for someone else to own, not a technical gap to close here.)
 
-One of these gaps still has a draft PRD (not started, written for completeness rather than an urgent
-product need — it says so honestly in its own Context section):
-[`pgf-roi-support.md`](../new-features/pgf-roi-support.md). (`pgf-cancellation-and-progress.md`,
-`pgf-all-image-modes.md`, and `pgf-user-data-and-small-images.md` are all done — see each one's own
-Progress log.)
+Every gap this codebase's own staged PRDs (`pgf-cancellation-and-progress.md`, `pgf-all-image-modes.md`,
+`pgf-user-data-and-small-images.md`, `pgf-roi-support.md`) originally tracked is now closed — see each
+one's own Progress log for the full record.

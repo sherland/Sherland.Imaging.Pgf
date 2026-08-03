@@ -284,3 +284,37 @@ native decoder** (`NativePgfOracle.TryDecode`) that a C#-encoded file with user 
 decodes correctly there too - proof the `hSize`/post-header accounting is right by the format's own
 real parser, not just self-consistent within this port's own reader. Full regression:
 `PictTag.PgfCodec.Tests` 1058 → 1069 (11 new, 0 failed).
+
+**Stage 3 (untrusted-length bounding review) — done, found and fixed a real bug beyond user data.**
+Re-verified `PgfHeaderIO.Read`'s own two named cases first: the level-length array is safe regardless
+of `hSize` (`header.NLevels` is a `byte`, max 255, and each entry read already fails closed via
+`PgfMemoryReader.Read`'s truncate-and-report-actual-count contract if the stream runs out early); the
+post-header size is safe too (the color table allocation is always the fixed `ColorTableSize`
+constant, never sized from the declared `hSize`, and Stage 1 already bounds user data specifically).
+Both confirmed via existing tests, no code change needed there.
+
+The broader "second look" Goal 3 explicitly invites turned up a real, previously-undetected bug one
+level down from `PgfHeaderIO` itself, in `PgfDecodeSession.TryOpen` (its very next consumer):
+`checked((int)header.Width)`/`Height` threw an uncaught `OverflowException` - not
+`PgfFormatException`/`PgfStreamException`, so none of this codec's existing catch blocks caught it -
+for any header declaring a width/height that doesn't fit in an `int` (confirmed empirically with a
+throwaway repro before touching any code, not assumed: `Width = 0xFFFFFFFF` crashed straight through
+`PgfImageDecoder.TryDecode`). A second, related overflow existed one step further: two
+individually-int-sized dimensions (e.g. 100,000 × 100,000 - unremarkable on their own) whose product
+times 4 (the BGRA buffer size `PgfImageDecoder.TryDecode`/`PgfProgressiveDecoder.TryDecodeLevel` each
+separately compute via their own `checked(width * height * 4)`) overflows `int` and throws there
+instead. Both fixed with explicit range checks in `TryOpen` (before the cast, and via
+`(long)fullWidth * fullHeight > int.MaxValue / 4` before returning), so every downstream `checked(...)`
+can now never actually overflow - failing closed once, at the single point that already parses the
+header, rather than duplicating checks in every consumer. `PgfModeInfo.ExpectedSourceByteLength`'s own
+`checked(...)` was checked too and left alone: it's encode-side only, driven by a caller's own
+width/height (their own image), not a value read from an untrusted file - out of Goal 3's scope, which
+is specifically about decoding untrusted external input. `PgfWaveletTransform`'s per-level loop (up to
+256 iterations for a maximal byte `NLevels`) was also checked and confirmed already safe: dimensions
+shrink via `>>1` toward 0 and stay there, never negative, terminating in exactly `NLevels+1`
+iterations regardless of input - no fix needed.
+
+New tests (8, `PgfUntrustedLengthTests.cs`): width/height that don't fit in `int` at all, width×height
+that overflows the buffer-size multiplication, zero width/height, the same fixed-closed behavior via
+`PgfProgressiveDecoder.TryOpen`, and a normal-sized-image regression proving the new bound doesn't
+narrow real, valid input. Full regression: `PictTag.PgfCodec.Tests` 1069 → 1077 (8 new, 0 failed).

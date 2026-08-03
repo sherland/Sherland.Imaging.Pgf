@@ -102,9 +102,30 @@ internal sealed class PgfDecodeSession
                 return null;
             }
 
-            int fullWidth = checked((int)header.Width);
-            int fullHeight = checked((int)header.Height);
-            if (fullWidth <= 0 || fullHeight <= 0)
+            // pgf-user-data-and-small-images.md Goal 3's "second look" at the rest of the
+            // header-parsing code, beyond user data specifically: Width/Height are just as
+            // untrusted-declared as any post-header length for a general (non-digiKam) caller, and
+            // the original unconditional `checked((int)header.Width)` cast threw an uncaught
+            // OverflowException - confirmed empirically, not assumed - for any header declaring a
+            // width/height that doesn't fit in an int (e.g. 0xFFFFFFFF), propagating straight past
+            // every catch block in this call chain instead of failing closed. Explicit range checks
+            // first avoid the throw entirely.
+            if (header.Width == 0 || header.Height == 0 || header.Width > int.MaxValue || header.Height > int.MaxValue)
+            {
+                return null;
+            }
+
+            int fullWidth = (int)header.Width;
+            int fullHeight = (int)header.Height;
+
+            // A second, related overflow: FullWidth/FullHeight individually fit in an int here, but
+            // PgfImageDecoder.TryDecode/PgfProgressiveDecoder.TryDecodeLevel each later compute
+            // `checked(width * height * 4)` for the decoded BGRA buffer size - confirmed reachable
+            // (e.g. 100000x100000, unremarkable individually) to overflow *that* multiplication and
+            // throw uncaught there instead. Bounding it once here means neither downstream
+            // `checked(...)` can ever actually overflow - failing closed at the single point that
+            // already parses the header, rather than duplicating this check in every consumer.
+            if ((long)fullWidth * fullHeight > int.MaxValue / 4)
             {
                 return null;
             }

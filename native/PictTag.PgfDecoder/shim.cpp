@@ -361,6 +361,97 @@ PICTTAG_EXPORT void pgf_free_encoded(uint8_t* data)
     delete[] data;
 }
 
+// pgf-all-image-modes.md Stage 9: general mode-parameterized encode, generalizing
+// pgf_encode_bgra_alloc (RGBA-only) to every mode this PRD covers - the missing "real native
+// encoder" leg of the round-trip matrix for non-RGBA modes. PgfImageEncoder.TryEncodeMode was
+// already verified against this shim's *decode* side (pgf_debug_decode_raw); this closes the loop
+// the other direction - does the real encoder, given this port's own source pixel data, produce a
+// file this port's own managed decoder reads back correctly. Same allocation/exception-safety shape
+// as pgf_encode_bgra_alloc (owned-pointer + pgf_free_encoded, oversized non-growable
+// CPGFMemoryStream, width/height >= 10 guard - see that function's own doc comment for why each of
+// those choices exists).
+//
+// bpp/channels are caller-supplied rather than derived from mode here (unlike this port's own
+// PgfHeaderIO.CreateForMode / PgfModeInfo.TryGetBppAndChannels) so a test can also exercise
+// CompleteHeader's own real validation/rejection paths if it ever needs to - real callers always
+// pass the same canonical values PgfModeInfo.TryGetBppAndChannels returns.
+PICTTAG_EXPORT bool pgf_encode_raw_alloc(
+    const uint8_t* source, uint32_t width, uint32_t height, uint8_t quality, uint8_t mode, uint8_t bpp, uint8_t channels,
+    const uint8_t* colorTable, uint32_t colorTableLen,
+    uint8_t** outData, size_t* outLen)
+{
+    if (source == nullptr || width == 0 || height == 0 || outData == nullptr || outLen == nullptr ||
+        channels == 0 || channels > MaxChannels || bpp == 0)
+    {
+        return false;
+    }
+
+    // Same degenerate-size guard as pgf_encode_bgra_alloc, same reason (real, repeatable heap
+    // corruption in the nLevels==0 raw/uncoded path - see that function's doc comment).
+    if (width < 10 || height < 10)
+    {
+        return false;
+    }
+
+    *outData = nullptr;
+    *outLen = 0;
+
+    // Ceiling bits-to-bytes-per-row - the same ImportBitmap/RgbToYuv contract as GetBitmap's own
+    // pitch (pgf_debug_decode_raw's doc comment), needed here too since bpp==1 (Bitmap) and bpp==12
+    // (RGB12) are both real, valid requests.
+    size_t pitch = (static_cast<uint64_t>(width) * bpp + 7) / 8;
+    size_t bufferCapacity = pitch * height * 2 + 65536;
+    uint8_t* rawBuffer = new uint8_t[bufferCapacity];
+
+    try
+    {
+        PGFHeader header;
+        header.width = width;
+        header.height = height;
+        header.nLevels = 0; // 0 = auto, same as pgf_encode_bgra_alloc
+        header.quality = quality;
+        header.bpp = bpp;
+        header.channels = channels;
+        header.mode = mode;
+        header.usedBitsPerChannel = 0; // let CompleteHeader (inside SetHeader) derive it
+
+        CPGFImage img;
+        img.ConfigureEncoder(false);
+        img.SetHeader(header);
+
+        // colorTableLen is a BYTE count from the C# caller (matching ColorTableSize = ColorTableLen *
+        // sizeof(RGBQUAD) = 1024), not an entry count (ColorTableLen = 256) - comparing against the
+        // wrong constant here silently skipped SetColorTable entirely for every real call, caught by
+        // PgfNativeEncodeRoundTripTests.IndexedColor_NativeEncodeThenManagedDecode_RoundTripsExactly
+        // (decoded colors came back as the color table's zero-initialized default, not the real
+        // palette).
+        if (mode == ImageModeIndexedColor && colorTable != nullptr && colorTableLen == ColorTableSize)
+        {
+            img.SetColorTable(0, ColorTableLen, reinterpret_cast<const RGBQUAD*>(colorTable));
+        }
+
+        int channelMap[] = { 0, 1, 2, 3, 4, 5, 6, 7 };
+        img.ImportBitmap(static_cast<int>(pitch), const_cast<uint8_t*>(source), bpp, channelMap);
+
+        CPGFMemoryStream stream(rawBuffer, bufferCapacity);
+        img.Write(&stream);
+
+        size_t written = static_cast<size_t>(stream.GetPos());
+        uint8_t* result = new uint8_t[written];
+        memcpy(result, stream.GetBuffer(), written);
+        delete[] rawBuffer;
+
+        *outData = result;
+        *outLen = written;
+        return true;
+    }
+    catch (...)
+    {
+        delete[] rawBuffer;
+        return false;
+    }
+}
+
 // Dumps one channel's raw post-decode/pre-colorconversion DataT buffer (DataT = INT32 in this
 // build - see PGFtypes.h; __PGF32SUPPORT__ is active by PGFplatform.h's own default, since NPGF32
 // is never defined anywhere - pgf-all-image-modes.md's DataT correction) after decoding down to

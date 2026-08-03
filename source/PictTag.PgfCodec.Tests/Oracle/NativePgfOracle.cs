@@ -34,6 +34,12 @@ internal static partial class NativePgfOracle
 
     [LibraryImport(LibraryName)]
     [return: MarshalAs(UnmanagedType.U1)]
+    private static partial bool pgf_encode_raw_alloc(
+        nint source, uint width, uint height, byte quality, byte mode, byte bpp, byte channels,
+        nint colorTable, uint colorTableLen, out nint outData, out nuint outLen);
+
+    [LibraryImport(LibraryName)]
+    [return: MarshalAs(UnmanagedType.U1)]
     private static partial bool pgf_debug_decode_channel(
         nint data, nuint dataLen, int level, int channel,
         nint outBuffer, nuint outBufferLen, out uint outWidth, out uint outHeight);
@@ -276,6 +282,53 @@ internal static partial class NativePgfOracle
         fixed (byte* bgraPtr = bgra)
         {
             encoded = pgf_encode_bgra_alloc((nint)bgraPtr, (uint)width, (uint)height, quality, out dataPtr, out dataLen);
+        }
+
+        if (!encoded)
+        {
+            return false;
+        }
+
+        try
+        {
+            byte[] result = new byte[dataLen];
+            fixed (byte* resultPtr = result)
+            {
+                Buffer.MemoryCopy((void*)dataPtr, resultPtr, dataLen, dataLen);
+            }
+
+            pgfBytes = result;
+            return true;
+        }
+        finally
+        {
+            pgf_free_encoded(dataPtr);
+        }
+    }
+
+    /// <summary>pgf-all-image-modes.md Stage 9: general mode-parameterized encode with the real
+    /// native encoder - generalizes <see cref="TryEncode"/> to every mode this PRD covers, closing
+    /// the "native encode" leg of the round-trip matrix for non-RGBA modes (see
+    /// <c>pgf_encode_raw_alloc</c>'s doc comment in shim.cpp). <paramref name="source"/> must be
+    /// shaped exactly like <see cref="PictTag.PgfCodec.PgfImageEncoder.TryEncodeMode"/>'s own input
+    /// contract for <paramref name="mode"/> (tightly packed, the mode's own real bpp).
+    /// <paramref name="colorTable"/> is only meaningful for
+    /// <see cref="PictTag.PgfCodec.PgfConstants.ImageModeIndexedColor"/>.</summary>
+    public static unsafe bool TryEncodeMode(
+        ReadOnlySpan<byte> source, int width, int height, byte quality, byte mode, byte bpp, byte channels,
+        ReadOnlySpan<byte> colorTable, out byte[]? pgfBytes)
+    {
+        pgfBytes = null;
+
+        nint dataPtr;
+        nuint dataLen;
+        bool encoded;
+        fixed (byte* sourcePtr = source)
+        fixed (byte* colorTablePtr = colorTable)
+        {
+            encoded = pgf_encode_raw_alloc(
+                (nint)sourcePtr, (uint)width, (uint)height, quality, mode, bpp, channels,
+                (nint)colorTablePtr, (uint)colorTable.Length, out dataPtr, out dataLen);
         }
 
         if (!encoded)

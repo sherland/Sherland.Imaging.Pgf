@@ -4,8 +4,9 @@ description: >-
   Implement one of this repo's own staged PRDs (`new-features/*.md`, e.g.
   `managed-pgf-codec.md`, `pgf-cancellation-and-progress.md`, `pgf-roi-support.md`) end to end:
   work through its own "Stage sequence", resolve its "Open questions" empirically, keep the full
-  test suite green at every stage, and update both the PRD's own "Progress log" and any
-  cross-referencing docs/*.md pages at the end. USE FOR: "/implement-prd <file-reference>",
+  test suite green at every stage, write that stage's own "Progress log" entry as part of each
+  stage's commit, and at the end verify the whole log plus any cross-referencing docs/*.md pages.
+  USE FOR: "/implement-prd <file-reference>",
   "implement new-features/X.md", "work through this PRD", continuing a partially-done PRD found
   in this repo. DO NOT USE FOR: a spec pasted from outside this repo that hasn't been verified
   against the real codebase yet (use the `spec-to-staged-plan` skill first to turn it into a
@@ -89,9 +90,18 @@ For each stage:
    to prove the stage did something; "available but unused library surface" is a legitimate,
    PRD-anticipated outcome, not an incomplete job. Conversely, don't skip a call site that has a
    genuine gap just because wiring it takes a few more lines.
-7. Once this stage's implementation is done and the full regression gate (step 5) is green, **commit
-   this stage** — see "Commit after every stage" below. Do this before starting the next stage, not
-   in one batch at the end.
+7. **Write this stage's own entry in the PRD's "Progress log" section now, not later** — what was
+   built, what was found (including anything the PRD got wrong that you corrected, any stage you
+   inserted/split per section 1, and any Open Question you resolved at this stage), what broke and
+   how it was fixed, real test counts before/after. Append it to the (possibly still-empty, possibly
+   partially-filled-from-earlier-stages) Progress log section in the same edit as the rest of this
+   stage's work — the log is built up incrementally, one entry per stage as it actually happens, the
+   same way the stage's own code and tests are. Do not defer this to a batch write-up in the
+   Documentation stage (section 4) — by the time that stage runs, every prior stage's entry should
+   already exist and only need verifying, not drafting from memory of a much earlier turn.
+8. Once this stage's implementation, tests, Progress log entry, and the full regression gate (step 5)
+   are green, **commit this stage** — see "Commit after every stage" below. Do this before starting
+   the next stage, not in one batch at the end.
 
 ## 3. When to keep going vs. stop and ask
 
@@ -127,12 +137,18 @@ This is its own PRD stage in most of these documents ("Documentation") — treat
 optional polish:
 
 1. **The PRD file itself**: flip the top "Status" line (e.g. `**Status: not started.**` →
-   `**Status: done, all N stages shipped**`, pointing at the Progress log). Fill in the
-   **"Progress log"** section with one entry per stage: what was built, what was found (including
-   anything the PRD got wrong that you corrected), what broke and how it was fixed, and real test
-   counts (before/after). This is this repo's own established convention (see
-   `managed-pgf-codec.md`'s Progress log for the reference shape) — it's the authoritative
-   narrative other future work and PRDs link back to, not a changelog nobody reads.
+   `**Status: done, all N stages shipped**`, pointing at the Progress log). Then **verify the
+   "Progress log" section, don't draft it from scratch** — if section 2 step 7 was followed, every
+   stage already has its own entry from when that stage actually landed. Read the whole log start to
+   finish against the real `git log`/diffs for this PRD's commits and check: every stage in the
+   "Stage sequence" has a matching entry (none silently skipped), every inserted/split stage
+   (section 1) and every resolved Open Question is recorded with its reasoning, test counts in the
+   log match what the final full-suite run actually reports, and nothing reads like a vague
+   after-the-fact summary rather than the real per-stage account. Fix anything wrong or missing now —
+   this is the last checkpoint before the log becomes the authoritative narrative other future work
+   and PRDs link back to (see `managed-pgf-codec.md`'s Progress log for the reference shape), not a
+   changelog nobody reads. If a stage's entry is genuinely missing (log-writing was skipped
+   mid-run), write it now from the real commit diff for that stage, not from memory.
 2. **Every `docs/*.md` "current-state reference" page** the PRD is closing a gap in: move the
    relevant item between its "out of scope"/"supported" (or equivalent) lists, and fix any
    footer/summary text elsewhere on that page that counts remaining PRDs or lists this one as
@@ -158,9 +174,11 @@ change instead of one large diff at the end.
   the diff.
 - Stage the exact files that stage touched (new + modified) explicitly rather than `git add -A`, and
   review `git status`/`git diff --stat` before committing.
-- The Documentation stage (section 4) gets its own commit too, once the PRD's Status line/Progress
-  log and any cross-referenced `docs/*.md` pages are updated — it's the closing stage, not something
-  folded silently into the last code commit.
+- Each stage's commit includes that stage's own Progress log entry (section 2, step 7) alongside its
+  code and tests — the PRD file itself is a normal part of the stage's diff, not held back for later.
+- The Documentation stage (section 4) gets its own commit too, once the PRD's Status line is flipped,
+  the Progress log has been verified/corrected end to end, and any cross-referenced `docs/*.md` pages
+  are updated — it's the closing stage, not something folded silently into the last code commit.
 - This per-stage cadence is specific to running this skill. It doesn't change this repo's general
   rule for everything outside `/implement-prd` — still confirm before committing unrelated work, and
   never force-push, amend a previous stage's commit, or touch history that predates this skill's own

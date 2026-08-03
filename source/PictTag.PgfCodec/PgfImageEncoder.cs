@@ -85,7 +85,10 @@ internal static class PgfImageEncoder
         // methods) - the one place a new PgfImageDecoder.IsModeSupported mode needs a case added.
         switch (mode)
         {
+            // CMYKColor shares RGBA's exact RgbToYuv case block (PGFimage.cpp:1578-1579) - see
+            // PgfImageDecoder.ConvertToBgra's matching comment on the decode side.
             case PgfConstants.ImageModeRGBA:
+            case PgfConstants.ImageModeCMYKColor:
                 PgfColorConversion.EncodeBgraToYuva(source, width, height, channelBuffers[0], channelBuffers[1], channelBuffers[2], channelBuffers[3]);
                 break;
             case PgfConstants.ImageModeGrayScale:

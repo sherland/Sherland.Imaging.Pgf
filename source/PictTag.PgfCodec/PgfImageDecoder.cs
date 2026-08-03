@@ -41,6 +41,7 @@ public static class PgfImageDecoder
     internal static bool IsModeSupported(byte mode) => mode switch
     {
         PgfConstants.ImageModeRGBA => true,
+        PgfConstants.ImageModeCMYKColor => true,
         PgfConstants.ImageModeGrayScale => true,
         PgfConstants.ImageModeIndexedColor => true,
         PgfConstants.ImageModeHSLColor => true,
@@ -65,7 +66,12 @@ public static class PgfImageDecoder
 
         switch (session.Mode)
         {
+            // CMYKColor shares RGBA's exact GetBitmap case block (PGFimage.cpp:2232-2233) - not a
+            // real CMYK colorimetric transform, the native codec's own established (if loose)
+            // treatment of a 4th channel as alpha-like regardless of what it represents, confirmed
+            // directly against the source, not assumed - see PgfColorConversion's class doc comment.
             case PgfConstants.ImageModeRGBA:
+            case PgfConstants.ImageModeCMYKColor:
                 PgfColorConversion.DecodeYuvaToBgra(
                     channelData[0].Data, channelData[1].Data, channelData[2].Data, channelData[3].Data,
                     width, height, channelData[1].Width, session.Downsample, bgra);

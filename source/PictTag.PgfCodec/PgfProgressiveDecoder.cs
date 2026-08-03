@@ -29,6 +29,8 @@ public sealed class PgfProgressiveDecoder
     private readonly PgfDecodeSession session;
     private readonly (int[] Data, int Width, int Height)[] lastDecoded;
     private int currentLevel;
+    private bool roiEnabled;
+    private bool roiSetRoiCalled;
 
     private PgfProgressiveDecoder(PgfDecodeSession session)
     {
@@ -88,6 +90,75 @@ public sealed class PgfProgressiveDecoder
 
     private static int LevelSize(int size, int level) => (size + (1 << level) - 1) >> level;
 
+    /// <summary>Enables ROI decoding for the rest of this instance's lifetime, mirroring
+    /// <c>CPGFImage::Read(rect,...)</c>'s <c>SetROI(rect)</c> call (PGFimage.cpp:517) - clamps
+    /// <paramref name="roi"/> to <see cref="Width"/>/<see cref="Height"/> exactly like the native's
+    /// own <c>Read(rect,...)</c> does (<c>rect.right==0||rect.right&gt;width</c> etc.), rejecting an
+    /// out-of-bounds top-left the same way the native's own <c>ASSERT</c> would (fail closed - a
+    /// debug-only native ASSERT is not this port's error-handling convention, per this codebase's
+    /// established "verify, don't recall" fail-closed philosophy elsewhere in this file). Also
+    /// returns <see langword="false"/> when the file itself isn't ROI-flagged
+    /// (<see cref="PgfDecodeSession.RoiSupported"/>'s own doc comment: a real, deliberate
+    /// stricter-than-native divergence, since the native's own equivalent silently falls back to a
+    /// plain full decode instead of reporting failure).
+    ///
+    /// <b>One-ROI-per-session divergence</b> (resolves this PRD's "Open questions" third item): the
+    /// native <c>CPGFImage</c> supports re-reading the same open image with a different ROI by
+    /// resetting the decoder's stream position first (<c>ResetStreamPos</c>'s own doc comment,
+    /// <c>Read(rect,...)</c>'s <c>levelDiff &lt;= 0</c> branch). This port does not carry that
+    /// forward: <see cref="TrySetRoi"/> must be called before the first <see cref="TryDecodeLevel{TResult}"/>
+    /// call on this instance, and calling it again (or after decoding has started) throws. No real
+    /// calling pattern needing multiple ROIs per open image exists anywhere in this codebase (this
+    /// PRD's own Non-goals section already rules out a production call site) - open a fresh
+    /// <see cref="TryOpen"/> session per distinct ROI request instead, matching this port's existing
+    /// session-per-open model everywhere else rather than inventing a more flexible one this app has
+    /// no use for.</summary>
+    public bool TrySetRoi(PgfRoi roi)
+    {
+        if (roiSetRoiCalled)
+        {
+            throw new InvalidOperationException("TrySetRoi was already called on this instance.");
+        }
+
+        if (currentLevel != Levels)
+        {
+            throw new InvalidOperationException("TrySetRoi must be called before the first TryDecodeLevel call.");
+        }
+
+        roiSetRoiCalled = true;
+
+        if (!session.RoiSupported || Levels == 0 || roi.Left < 0 || roi.Top < 0 || roi.Left >= Width || roi.Top >= Height)
+        {
+            return false;
+        }
+
+        int right = roi.Right <= 0 || roi.Right > Width ? Width : roi.Right;
+        int bottom = roi.Bottom <= 0 || roi.Bottom > Height ? Height : roi.Bottom;
+
+        session.SetRoi(new PgfRoi(roi.Left, roi.Top, right, bottom));
+        roiEnabled = true;
+        return true;
+    }
+
+    /// <summary>Direct port of <c>CWaveletTransform::GetAlignedROI</c> as exposed through channel 0
+    /// (luma/full-resolution) - the actual, tile/wavelet-aligned pixel rectangle
+    /// <paramref name="level"/>'s most recent <see cref="TryDecodeLevel{TResult}"/> call reconstructed
+    /// (per this PRD's "Why this needs to be grounded" section: the caller's requested rectangle
+    /// "might be cropped" - never assume the whole decoded buffer is valid content without checking
+    /// this). Only meaningful after <see cref="TrySetRoi"/> returned <see langword="true"/> and
+    /// <paramref name="level"/> has actually been decoded on this instance.</summary>
+    public bool TryGetAlignedRoi(int level, out PgfRoi alignedRoi)
+    {
+        if (!roiEnabled || level < 0 || level > Levels)
+        {
+            alignedRoi = default;
+            return false;
+        }
+
+        alignedRoi = session.Channels[0].GetAlignedROI(level);
+        return true;
+    }
+
     /// <summary>Direct port of <c>CPGFImage::Read(level)</c>'s non-ROI loop (PGFimage.cpp:428-475)
     /// followed by <c>GetBitmap</c>: decodes any not-yet-reached levels down to
     /// <paramref name="level"/> (a no-op if already there or past it from an earlier call - matching
@@ -131,7 +202,9 @@ public sealed class PgfProgressiveDecoder
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            (int[] Data, int Width, int Height)[]? decoded = session.DecodeOneLevel(currentLevel);
+            (int[] Data, int Width, int Height)[]? decoded = roiEnabled
+                ? session.DecodeOneLevelRoi(currentLevel)
+                : session.DecodeOneLevel(currentLevel);
             if (decoded is null)
             {
                 return false;

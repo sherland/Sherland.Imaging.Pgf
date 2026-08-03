@@ -355,13 +355,28 @@ internal sealed class PgfWaveletTransform
         }
     }
 
-    /// <summary>Direct port of <c>CWaveletTransform::InverseTransform</c>'s non-ROI branch
-    /// (WaveletTransform.cpp:246) - inverse lifting transform of all 4 subbands at
+    /// <summary>Direct port of <c>CWaveletTransform::InverseTransform</c> (WaveletTransform.cpp:246),
+    /// including its ROI branch (lines 257-332) - inverse lifting transform of all 4 subbands at
     /// <paramref name="srcLevel"/>, combined into the LL subband at <c>srcLevel - 1</c>. The
     /// just-consumed <paramref name="srcLevel"/> subbands are freed at the end - this is the actual
     /// mechanism behind "continuing from wherever it left off" between separate progressive-decode
     /// calls (Stage 9), not a special resume protocol: re-decoding an already-consumed level is
-    /// structurally impossible once its memory is gone.</summary>
+    /// structurally impossible once its memory is gone.
+    ///
+    /// <b>Why the ROI branch is needed even for shape fidelity, not just correctness</b>: the four
+    /// <paramref name="srcLevel"/> subbands' <see cref="PgfSubband.AlignedRoi"/> are computed
+    /// independently (<see cref="PgfSubband.TileIndex"/> for LL vs. <see cref="PgfSubband.TilePosition"/>
+    /// for HL/LH/HH - <see cref="SetROI"/>), so they can disagree on their own top-left aligned
+    /// pixel by up to one tile's worth at a boundary even though they nominally represent "the same"
+    /// ROI at this level - the <c>srcOffsetX</c>/<c>srcOffsetY</c>/<c>destROI</c> reconciliation
+    /// below (ported byte-for-byte, not re-derived - this PRD's Progress log Stage 2 entry already
+    /// flagged this as more involved than the PRD's own architecture section implied) corrects for
+    /// exactly that disagreement before combining them. When ROI was never set (every subband's
+    /// <see cref="PgfSubband.AlignedRoi"/> still its <c>Initialize</c> default, the full subband),
+    /// every offset/adjustment computed here works out to zero - verified in this method's own doc
+    /// comment reasoning during Stage 3 development, and by the fact that the full pre-existing
+    /// non-ROI test suite (managed-pgf-codec.md/pgf-all-image-modes.md/pgf-user-data-and-small-images.md,
+    /// hundreds of tests) stays green after this generalization - not a separate code path.</summary>
     public PgfCodecError InverseTransform(int srcLevel, out int width, out int height, out int[] data)
     {
         int destLevel = srcLevel - 1;
@@ -375,84 +390,173 @@ internal sealed class PgfWaveletTransform
         }
 
         int[] destBuffer = destBand.GetBuffer();
+
+        PgfRoi destRoi = destBand.AlignedRoi;
+        int destWidth = destRoi.Width;
+        int destHeight = destRoi.Height;
+        width = destWidth;
+        height = destHeight;
+
         int origin = 0;
+        int workingWidth = destWidth;
+        int workingHeight = destHeight;
+        int destRoiLeft = destRoi.Left;
+        int destRoiTop = destRoi.Top;
 
-        width = destBand.Width;
-        height = destBand.Height;
-        int destWidth = width;
-        int destHeight = height;
-
-        for (int i = 0; i < PgfConstants.NSubbands; i++)
+        // update destination ROI (WaveletTransform.cpp:264-274)
+        if ((destRoiTop & 1) != 0)
         {
-            subbands[srcLevel][i].InitBuffPos();
+            destRoiTop++;
+            origin += destWidth;
+            workingHeight--;
         }
 
+        if ((destRoiLeft & 1) != 0)
+        {
+            destRoiLeft++;
+            origin++;
+            workingWidth--;
+        }
+
+        PgfSubband srcLl = subbands[srcLevel][(int)PgfSubbandOrientation.Ll];
+        PgfSubband srcHl = subbands[srcLevel][(int)PgfSubbandOrientation.Hl];
+        PgfSubband srcLh = subbands[srcLevel][(int)PgfSubbandOrientation.Lh];
+        PgfSubband srcHh = subbands[srcLevel][(int)PgfSubbandOrientation.Hh];
+
+        // init source buffer position (WaveletTransform.cpp:276-331): reconcile each of the 4
+        // srcLevel subbands' independently-computed AlignedRoi against destRoi's own (adjusted)
+        // top-left, in units of level-0 pixels halved once per level (source subbands are one
+        // pyramid level coarser than destBand).
+        int leftD = destRoiLeft >> 1;
+        int left0 = srcLl.AlignedRoi.Left;
+        int left1 = srcHl.AlignedRoi.Left;
+        int topD = destRoiTop >> 1;
+        int top0 = srcLl.AlignedRoi.Top;
+        int top1 = srcLh.AlignedRoi.Top;
+
+        int srcOffsetX0 = 0, srcOffsetX1 = 0;
+        int srcOffsetY0 = 0, srcOffsetY1 = 0;
+
+        if (leftD >= Math.Max(left0, left1))
+        {
+            srcOffsetX0 = leftD - left0;
+            srcOffsetX1 = leftD - left1;
+        }
+        else if (left0 <= left1)
+        {
+            int dx = (left1 - leftD) << 1;
+            destRoiLeft += dx;
+            origin += dx;
+            workingWidth -= dx;
+            srcOffsetX0 = left1 - left0;
+        }
+        else
+        {
+            int dx = (left0 - leftD) << 1;
+            destRoiLeft += dx;
+            origin += dx;
+            workingWidth -= dx;
+            srcOffsetX1 = left0 - left1;
+        }
+
+        if (topD >= Math.Max(top0, top1))
+        {
+            srcOffsetY0 = topD - top0;
+            srcOffsetY1 = topD - top1;
+        }
+        else if (top0 <= top1)
+        {
+            int dy = (top1 - topD) << 1;
+            destRoiTop += dy;
+            origin += dy * destWidth;
+            workingHeight -= dy;
+            srcOffsetY0 = top1 - top0;
+        }
+        else
+        {
+            int dy = (top0 - topD) << 1;
+            destRoiTop += dy;
+            origin += dy * destWidth;
+            workingHeight -= dy;
+            srcOffsetY1 = top0 - top1;
+        }
+
+        srcLl.InitBuffPos(srcOffsetX0, srcOffsetY0);
+        srcHl.InitBuffPos(srcOffsetX1, srcOffsetY0);
+        srcLh.InitBuffPos(srcOffsetX0, srcOffsetY1);
+        srcHh.InitBuffPos(srcOffsetX1, srcOffsetY1);
+
+        // From here on, workingWidth/workingHeight (not destWidth/destHeight) are the loop's actual
+        // pixel span - exactly matching the native's own width/height (adjusted) vs. destWidth/
+        // destHeight (fixed buffer stride/branch-condition) distinction. When ROI was never set,
+        // workingWidth==destWidth and workingHeight==destHeight throughout (every adjustment above
+        // is a no-op), so this is the same code path the non-ROI case always ran, not a branch.
         int row0, row1, row2, row3;
 
         if (destHeight >= PgfConstants.FilterSize)
         {
             row0 = origin; row1 = row0 + destWidth;
-            SubbandsToInterleaved(srcLevel, destBuffer.AsSpan(row0, width), destBuffer.AsSpan(row1, width));
-            for (int k = 0; k < width; k++)
+            SubbandsToInterleaved(srcLevel, destBuffer.AsSpan(row0, workingWidth), destBuffer.AsSpan(row1, workingWidth));
+            for (int k = 0; k < workingWidth; k++)
             {
                 destBuffer[row0 + k] = unchecked((int)(destBuffer[row0 + k] - ((destBuffer[row1 + k] + C1) >> 1))); // even
             }
 
             row2 = row1 + destWidth; row3 = row2 + destWidth;
-            for (int i = 2; i < destHeight - 1; i += 2)
+            for (int i = 2; i < workingHeight - 1; i += 2)
             {
-                SubbandsToInterleaved(srcLevel, destBuffer.AsSpan(row2, width), destBuffer.AsSpan(row3, width));
-                for (int k = 0; k < width; k++)
+                SubbandsToInterleaved(srcLevel, destBuffer.AsSpan(row2, workingWidth), destBuffer.AsSpan(row3, workingWidth));
+                for (int k = 0; k < workingWidth; k++)
                 {
                     destBuffer[row2 + k] = unchecked((int)(destBuffer[row2 + k] - ((destBuffer[row1 + k] + destBuffer[row3 + k] + C2) >> 2))); // even
                     destBuffer[row1 + k] = unchecked((int)(destBuffer[row1 + k] + ((destBuffer[row0 + k] + destBuffer[row2 + k] + C1) >> 1))); // odd
                 }
 
-                InverseRow(destBuffer.AsSpan(row0, width));
-                InverseRow(destBuffer.AsSpan(row1, width));
+                InverseRow(destBuffer.AsSpan(row0, workingWidth));
+                InverseRow(destBuffer.AsSpan(row1, workingWidth));
                 row0 = row2; row1 = row3; row2 = row1 + destWidth; row3 = row2 + destWidth;
             }
 
-            if ((destHeight & 1) != 0)
+            if ((workingHeight & 1) != 0)
             {
-                SubbandsToInterleaved(srcLevel, destBuffer.AsSpan(row2, width), default);
-                for (int k = 0; k < width; k++)
+                SubbandsToInterleaved(srcLevel, destBuffer.AsSpan(row2, workingWidth), default);
+                for (int k = 0; k < workingWidth; k++)
                 {
                     destBuffer[row2 + k] = unchecked((int)(destBuffer[row2 + k] - ((destBuffer[row1 + k] + C1) >> 1))); // even
                     destBuffer[row1 + k] = unchecked((int)(destBuffer[row1 + k] + ((destBuffer[row0 + k] + destBuffer[row2 + k] + C1) >> 1))); // odd
                 }
 
-                InverseRow(destBuffer.AsSpan(row0, width));
-                InverseRow(destBuffer.AsSpan(row1, width));
-                InverseRow(destBuffer.AsSpan(row2, width));
+                InverseRow(destBuffer.AsSpan(row0, workingWidth));
+                InverseRow(destBuffer.AsSpan(row1, workingWidth));
+                InverseRow(destBuffer.AsSpan(row2, workingWidth));
             }
             else
             {
-                for (int k = 0; k < width; k++)
+                for (int k = 0; k < workingWidth; k++)
                 {
                     destBuffer[row1 + k] = unchecked((int)(destBuffer[row1 + k] + destBuffer[row0 + k]));
                 }
 
-                InverseRow(destBuffer.AsSpan(row0, width));
-                InverseRow(destBuffer.AsSpan(row1, width));
+                InverseRow(destBuffer.AsSpan(row0, workingWidth));
+                InverseRow(destBuffer.AsSpan(row1, workingWidth));
             }
         }
         else
         {
             row0 = origin; row1 = row0 + destWidth;
-            for (int k = 0; k < destHeight; k += 2)
+            for (int k = 0; k < workingHeight; k += 2)
             {
-                SubbandsToInterleaved(srcLevel, destBuffer.AsSpan(row0, width), destBuffer.AsSpan(row1, width));
-                InverseRow(destBuffer.AsSpan(row0, width));
-                InverseRow(destBuffer.AsSpan(row1, width));
+                SubbandsToInterleaved(srcLevel, destBuffer.AsSpan(row0, workingWidth), destBuffer.AsSpan(row1, workingWidth));
+                InverseRow(destBuffer.AsSpan(row0, workingWidth));
+                InverseRow(destBuffer.AsSpan(row1, workingWidth));
                 row0 += destWidth << 1;
                 row1 += destWidth << 1;
             }
 
-            if ((destHeight & 1) != 0)
+            if ((workingHeight & 1) != 0)
             {
-                SubbandsToInterleaved(srcLevel, destBuffer.AsSpan(row0, width), default);
-                InverseRow(destBuffer.AsSpan(row0, width));
+                SubbandsToInterleaved(srcLevel, destBuffer.AsSpan(row0, workingWidth), default);
+                InverseRow(destBuffer.AsSpan(row0, workingWidth));
             }
         }
 
@@ -497,9 +601,22 @@ internal sealed class PgfWaveletTransform
         }
     }
 
-    /// <summary>Direct port of <c>SubbandsToInterleaved</c>'s non-ROI branch (WaveletTransform.cpp:445)
-    /// - the read-side mirror of <see cref="InterleavedToSubbands"/>: recombines the four child
-    /// subbands at <paramref name="srcLevel"/> back into one (or two) interleaved row(s).</summary>
+    /// <summary>Direct port of <c>SubbandsToInterleaved</c> (WaveletTransform.cpp:445), including its
+    /// ROI <c>storePos</c>/<c>IncBuffRow</c> branch - the read-side mirror of
+    /// <see cref="InterleavedToSubbands"/>: recombines the four child subbands at
+    /// <paramref name="srcLevel"/> back into one (or two) interleaved row(s).
+    ///
+    /// <c>storePos</c> matters whenever a subband's own <see cref="PgfSubband.BufferWidth"/> (its
+    /// ROI-sized buffer's row stride) is wider than the row currently being reconstructed
+    /// (<paramref name="loRow"/>/<paramref name="hiRow"/>'s half-length, <c>wquot</c>) - i.e. this
+    /// particular destination row only consumes part of what the subband buffer actually holds per
+    /// row, so <see cref="PgfSubband.ReadBuffer"/>'s plain sequential cursor would otherwise drift
+    /// into the next row's data instead of skipping the unread remainder;
+    /// <see cref="PgfSubband.IncBuffRow"/> corrects that by jumping to the start of the next buffer
+    /// row instead of wherever <see cref="PgfSubband.ReadBuffer"/> happened to leave the cursor. When
+    /// ROI was never set, <see cref="PgfSubband.BufferWidth"/> always equals the destination
+    /// subband's own real (halved-per-level) width, making <c>storePos</c> false unconditionally -
+    /// verified by construction, not by branching around it.</summary>
     private void SubbandsToInterleaved(int srcLevel, Span<int> loRow, Span<int> hiRow)
     {
         int width = loRow.Length;
@@ -512,6 +629,13 @@ internal sealed class PgfWaveletTransform
 
         if (!hiRow.IsEmpty)
         {
+            bool storePos = wquot < ll.BufferWidth;
+            int llPos = 0, hlPos = 0, lhPos = 0, hhPos = 0;
+            if (storePos)
+            {
+                llPos = ll.GetBuffPos(); hlPos = hl.GetBuffPos(); lhPos = lh.GetBuffPos(); hhPos = hh.GetBuffPos();
+            }
+
             int lo = 0, hi = 0;
             for (int i = 0; i < wquot; i++)
             {
@@ -526,9 +650,21 @@ internal sealed class PgfWaveletTransform
                 loRow[lo] = ll.ReadBuffer();
                 hiRow[hi] = lh.ReadBuffer();
             }
+
+            if (storePos)
+            {
+                ll.IncBuffRow(llPos); hl.IncBuffRow(hlPos); lh.IncBuffRow(lhPos); hh.IncBuffRow(hhPos);
+            }
         }
         else
         {
+            bool storePos = wquot < ll.BufferWidth;
+            int llPos = 0, hlPos = 0;
+            if (storePos)
+            {
+                llPos = ll.GetBuffPos(); hlPos = hl.GetBuffPos();
+            }
+
             int lo = 0;
             for (int i = 0; i < wquot; i++)
             {
@@ -539,6 +675,11 @@ internal sealed class PgfWaveletTransform
             if (wrem)
             {
                 loRow[lo] = ll.ReadBuffer();
+            }
+
+            if (storePos)
+            {
+                ll.IncBuffRow(llPos); hl.IncBuffRow(hlPos);
             }
         }
     }

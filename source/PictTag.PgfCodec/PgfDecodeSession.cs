@@ -27,7 +27,7 @@ internal sealed class PgfDecodeSession
     private PgfDecodeSession(
         PgfWaveletTransform[] channels, PgfDecoderCore decoder, int quant, bool downsample,
         int fullWidth, int fullHeight, int chromaWidth, byte levels, byte mode, byte[]? colorTable,
-        PgfUserData userData, (int[] Data, int Width, int Height)[]? rawChannelData)
+        PgfUserData userData, (int[] Data, int Width, int Height)[]? rawChannelData, bool roiSupported)
     {
         Channels = channels;
         Decoder = decoder;
@@ -41,7 +41,16 @@ internal sealed class PgfDecodeSession
         ColorTable = colorTable;
         UserData = userData;
         RawChannelData = rawChannelData;
+        RoiSupported = roiSupported;
     }
+
+    /// <summary>Mirrors <c>CPGFImage::ROIisSupported</c> (PGFimage.h:466) - whether this file's own
+    /// preheader version flags declare <see cref="PgfVersionFlags.PGFROI"/>. <see cref="PgfProgressiveDecoder.TrySetRoi"/>
+    /// checks this and fails closed rather than silently falling back to a plain (non-cropped) decode
+    /// the way the native's own <c>Read(rect,...)</c> does when <c>!ROIisSupported()</c> - a caller
+    /// that explicitly asked for ROI decoding on a file that can't do it should get a clear "no", not
+    /// a surprising full decode.</summary>
+    public bool RoiSupported { get; }
 
     /// <summary>The mode's channels' wavelet pyramids, in the header's own channel order (e.g. Y, U,
     /// V, A for RGBA; a single channel for GrayScale/IndexedColor). <see cref="Channels"/>[1..] are
@@ -96,8 +105,10 @@ internal sealed class PgfDecodeSession
         try
         {
             PgfMemoryReader reader = new(pgfData);
-            (_, PgfHeader header, _, byte[]? colorTable, PgfUserData userData) =
+            (PgfPreHeader preHeader, PgfHeader header, _, byte[]? colorTable, PgfUserData userData) =
                 PgfHeaderIO.Read(reader, userDataPolicy, userDataPrefixSize);
+
+            bool roiSupported = (preHeader.VersionFlags & PgfVersionFlags.PGFROI) == PgfVersionFlags.PGFROI;
 
             if (!PgfImageDecoder.IsModeSupported(header.Mode) ||
                 !PgfModeInfo.TryGetBppAndChannels(header.Mode, out byte expectedBpp, out byte expectedChannels) ||
@@ -161,7 +172,7 @@ internal sealed class PgfDecodeSession
 
                 return new PgfDecodeSession(
                     [], new PgfDecoderCore(reader), quant, downsample, fullWidth, fullHeight, chromaWidth, header.NLevels,
-                    header.Mode, colorTable, userData, rawChannelData);
+                    header.Mode, colorTable, userData, rawChannelData, roiSupported);
             }
 
             PgfWaveletTransform[] channels = new PgfWaveletTransform[header.Channels];
@@ -175,7 +186,7 @@ internal sealed class PgfDecodeSession
 
             return new PgfDecodeSession(
                 channels, decoder, quant, downsample, fullWidth, fullHeight, chromaWidth, header.NLevels, header.Mode, colorTable,
-                userData, rawChannelData: null);
+                userData, rawChannelData: null, roiSupported);
         }
         catch (PgfFormatException)
         {
@@ -257,19 +268,7 @@ internal sealed class PgfDecodeSession
                 wt.GetSubband(level, PgfSubbandOrientation.Hh).PlaceTile(Decoder, Quant);
             }
 
-            (int[] Data, int Width, int Height)[] result = new (int[], int, int)[Channels.Length];
-            for (int c = 0; c < Channels.Length; c++)
-            {
-                PgfCodecError err = Channels[c].InverseTransform(level, out int w, out int h, out int[] data);
-                if (err != PgfCodecError.None)
-                {
-                    return null;
-                }
-
-                result[c] = (data, w, h);
-            }
-
-            return result;
+            return InverseTransformAllChannels(level);
         }
         catch (PgfFormatException)
         {
@@ -279,5 +278,100 @@ internal sealed class PgfDecodeSession
         {
             return null;
         }
+    }
+
+    /// <summary>Direct port of <c>CPGFImage::SetROI</c> (PGFimage.cpp:614-631) - enables ROI decoding
+    /// on <see cref="Decoder"/> and computes tile-index geometry for every channel's
+    /// <see cref="PgfWaveletTransform"/>, halving <paramref name="roi"/> for chroma channels exactly
+    /// when <see cref="Downsample"/> applies (channel 0 always gets the unhalved rect, matching the
+    /// native's own unconditional <c>m_wtChannel[0]-&gt;SetROI(rect)</c> before the downsample
+    /// check). Must be called before the first <see cref="DecodeOneLevelRoi"/> call - see
+    /// <see cref="PgfProgressiveDecoder.TrySetRoi"/>'s doc comment for this port's one-ROI-per-session
+    /// divergence from the native's more general re-readable-with-a-new-ROI model.</summary>
+    public void SetRoi(PgfRoi roi)
+    {
+        Decoder.SetRoi();
+        Channels[0].SetROI(roi);
+
+        PgfRoi chromaRoi = roi;
+        if (Downsample && Channels.Length > 1)
+        {
+            chromaRoi = new PgfRoi(roi.Left >> 1, roi.Top >> 1, (roi.Right + 1) >> 1, (roi.Bottom + 1) >> 1);
+        }
+
+        for (int c = 1; c < Channels.Length; c++)
+        {
+            Channels[c].SetROI(chromaRoi);
+        }
+    }
+
+    /// <summary>Direct port of one iteration of <c>CPGFImage::Read(rect,...)</c>'s ROI loop body
+    /// (PGFimage.cpp:519-547) - the tile-aware sibling of <see cref="DecodeOneLevel"/>: per channel,
+    /// places the coarsest level's LL band directly (tile=false, exactly like the non-ROI path -
+    /// there's only ever one tile there), then for every tile at this level either decodes it
+    /// (<see cref="PgfWaveletTransform.TileIsRelevant"/>) or skips its encoded bytes
+    /// (<see cref="PgfDecoderCore.SkipTileBuffer"/>) without decoding. Requires <see cref="SetRoi"/>
+    /// to have been called first.</summary>
+    public (int[] Data, int Width, int Height)[]? DecodeOneLevelRoi(int level)
+    {
+        try
+        {
+            for (int c = 0; c < Channels.Length; c++)
+            {
+                PgfWaveletTransform wt = Channels[c];
+                int nTiles = wt.GetNofTiles(level);
+
+                if (level == Levels)
+                {
+                    Decoder.GetNextMacroBlock();
+                    wt.GetSubband(level, PgfSubbandOrientation.Ll).PlaceTile(Decoder, Quant);
+                }
+
+                for (int tileY = 0; tileY < nTiles; tileY++)
+                {
+                    for (int tileX = 0; tileX < nTiles; tileX++)
+                    {
+                        if (wt.TileIsRelevant(level, tileX, tileY))
+                        {
+                            Decoder.GetNextMacroBlock();
+                            wt.GetSubband(level, PgfSubbandOrientation.Hl).PlaceTile(Decoder, Quant, tile: true, tileX, tileY);
+                            wt.GetSubband(level, PgfSubbandOrientation.Lh).PlaceTile(Decoder, Quant, tile: true, tileX, tileY);
+                            wt.GetSubband(level, PgfSubbandOrientation.Hh).PlaceTile(Decoder, Quant, tile: true, tileX, tileY);
+                        }
+                        else
+                        {
+                            Decoder.SkipTileBuffer();
+                        }
+                    }
+                }
+            }
+
+            return InverseTransformAllChannels(level);
+        }
+        catch (PgfFormatException)
+        {
+            return null;
+        }
+        catch (PgfStreamException)
+        {
+            return null;
+        }
+    }
+
+    private (int[] Data, int Width, int Height)[]? InverseTransformAllChannels(int level)
+    {
+        (int[] Data, int Width, int Height)[] result = new (int[], int, int)[Channels.Length];
+        for (int c = 0; c < Channels.Length; c++)
+        {
+            PgfCodecError err = Channels[c].InverseTransform(level, out int w, out int h, out int[] data);
+            if (err != PgfCodecError.None)
+            {
+                return null;
+            }
+
+            result[c] = (data, w, h);
+        }
+
+        return result;
     }
 }

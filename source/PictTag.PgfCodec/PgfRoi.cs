@@ -6,8 +6,13 @@ namespace PictTag.PgfCodec;
 /// <see cref="int"/> (not <c>UINT32</c>) for consistency with the rest of this port's coordinate
 /// arithmetic (<see cref="PgfSubband"/>'s own <c>Width</c>/<c>Height</c>) - always non-negative in
 /// practice, so the signedness difference from the native <c>UINT32</c> fields never matters.
+///
+/// Public (unlike most of this codec's internal types): it's part of
+/// <see cref="PgfProgressiveDecoder"/>'s own public ROI API surface
+/// (<see cref="PgfProgressiveDecoder.TrySetRoi"/>/<see cref="PgfProgressiveDecoder.TryGetAlignedRoi"/>),
+/// not just an internal implementation detail.
 /// </summary>
-internal readonly record struct PgfRoi(int Left, int Top, int Right, int Bottom)
+public readonly record struct PgfRoi(int Left, int Top, int Right, int Bottom)
 {
     public int Width => Right - Left;
 

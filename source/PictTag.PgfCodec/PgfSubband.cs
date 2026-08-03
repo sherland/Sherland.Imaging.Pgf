@@ -243,8 +243,20 @@ internal sealed class PgfSubband
         }
     }
 
-    /// <summary>Allocates <see cref="size"/> coefficients if not already allocated. Simplified from
-    /// the original's resize-aware version - see class doc comment.</summary>
+    /// <summary>Direct port of <c>CSubband::AllocMemory</c> (Subband.cpp:77), sized from
+    /// <see cref="BufferWidth"/>*<see cref="AlignedRoi"/>.Height - identical to
+    /// <see cref="Width"/>*<see cref="Height"/> whenever ROI was never set (the default
+    /// <see cref="AlignedRoi"/> is the full subband), so this is a value-preserving generalization,
+    /// not a behavior change for any non-ROI decode.
+    ///
+    /// Simplified from the original's resize-aware version (<c>oldSize &gt;= newSize</c> reuse
+    /// check): this port maintains a one-ROI-per-session invariant (a fresh
+    /// <see cref="PgfWaveletTransform"/>/session per distinct ROI request, resolving this PRD's own
+    /// "Open questions" - re-reading with a different ROI means opening a new session, not reusing
+    /// this one - matching the native's own documented <c>ResetStreamPos</c> constraint rather than
+    /// inventing a more flexible model), so <see cref="PgfWaveletTransform.SetROI"/> - if called at
+    /// all - always happens before the first <see cref="AllocMemory"/> call for any given subband;
+    /// this method never needs to shrink/grow an already-allocated buffer.</summary>
     public bool AllocMemory()
     {
         if (data is not null)
@@ -252,7 +264,7 @@ internal sealed class PgfSubband
             return true;
         }
 
-        data = new int[size];
+        data = new int[BufferWidth * AlignedRoi.Height];
         return true;
     }
 
@@ -273,7 +285,23 @@ internal sealed class PgfSubband
 
     public int GetData(int pos) => GetBuffer()[pos];
 
-    public void InitBuffPos() => dataPos = 0;
+    /// <summary>Direct port of <c>CSubband::InitBuffPos</c> (Subband.h:160) - generalized to take an
+    /// optional ROI-relative <paramref name="left"/>/<paramref name="top"/> offset (default 0,0,
+    /// matching every non-ROI call site exactly: <c>top*BufferWidth+left</c> with both 0 is always
+    /// 0).</summary>
+    public void InitBuffPos(int left = 0, int top = 0) => dataPos = (top * BufferWidth) + left;
+
+    /// <summary>Mirrors <c>CSubband::GetBuffPos</c> (Subband.h:151) - current read/write cursor,
+    /// saved/restored by <see cref="PgfWaveletTransform.SubbandsToInterleaved"/>'s ROI-aware
+    /// row-position bookkeeping.</summary>
+    public int GetBuffPos() => dataPos;
+
+    /// <summary>Direct port of <c>CSubband::IncBuffRow</c> (Subband.h:141) - advances the cursor from
+    /// a previously-saved <paramref name="pos"/> to the start of the next buffer row (<paramref name="pos"/>
+    /// + <see cref="BufferWidth"/>), used when a subband's own buffer is narrower than the row of
+    /// pixels currently being reconstructed (<see cref="PgfWaveletTransform.SubbandsToInterleaved"/>'s
+    /// <c>storePos</c> case).</summary>
+    public void IncBuffRow(int pos) => dataPos = pos + BufferWidth;
 
     public void WriteBuffer(int value) => GetBuffer()[dataPos++] = value;
 
@@ -353,11 +381,71 @@ internal sealed class PgfSubband
         decoder.Partition(GetBuffer(), quantParam, Width, Height, startPos: 0, pitch: Width);
     }
 
+    /// <summary>Direct port of <c>CSubband::PlaceTile</c>'s ROI (<c>tile=true</c>) branch
+    /// (Subband.cpp:217-225) - places tile (<paramref name="tileX"/>, <paramref name="tileY"/>) only,
+    /// at its position within this subband's own ROI-sized buffer (<paramref name="tileX"/>/
+    /// <paramref name="tileY"/>'s pixel position from <see cref="TilePosition"/>, offset by
+    /// <see cref="AlignedRoi"/>'s own top-left so the buffer is addressed relative to itself, not the
+    /// full un-cropped subband - <see cref="AllocMemory"/>'s doc comment for why this buffer can be
+    /// smaller than <see cref="Width"/>*<see cref="Height"/>).</summary>
+    public void PlaceTile(PgfDecoderCore decoder, int quantParam, bool tile, int tileX, int tileY)
+    {
+        if (!tile)
+        {
+            PlaceTile(decoder, quantParam);
+            return;
+        }
+
+        if (!AllocMemory())
+        {
+            throw new PgfFormatException("Failed to allocate subband memory.");
+        }
+
+        quantParam -= Orientation switch
+        {
+            PgfSubbandOrientation.Ll => Level + 1,
+            PgfSubbandOrientation.Hh => Level - 1,
+            _ => Level,
+        };
+        if (quantParam < 0)
+        {
+            quantParam = 0;
+        }
+
+        TilePosition(tileX, tileY, out int xPos, out int yPos, out int w, out int h);
+
+        System.Diagnostics.Debug.Assert(xPos >= AlignedRoi.Left && yPos >= AlignedRoi.Top, "Tile position outside aligned ROI.");
+
+        int startPos = (xPos - AlignedRoi.Left) + ((yPos - AlignedRoi.Top) * BufferWidth);
+        decoder.Partition(GetBuffer(), quantParam, w, h, startPos, pitch: BufferWidth);
+    }
+
     /// <summary>Direct port of <c>CSubband::ExtractTile</c>'s non-ROI branch (Subband.cpp:177) -
     /// drives <see cref="PgfEncoderCore.Partition"/> to feed this subband's (already-quantized, via
     /// <see cref="Quantize"/>) coefficients into the entropy encoder.</summary>
     public void ExtractTile(PgfEncoderCore encoder)
     {
         encoder.Partition(GetBuffer(), Width, Height, startPos: 0, pitch: Width);
+    }
+
+    /// <summary>Direct port of <c>CSubband::ExtractTile</c>'s ROI (<c>tile=true</c>) branch
+    /// (Subband.cpp:179-185) - extracts tile (<paramref name="tileX"/>, <paramref name="tileY"/>)
+    /// only, from its position within this subband's full (un-cropped) buffer - unlike
+    /// <see cref="PlaceTile(PgfDecoderCore,int,bool,int,int)"/>'s decode-side counterpart, the
+    /// encoder always has the whole subband in memory (no ROI-sized allocation on the encode side -
+    /// <c>pgf-roi-support.md</c> Goal 2's own framing: "the whole image is always encoded, just
+    /// tile-structured"), so this addresses <see cref="Width"/> directly, not
+    /// <see cref="BufferWidth"/>.</summary>
+    public void ExtractTile(PgfEncoderCore encoder, bool tile, int tileX, int tileY)
+    {
+        if (!tile)
+        {
+            ExtractTile(encoder);
+            return;
+        }
+
+        TilePosition(tileX, tileY, out int xPos, out int yPos, out int w, out int h);
+        int startPos = xPos + (yPos * Width);
+        encoder.Partition(GetBuffer(), w, h, startPos, pitch: Width);
     }
 }

@@ -4,9 +4,10 @@ namespace PictTag.PgfCodec;
 
 /// <summary>
 /// Direct port of <c>CDecoder</c>'s macroblock/dequantization orchestration (Decoder.cpp) - the
-/// single-macroblock-array, non-ROI path only (see <see cref="PgfMacroBlock"/>'s doc comment for
-/// why those two simplifications are faithful to this build's real, only-ever-exercised behavior,
-/// not assumptions).
+/// single-macroblock-array path only (see <see cref="PgfMacroBlock"/>'s doc comment for why that
+/// simplification is faithful to this build's real, only-ever-exercised OpenMP behavior, not an
+/// assumption). ROI decoding (<see cref="SetRoi"/>/<see cref="SkipTileBuffer"/>) is real as of
+/// <c>pgf-roi-support.md</c> Stage 3.
 /// </summary>
 internal sealed class PgfDecoderCore
 {
@@ -18,10 +19,25 @@ internal sealed class PgfDecoderCore
     /// unread values (1, tracked separately by <see cref="PgfMacroBlock.ValuePos"/>).</summary>
     private int macroBlocksAvailable;
 
+    /// <summary>Mirrors <c>CDecoder::m_roi</c> - true once <see cref="SetRoi"/> has been called
+    /// (never automatically, and never un-set - matches the native's own one-directional
+    /// <c>SetROI()</c> setter, no corresponding clear). Gates whether <see cref="ReadMacroBlock"/>
+    /// actually reads the extra 2 <see cref="PgfRoiBlockHeader"/> bytes off the wire (<see cref="PgfRoiBlockHeader"/>'s
+    /// own doc comment) - false for every real file this app has ever produced/consumed before this
+    /// PRD.</summary>
+    private bool roi;
+
     public PgfDecoderCore(PgfMemoryReader reader)
     {
         this.reader = reader;
     }
+
+    /// <summary>Direct port of <c>CDecoder::SetROI</c> (Decoder.h:192) - enables ROI-aware macroblock
+    /// framing (the extra header bytes, plus makes <see cref="SkipTileBuffer"/> a valid call). Must
+    /// be called before the first <see cref="ReadMacroBlock"/>/<see cref="GetNextMacroBlock"/> of an
+    /// ROI-flagged stream (mirrors <c>CPGFImage::SetROI</c> calling <c>m_decoder-&gt;SetROI()</c>
+    /// before any tile is read).</summary>
+    public void SetRoi() => roi = true;
 
     /// <summary>Direct port of <c>CDecoder::DequantizeValue</c> (Decoder.cpp:472) - the single
     /// coefficient consumer every subband-filling loop (<see cref="Partition"/>) calls. Fetches the
@@ -40,8 +56,16 @@ internal sealed class PgfDecoderCore
 
     /// <summary>Direct port of <c>CDecoder::GetNextMacroBlock</c> (Decoder.cpp:487), collapsed to the
     /// single-macroblock case: there is only ever one block, so "get the next one" always means
-    /// "decode a fresh one in place."</summary>
-    private void GetNextMacroBlock()
+    /// "decode a fresh one in place." Public (not just called lazily from <see cref="DequantizeValue"/>
+    /// like every non-ROI call site) because ROI decode's own per-tile loop
+    /// (<c>CPGFImage::Read(rect,...)</c>, PGFimage.cpp:530/537) calls it explicitly before each
+    /// tile's first placement - ported faithfully even though, in this port's always-single-macroblock
+    /// configuration, it is provably equivalent to the lazy fetch <see cref="DequantizeValue"/>'s
+    /// first call within that tile would trigger anyway (every tile's encoded data exactly exhausts
+    /// whatever macroblock(s) it occupies - <c>PgfEncodeMacroBlock</c>'s per-tile <c>EncodeTileBuffer</c>
+    /// flush guarantees this): matching the real call sequence exactly is safer than relying on that
+    /// reasoning never having an edge case this port hasn't considered.</summary>
+    public void GetNextMacroBlock()
     {
         macroBlocksAvailable--;
         if (macroBlocksAvailable <= 0)
@@ -60,12 +84,11 @@ internal sealed class PgfDecoderCore
         macroBlocksAvailable = 1;
     }
 
-    /// <summary>Direct port of <c>CDecoder::ReadMacroBlock</c> (Decoder.cpp:545). Outside ROI mode
-    /// (this port never enables it yet as of Stage 1 - <c>pgf-roi-support.md</c>'s remaining stages
-    /// wire real ROI decoding through this same header machinery): <c>&lt;wordLen&gt;(16 bits)
-    /// data</c>, matching the original's own default <c>ROIBlockHeader h(BufferSize)</c> - i.e. the
-    /// header value is never actually read off the wire, but it's still real per-macroblock
-    /// bookkeeping (see <see cref="PgfRoiBlockHeader"/>), not a hardcoded shortcut.</summary>
+    /// <summary>Direct port of <c>CDecoder::ReadMacroBlock</c> (Decoder.cpp:545): <c>&lt;wordLen&gt;
+    /// (16 bits) [ROIBlockHeader](16 bits, only when <see cref="roi"/>) data</c>. Outside ROI mode
+    /// (every real file this app has produced/consumed before this PRD), the header value is never
+    /// actually read off the wire - it stays at the original's own default <c>ROIBlockHeader
+    /// h(BufferSize)</c>, matching Stage 1's bookkeeping exactly.</summary>
     private void ReadMacroBlock(PgfMacroBlock block)
     {
         Span<byte> wordLenBytes = stackalloc byte[2];
@@ -81,9 +104,19 @@ internal sealed class PgfDecoderCore
         }
 
         // Mirrors ROIBlockHeader h(BufferSize) (Decoder.cpp:548) - the default used whenever this
-        // block isn't part of an ROI-flagged stream (always true for now; a real ROI-enabled read
-        // of the extra 2 header bytes is wired in once something actually calls SetROI).
+        // block isn't part of an ROI-flagged stream.
         var header = new PgfRoiBlockHeader((uint)PgfConstants.BufferSize, tileEnd: false);
+
+        if (roi)
+        {
+            Span<byte> headerBytes = stackalloc byte[2];
+            if (reader.Read(headerBytes) != 2)
+            {
+                throw new PgfFormatException("Truncated stream: missing ROI block header.");
+            }
+
+            header = new PgfRoiBlockHeader(BinaryPrimitives.ReadUInt16LittleEndian(headerBytes));
+        }
 
         Span<byte> codeBufferBytes = System.Runtime.InteropServices.MemoryMarshal.AsBytes(block.CodeBuffer.AsSpan());
         int byteCount = wordLen * 4;
@@ -100,6 +133,50 @@ internal sealed class PgfDecoderCore
         // Matches the original setting block->m_header = h right here (Decoder.cpp:574) - see
         // PgfMacroBlock.MarkReadyToDecode's doc comment for why this specific timing matters.
         block.MarkReadyToDecode(header);
+    }
+
+    /// <summary>Direct port of <c>CDecoder::SkipTileBuffer</c> (Decoder.cpp:604), collapsed to the
+    /// single-macroblock case (the native's own <c>m_macroBlocks[]</c> pre-decoded-lookahead branch
+    /// is dead code here for the same OpenMP-disabled reason as everywhere else in this port - see
+    /// class doc comment): reads and discards macroblocks directly off the stream (word length +
+    /// ROI header + raw data, never decoded into <see cref="PgfMacroBlock"/> at all) until one with
+    /// <see cref="PgfRoiBlockHeader.TileEnd"/> set is found, leaving the stream positioned at the
+    /// start of the next tile's data. Only valid once <see cref="SetRoi"/> has been called (mirrors
+    /// the native's own <c>ASSERT(m_roi)</c>).</summary>
+    public void SkipTileBuffer()
+    {
+        System.Diagnostics.Debug.Assert(roi, "SkipTileBuffer requires SetRoi() to have been called.");
+
+        macroBlocksAvailable = 0;
+
+        PgfRoiBlockHeader header;
+        do
+        {
+            Span<byte> wordLenBytes = stackalloc byte[2];
+            if (reader.Read(wordLenBytes) != 2)
+            {
+                throw new PgfFormatException("Truncated stream: missing skipped-tile word length.");
+            }
+
+            ushort wordLen = BinaryPrimitives.ReadUInt16LittleEndian(wordLenBytes);
+            if (wordLen > PgfConstants.BufferSize)
+            {
+                throw new PgfFormatException($"Skipped-tile word length {wordLen} exceeds BufferSize.");
+            }
+
+            Span<byte> headerBytes = stackalloc byte[2];
+            if (reader.Read(headerBytes) != 2)
+            {
+                throw new PgfFormatException("Truncated stream: missing skipped-tile ROI block header.");
+            }
+
+            header = new PgfRoiBlockHeader(BinaryPrimitives.ReadUInt16LittleEndian(headerBytes));
+
+            // skip data (mirrors m_stream->SetPos(FSFromCurrent, wordLen*WordBytes) - never read
+            // into a buffer at all, unlike ReadMacroBlock's real decode path)
+            reader.SetPos(SeekOrigin.Current, wordLen * 4);
+        }
+        while (!header.TileEnd);
     }
 
     /// <summary>Direct port of <c>CDecoder::Partition</c> (Decoder.cpp:276) - the LL/HH subband

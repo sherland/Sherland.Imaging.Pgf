@@ -319,3 +319,80 @@ data, matching this stage's own exit-test scope from the Stage sequence).
 
 Regression gate: full `PictTag.PgfCodec.Tests` suite - **1147/1147 passed** (1130 existing + 17 new,
 zero regressions).
+
+### Stage 3: Decode-side ROI
+
+**Real finding that reorders this stage's own testing (not just implementation)**: real ROI decoding
+only ever activates against a file whose preheader version flags declare `PGFROI`
+(`CPGFImage::ROIisSupported`, `PGFimage.h:466`) - confirmed by reading `CPGFImage::Read`'s two
+overloads (PGFimage.cpp:402-477 and 489-577) in full: the plain `Read(level,...)` takes the ROI-aware
+tile loop only `if (ROIisSupported() && m_header.nLevels > 0)`, and the `Read(rect,...)` overload
+itself falls straight back to the plain path `if (m_header.nLevels == 0 || !ROIisSupported())`. No
+real digiKam thumbnail and nothing this port's own encoder has ever produced sets that flag, and
+Stage 4 (encode) is the *only* stage that can ever produce one. This means Stage 3's own decode code
+(`SkipTileBuffer`, tile-relevant `PlaceTile`, the ROI-generalized `InverseTransform`) is provably
+**not independently testable against real bytes** - there is no ROI-flagged input anywhere to decode
+until Stage 4 exists. The PRD's own Stage 3 text already anticipated needing a fallback here
+("self-consistency only at first... or extend the shim's ROI-capable encode export first if that's
+the more tractable order") - this is that fallback, made concrete: **substantive decode-correctness
+testing (self-consistency and cross-implementation) is deferred to Stage 4's own round-trip test**,
+the earliest point real ROI-flagged bytes exist to decode at all. This stage's own tests are
+therefore scoped to what's genuinely independent: pure code-level regression safety (the full
+existing suite staying green through the delicate `InverseTransform` generalization) and the new
+public API's own contract (bounds/state validation), not decode correctness itself.
+
+Implementation, in the order built:
+- **`PgfDecoderCore`**: `SetRoi()` (mirrors `CDecoder::SetROI`) gates `ReadMacroBlock` actually
+  reading the extra 2 `PgfRoiBlockHeader` bytes off the wire (Stage 1's deferred wire-format work,
+  landed here since this is the first stage anything can actually set `m_roi`-equivalent true).
+  `GetNextMacroBlock` promoted from `private` to `public` and ported faithfully to real ROI call
+  sites even though, reasoned through carefully, it's provably redundant with `DequantizeValue`'s own
+  lazy fetch in this port's always-single-macroblock configuration (documented in its own doc comment
+  as "match the real sequence rather than trust that reasoning has no edge case"). New
+  `SkipTileBuffer` - collapsed to the single-macroblock branch (the native's own
+  `m_macroBlocks[]`-lookahead branch is dead code here, same OpenMP-disabled reason as everywhere
+  else) - reads and discards macroblocks until `TileEnd`, using `PgfMemoryReader.SetPos(Current, ...)`
+  to skip data bytes without buffering them (mirrors `m_stream->SetPos(FSFromCurrent, ...)` exactly).
+- **`PgfSubband`**: `AllocMemory` generalized from `Width*Height` to `BufferWidth*AlignedRoi.Height`
+  (identical whenever `AlignedRoi` is still its full-subband default - a value-preserving
+  generalization, not a branch, matching this port's established Stage 1/2 pattern). `InitBuffPos`
+  generalized to take an optional ROI-relative `(left, top)` offset (default 0,0, identical to the
+  old no-arg version). New `GetBuffPos`/`IncBuffRow` (direct ports). New tile-aware `PlaceTile`/
+  `ExtractTile` overloads (the latter used starting Stage 4) computing tile position via
+  `TilePosition` and addressing the (possibly ROI-sized) buffer via `BufferWidth`, not `Width`.
+- **`PgfWaveletTransform.InverseTransform`/`SubbandsToInterleaved`**: generalized to the full ROI
+  branch rather than kept as a separate path - see this method's own doc comment for why (the four
+  `srcLevel` subbands' independently-computed `AlignedRoi` can disagree by up to one tile at a
+  boundary, requiring the native's `srcOffsetX`/`srcOffsetY`/`destROI` reconciliation, ported
+  byte-for-byte). Verified by construction that every adjustment is a no-op when ROI was never set
+  (walked through the arithmetic by hand during development: `leftD == left0 == left1 == 0` when no
+  subband's `AlignedRoi` has been narrowed, so every `srcOffsetX`/`srcOffsetY` branch takes its
+  `>= max(...)` zero-offset path), and empirically by the full regression suite staying green - the
+  single highest-risk change in this stage, exactly as flagged when Stage 2 first surfaced this
+  branch as more involved than the PRD's own architecture section implied.
+- **`PgfDecodeSession`**: new `SetRoi`/`DecodeOneLevelRoi`, direct ports of `CPGFImage::SetROI`
+  (including the chroma-channel halving-only-when-downsampled behavior) and one iteration of
+  `CPGFImage::Read(rect,...)`'s loop body. New `RoiSupported` property (reads the preheader's
+  `PGFROI` version flag, previously discarded as `_` in `TryOpen`'s destructured tuple).
+- **`PgfProgressiveDecoder`**: new public `TrySetRoi`/`TryGetAlignedRoi`, and `TryDecodeLevel`
+  dispatches to `DecodeOneLevelRoi` instead of `DecodeOneLevel` once ROI is enabled. **Resolves this
+  PRD's third "Open question"**: this port does **not** carry forward the native's
+  `ResetStreamPos`/re-readable-with-a-new-ROI model - `TrySetRoi` must be called before the first
+  `TryDecodeLevel` on an instance, and calling it again (or after decoding started) throws
+  `InvalidOperationException`. Chosen because no real calling pattern needing multiple ROIs on one
+  open image exists anywhere in this codebase (this PRD's own Non-goals already rule out a production
+  call site), and it matches this port's existing session-per-open model everywhere else - a fresh
+  `TryOpen` per distinct ROI request is the divergence, not a missing feature. Also stricter than
+  native in one more way: `TrySetRoi` returns `false` outright when the file's own version flags
+  don't declare `PGFROI` (`PgfDecodeSession.RoiSupported`), rather than the native's silent fallback
+  to a plain, non-cropped decode - a caller that explicitly asked for ROI decoding on a file that
+  can't do it should get a clear "no," not a surprising full-image result.
+
+Tests added: 7 new API-contract tests (`PgfProgressiveDecoderRoiApiTests`) covering bounds validation,
+the `RoiSupported` gate, and the one-call/one-session state machine - all using the existing
+non-ROI-flagged sample fixture, since (per the finding above) that's all that's independently
+testable at this stage.
+
+Regression gate: full `PictTag.PgfCodec.Tests` suite - **1154/1154 passed** (1147 existing + 7 new,
+zero regressions) - the load-bearing result for this stage, given the `InverseTransform` generalization's
+risk.

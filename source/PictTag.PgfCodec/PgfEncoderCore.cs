@@ -20,10 +20,76 @@ internal sealed class PgfEncoderCore
     /// symmetric read-side flag.</summary>
     private bool roi;
 
+    /// <summary>Mirrors <c>CEncoder::m_levelLength</c> (Encoder.h:216) - <see langword="null"/> until
+    /// <see cref="BeginLevelLengthTracking"/> is called, gating <see cref="WriteMacroBlock"/>'s
+    /// accounting block exactly like the native's own <c>if (m_levelLength)</c> check
+    /// (Encoder.cpp:455). pgf-real-level-lengths.md Stage 1.</summary>
+    private uint[]? levelLength;
+
+    /// <summary>Mirrors <c>CEncoder::m_currLevelIndex</c> (Encoder.h:226) - which
+    /// <see cref="levelLength"/> entry the byte count of the *next* flushed macroblock gets credited
+    /// to.</summary>
+    private int currLevelIndex;
+
+    /// <summary>Mirrors <c>CEncoder::m_bufferStartPos</c> (Encoder.h:218) - the stream position the
+    /// currently-buffered macroblock's encoded bytes started at, set by <see cref="SetBufferStartPos"/>.</summary>
+    private long bufferStartPos;
+
     public PgfEncoderCore(PgfByteWriter writer)
     {
         this.writer = writer;
     }
+
+    /// <summary>The real, accumulated per-level byte lengths once encoding has finished (index 0 =
+    /// coarsest level, matching the on-wire/native <c>m_levelLength</c> array order) - <see
+    /// langword="null"/> until <see cref="BeginLevelLengthTracking"/> has been called.
+    /// <see cref="PgfImageEncoder"/> reads this after <see cref="Flush"/> to patch the real values
+    /// into the level-length placeholder <see cref="PgfHeaderIO.Write"/> already reserved.
+    /// pgf-real-level-lengths.md Goal 1.</summary>
+    public uint[]? LevelLength => levelLength;
+
+    /// <summary>Direct port of the tracking-setup half of <c>CEncoder::WriteLevelLength</c>
+    /// (Encoder.cpp:177-196) - allocates a fresh, zeroed <see cref="levelLength"/> array and
+    /// establishes <see cref="bufferStartPos"/> at the caller's current stream position. Unlike the
+    /// native, this doesn't write the placeholder bytes itself - <see cref="PgfHeaderIO.Write"/>
+    /// already reserves and zero-fills that exact byte range (pgf-real-level-lengths.md's own
+    /// resolved Open Question 1: reuse, don't duplicate), so the caller must invoke this immediately
+    /// after that write returns, while the stream position is still exactly past the placeholder.
+    /// pgf-real-level-lengths.md Stage 1.</summary>
+    public void BeginLevelLengthTracking(int levelCount)
+    {
+        levelLength = new uint[levelCount];
+        currLevelIndex = 0;
+        SetBufferStartPos();
+    }
+
+    /// <summary>Direct port of the <see cref="levelLength"/>-bookkeeping half of
+    /// <c>CEncoder::SetEncodedLevel</c> (Encoder.h:164) - <c>m_forceWriting</c> is not modeled, for
+    /// the same reason <c>pgf-roi-support.md</c>'s own Stage 4 found it dead in this port's
+    /// always-single-macroblock build (see <see cref="PgfImageEncoder"/>'s ROI-branch call site).
+    /// Sets the currently-buffered macroblock's <see cref="PgfEncodeMacroBlock.LastLevelIndex"/>;
+    /// takes effect the next time that block is actually flushed (<see cref="WriteMacroBlock"/>), not
+    /// immediately - a level boundary can fall mid-buffer, exactly matching the native's own deferred
+    /// timing. <paramref name="currentLevel"/> is <see cref="PgfImageEncoder"/>'s own per-level loop
+    /// variable (not yet decremented) at the point a level's data finishes being buffered; the native
+    /// computes the equivalent index from its own post-decrement <c>m_currentLevel</c>
+    /// (<c>m_nLevels - currentLevel - 1</c> there), which is algebraically identical to
+    /// <c>levelLength.Length - currentLevel</c> here once the differing decrement timing is accounted
+    /// for. A no-op before <see cref="BeginLevelLengthTracking"/> has been called.
+    /// pgf-real-level-lengths.md Stage 1.</summary>
+    public void AdvanceLevel(int currentLevel)
+    {
+        if (levelLength != null)
+        {
+            currentBlock.LastLevelIndex = levelLength.Length - currentLevel;
+        }
+    }
+
+    /// <summary>Direct port of <c>CEncoder::SetBufferStartPos</c> (Encoder.h:194).</summary>
+    private void SetBufferStartPos() => bufferStartPos = writer.Position;
+
+    /// <summary>Direct port of <c>CEncoder::ComputeBufferLength</c> (Encoder.h:181).</summary>
+    private long ComputeBufferLength() => writer.Position - bufferStartPos;
 
     /// <summary>Direct port of <c>CEncoder::SetROI</c> (Encoder.h:204) - enables writing the extra
     /// ROI block header bytes. Must be called before the first <see cref="WriteValue"/>/<see cref="EncodeTileBuffer"/>
@@ -107,6 +173,21 @@ internal sealed class PgfEncoderCore
         ReadOnlySpan<byte> codeBufferBytes =
             System.Runtime.InteropServices.MemoryMarshal.AsBytes(block.CodeBuffer.AsSpan(0, wordLen));
         writer.Write(codeBufferBytes);
+
+        // Direct port of Encoder.cpp:454-465's own "store levelLength" / "prepare for next buffer"
+        // pair - credits this flush's on-disk byte count to whichever level index was in effect when
+        // this block started, then advances to the level AdvanceLevel most recently set (deferred
+        // effect - see PgfEncodeMacroBlock.LastLevelIndex's doc comment). SetBufferStartPos runs
+        // unconditionally afterward either way, exactly matching the native's own unconditional call
+        // (levelLength being null just means nothing downstream ever reads bufferStartPos again).
+        // pgf-real-level-lengths.md Stage 1.
+        if (levelLength != null)
+        {
+            levelLength[currLevelIndex] += (uint)ComputeBufferLength();
+            currLevelIndex = block.LastLevelIndex + 1;
+        }
+
+        SetBufferStartPos();
 
         block.ValuePos = 0;
         block.MaxAbsValue = 0;

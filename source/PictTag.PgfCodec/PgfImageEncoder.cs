@@ -223,6 +223,14 @@ internal static class PgfImageEncoder
         PgfHeaderIO.Write(writer, header, colorTable, userData, roi);
 
         PgfEncoderCore encoder = new(writer);
+
+        // pgf-real-level-lengths.md Stage 1: PgfHeaderIO.Write above already reserved and zero-filled
+        // the level-length placeholder (its own tail zero-write loop) - the stream is positioned
+        // exactly past it right now, which is where the real per-level byte accounting must start
+        // (mirrors CPGFImage::UpdatePostHeaderSize -> CEncoder::WriteLevelLength's own
+        // SetBufferStartPos() call, right after writing the placeholder it wrote itself).
+        encoder.BeginLevelLengthTracking(header.NLevels);
+
         if (roi)
         {
             encoder.SetRoi();
@@ -254,12 +262,14 @@ internal static class PgfImageEncoder
                 // extraction, tile-end always true - no relevance check on the encode side (every
                 // tile is always encoded; see this method's own doc comment on `roi`).
                 //
-                // CEncoder::SetEncodedLevel (called once per level in the native, on the very last
-                // tile of the very last channel) is deliberately not ported: it only feeds
-                // m_lastLevelIndex/m_forceWriting, both level-length bookkeeping this port already
-                // never tracks (PgfImageEncoder's own class doc comment) and m_forceWriting is only
-                // ever read in the multi-macroblock/OpenMP branch this port's build never reaches -
-                // a real no-op for this port's scope, not an omission.
+                // CEncoder::SetEncodedLevel's own m_forceWriting side effect is still deliberately not
+                // ported (pgf-roi-support.md's own Stage 4 finding: dead in this port's
+                // always-single-macroblock build, since m_forceWriting is only ever read in the
+                // multi-macroblock/OpenMP branch this port's build never reaches). Its
+                // m_lastLevelIndex bookkeeping is a separate matter, though (pgf-real-level-lengths.md's
+                // own dependency finding) - AdvanceLevel below ports exactly that half, called at the
+                // same call site the native uses (the very last tile of the very last channel), right
+                // before that tile's own EncodeTileBuffer flush.
                 for (int c = 0; c < channelCount; c++)
                 {
                     PgfWaveletTransform wt = channels[c];
@@ -278,6 +288,12 @@ internal static class PgfImageEncoder
                             wt.GetSubband(currentLevel, PgfSubbandOrientation.Hl).ExtractTile(encoder, tile: true, tileX, tileY);
                             wt.GetSubband(currentLevel, PgfSubbandOrientation.Lh).ExtractTile(encoder, tile: true, tileX, tileY);
                             wt.GetSubband(currentLevel, PgfSubbandOrientation.Hh).ExtractTile(encoder, tile: true, tileX, tileY);
+
+                            if (c == channelCount - 1 && tileY == nTiles - 1 && tileX == nTiles - 1)
+                            {
+                                encoder.AdvanceLevel(currentLevel);
+                            }
+
                             encoder.EncodeTileBuffer();
                         }
                     }
@@ -300,6 +316,11 @@ internal static class PgfImageEncoder
                 wt.GetSubband(currentLevel, PgfSubbandOrientation.Lh).ExtractTile(encoder);
                 wt.GetSubband(currentLevel, PgfSubbandOrientation.Hh).ExtractTile(encoder);
             }
+
+            // Direct port of WriteLevel's own call site (PGFimage.cpp:1116-1117): once every
+            // channel's subbands for this level have been buffered, mark the level boundary before
+            // moving on - pgf-real-level-lengths.md Stage 1.
+            encoder.AdvanceLevel(currentLevel);
 
             levelsCompleted++;
             progress?.Report(PgfProgressCurve.FractionAfter(levelsCompleted, totalLevels));

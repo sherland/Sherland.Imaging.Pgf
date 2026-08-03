@@ -231,3 +231,33 @@ parsed" step, not new parsing logic or a new native oracle to prove correctness 
   assume; if they don't match exactly, that's still fine as long as each implementation's own
   A number is provably correct for its own output (the acceptance bar this PRD's own Test rig section
   already sets as the fallback).
+
+## Progress log
+
+### Stage 1: `PgfEncoderCore` accounting fields + `AdvanceLevel` hook
+
+- Added `PgfEncodeMacroBlock.LastLevelIndex` (direct port of `CMacroBlock::m_lastLevelIndex`,
+  Encoder.h:92, default `-1` matching the native's own `Init(-1)`).
+- Added `PgfEncoderCore.levelLength`/`currLevelIndex`/`bufferStartPos` fields, `SetBufferStartPos`/
+  `ComputeBufferLength` (direct ports of the same-named native methods, Encoder.h:181,194),
+  `BeginLevelLengthTracking(int levelCount)`, and `AdvanceLevel(int currentLevel)` (the
+  `m_lastLevelIndex`-only half of `CEncoder::SetEncodedLevel`, Encoder.h:164 — `m_forceWriting` still
+  correctly left unported, per `pgf-roi-support.md`'s own Stage 4 finding that it's dead in this
+  port's always-single-macroblock build). `WriteMacroBlock` gained the accounting block plus an
+  unconditional `SetBufferStartPos()` call, mirroring Encoder.cpp:454-465 exactly.
+- Wired `AdvanceLevel` into both of `PgfImageEncoder`'s per-level loops, at the same two call sites
+  `CPGFImage::WriteLevel` calls the real `SetEncodedLevel` from: the non-ROI loop's own end
+  (PGFimage.cpp:1116-1117), and the ROI branch's last-tile-of-last-channel point, right before that
+  tile's own `EncodeTileBuffer()` (PGFimage.cpp:1093-1097).
+- Wired `PgfEncoderCore.BeginLevelLengthTracking(header.NLevels)` into `PgfImageEncoder`, called
+  immediately after `PgfHeaderIO.Write` returns — establishes the byte-accounting baseline at
+  exactly the stream position the placeholder's own zero-fill loop leaves it at.
+- **Resolved Open Question 1** (whether the placeholder write this PRD needs is separate from
+  `PgfHeaderIO.Write`'s existing zero-fill loop): confirmed by reading `PgfHeader.cs`'s current write
+  method (the zero-fill loop is now at lines 271-275, not 264-269 as originally cited — line numbers
+  had drifted since the PRD was written, content unchanged) that it's the same placeholder region
+  described in Encoder.cpp's `WriteLevelLength`. Reused it rather than duplicating: no second
+  placeholder write was added anywhere. Stage 2 will seek back into this exact byte range to patch it.
+- No output-visible behavior change yet by design (Stage 1's own exit test) — the accounting runs on
+  every encode, but nothing reads `PgfEncoderCore.LevelLength` yet and the on-disk placeholder is
+  still all zeros. Full regression suite: 1259/1259 passed, unchanged from before this stage.

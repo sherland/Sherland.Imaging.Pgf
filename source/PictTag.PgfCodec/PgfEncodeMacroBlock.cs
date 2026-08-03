@@ -31,6 +31,14 @@ internal sealed class PgfEncodeMacroBlock
 
     public uint ValuePos;
 
+    /// <summary>Direct port of <c>CMacroBlock::m_lastLevelIndex</c> (Encoder.h:92) - the level-length
+    /// directory index this block's byte count should be credited to once flushed, set by
+    /// <see cref="PgfEncoderCore.AdvanceLevel"/> at a level boundary (mirrors
+    /// <c>CEncoder::SetEncodedLevel</c>, Encoder.h:164) but only taking effect on this block's *next*
+    /// flush, not immediately - a level boundary can fall mid-buffer. Default -1 matches the native's
+    /// own <c>Init(-1)</c> (Encoder.h:67); pgf-real-level-lengths.md Stage 1.</summary>
+    public int LastLevelIndex = -1;
+
     /// <summary>Running max of <c>abs(Value[i])</c> across every <see cref="WriteValue"/> call since
     /// the last <see cref="BitplaneEncode"/> - what <see cref="NumberOfBitplanes"/> bases its answer
     /// on (the encoder has to discover how many bitplanes are needed from the actual data; the

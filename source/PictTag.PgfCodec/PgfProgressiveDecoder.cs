@@ -33,7 +33,13 @@ public sealed class PgfProgressiveDecoder
     private PgfProgressiveDecoder(PgfDecodeSession session)
     {
         this.session = session;
-        lastDecoded = new (int[], int, int)[session.Channels.Length];
+
+        // pgf-user-data-and-small-images.md Goal 4: an nLevels=0 (raw/uncoded) session's channel
+        // data is already fully available from TryOpen (mirroring the native codec's own
+        // Open()-time read) - seed lastDecoded with it directly so TryDecodeLevel's
+        // "while (currentLevel > level)" loop, which naturally runs zero times here, doesn't need
+        // its own special case to populate it.
+        lastDecoded = session.RawChannelData ?? new (int[], int, int)[session.Channels.Length];
         currentLevel = session.Levels;
     }
 
@@ -96,14 +102,21 @@ public sealed class PgfProgressiveDecoder
     /// <see langword="false"/> rather than silently decoding/returning the wrong level's data - a
     /// deliberate, stricter fail-closed behavior than the native shim has for the same misuse
     /// (managed-pgf-codec.md Tier 5's general philosophy), not a difference in the valid/documented
-    /// usage pattern.</summary>
+    /// usage pattern.
+    ///
+    /// pgf-user-data-and-small-images.md Goal 4: for an <c>nLevels=0</c> session (<see cref="Levels"/>
+    /// is 0), the only valid request is <paramref name="level"/> 0 - matching the native <c>ASSERT(
+    /// (level &gt;= 0 &amp;&amp; level &lt; m_header.nLevels) || m_header.nLevels == 0)</c>
+    /// (PGFimage.cpp:403), which explicitly carves out <c>nLevels == 0</c> as always valid at level 0
+    /// rather than the usual <c>level &lt; Levels</c> range (which would otherwise reject level 0
+    /// itself, since 0 &lt; 0 is false).</summary>
     public bool TryDecodeLevel<TResult>(
         int level, PgfDecodedCallback<TResult> onDecoded, out TResult? result,
         IProgress<double>? progress = null, CancellationToken cancellationToken = default)
     {
         result = default;
 
-        if (level < 0 || level >= Levels || level > currentLevel)
+        if (level < 0 || level > currentLevel || (Levels > 0 && level >= Levels))
         {
             return false;
         }
@@ -128,6 +141,14 @@ public sealed class PgfProgressiveDecoder
             currentLevel--;
             levelsCompleted++;
             progress?.Report(PgfProgressCurve.FractionAfter(levelsCompleted, levelsInThisCall));
+        }
+
+        if (Levels == 0)
+        {
+            // Matches CPGFImage::Read's own nLevels==0 branch (PGFimage.cpp:415-422): the callback
+            // fires once, at 1.0, since the data was already read during Open() - the loop above
+            // never runs (currentLevel and level are both already 0), so no report happens there.
+            progress?.Report(1.0);
         }
 
         int outWidth = lastDecoded[0].Width;

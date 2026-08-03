@@ -171,7 +171,13 @@ public static class PgfImageDecoder
 
         userData = session.UserData;
 
-        (int[] Data, int Width, int Height)[] channelData = new (int[], int, int)[session.Channels.Length];
+        // pgf-user-data-and-small-images.md Goal 4: nLevels=0 files have their raw channel data
+        // already fully available from PgfDecodeSession.TryOpen (mirroring the native codec's own
+        // Open()-time read, CPGFImage::Read's nLevels==0 branch being a no-op at level 0 - PGFimage.
+        // cpp:415-422) - the level loop below naturally runs zero times when session.Levels == 0, so
+        // channelData just needs to start out already populated with it instead of an empty array.
+        (int[] Data, int Width, int Height)[] channelData =
+            session.RawChannelData ?? new (int[], int, int)[session.Channels.Length];
 
         int totalLevels = session.Levels;
         int levelsCompleted = 0;
@@ -197,6 +203,14 @@ public static class PgfImageDecoder
             channelData = decoded;
             levelsCompleted++;
             progress?.Report(PgfProgressCurve.FractionAfter(levelsCompleted, totalLevels));
+        }
+
+        if (session.Levels == 0)
+        {
+            // Matches CPGFImage::Read's own nLevels==0 branch (PGFimage.cpp:415-422): the callback
+            // fires once, at 1.0, since the data was already read during Open() - there's no
+            // incremental level work left to report progress across.
+            progress?.Report(1.0);
         }
 
         int bufferSize = checked(session.FullWidth * session.FullHeight * 4);

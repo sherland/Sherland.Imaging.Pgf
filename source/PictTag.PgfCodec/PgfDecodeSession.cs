@@ -1,3 +1,5 @@
+using System.Buffers.Binary;
+
 namespace PictTag.PgfCodec;
 
 /// <summary>Shared by <see cref="PgfImageDecoder"/> and <see cref="PgfProgressiveDecoder"/> - matches
@@ -25,7 +27,7 @@ internal sealed class PgfDecodeSession
     private PgfDecodeSession(
         PgfWaveletTransform[] channels, PgfDecoderCore decoder, int quant, bool downsample,
         int fullWidth, int fullHeight, int chromaWidth, byte levels, byte mode, byte[]? colorTable,
-        PgfUserData userData)
+        PgfUserData userData, (int[] Data, int Width, int Height)[]? rawChannelData)
     {
         Channels = channels;
         Decoder = decoder;
@@ -38,6 +40,7 @@ internal sealed class PgfDecodeSession
         Mode = mode;
         ColorTable = colorTable;
         UserData = userData;
+        RawChannelData = rawChannelData;
     }
 
     /// <summary>The mode's channels' wavelet pyramids, in the header's own channel order (e.g. Y, U,
@@ -76,6 +79,17 @@ internal sealed class PgfDecodeSession
     /// with.</summary>
     public PgfUserData UserData { get; }
 
+    /// <summary>pgf-user-data-and-small-images.md Goal 4: non-<see langword="null"/> only when
+    /// <see cref="Levels"/> is 0 - the wavelet-transform-free "raw/uncoded" path
+    /// (<c>CPGFImage::Open</c>'s <c>nLevels==0</c> branch, PGFimage.cpp:198-214) for images too small
+    /// to build even one wavelet level. Unlike the normal path, the native codec reads this data
+    /// synchronously during <c>Open()</c> itself, not lazily during <c>Read(level)</c> - this port
+    /// mirrors that timing exactly (populated here, in <see cref="TryOpen"/>, not in
+    /// <see cref="DecodeOneLevel"/>), so both <see cref="PgfImageDecoder"/> and
+    /// <see cref="PgfProgressiveDecoder"/> can treat "level 0" as already-available data rather than
+    /// something to decode.</summary>
+    public (int[] Data, int Width, int Height)[]? RawChannelData { get; }
+
     public static PgfDecodeSession? TryOpen(
         ReadOnlyMemory<byte> pgfData, PgfUserDataPolicy userDataPolicy = PgfUserDataPolicy.CacheAll, uint userDataPrefixSize = 0)
     {
@@ -91,14 +105,6 @@ internal sealed class PgfDecodeSession
             {
                 // Fail closed rather than silently mis-decoding a mode this port doesn't (yet) model
                 // - matches managed-pgf-codec.md's original RGBA-only guard, now mode-generic.
-                return null;
-            }
-
-            if (header.NLevels == 0)
-            {
-                // The wavelet-transform-free "raw" path (CPGFImage::Open's nLevels==0 branch) -
-                // deliberately out of scope, unreachable for any real image (min(width,height) >= 10
-                // per this port's own encoder guard) - see managed-pgf-codec.md's scope notes.
                 return null;
             }
 
@@ -139,6 +145,25 @@ internal sealed class PgfDecodeSession
             int chromaWidth = downsample ? (fullWidth + 1) / 2 : fullWidth;
             int chromaHeight = downsample ? (fullHeight + 1) / 2 : fullHeight;
 
+            if (header.NLevels == 0)
+            {
+                // The wavelet-transform-free "raw" path (CPGFImage::Open's nLevels==0 branch,
+                // PGFimage.cpp:198-214) - too small for even one wavelet level
+                // (TestBitmaps.MinimumSupportedDimension). Read directly here (matching the native
+                // codec's own Open()-time timing, not Read(level)'s) rather than building a
+                // PgfWaveletTransform/PgfDecoderCore neither the raw format nor this path uses.
+                (int[] Data, int Width, int Height)[]? rawChannelData =
+                    TryReadRawChannels(reader, header.Channels, fullWidth, fullHeight, chromaWidth, chromaHeight);
+                if (rawChannelData is null)
+                {
+                    return null;
+                }
+
+                return new PgfDecodeSession(
+                    [], new PgfDecoderCore(reader), quant, downsample, fullWidth, fullHeight, chromaWidth, header.NLevels,
+                    header.Mode, colorTable, userData, rawChannelData);
+            }
+
             PgfWaveletTransform[] channels = new PgfWaveletTransform[header.Channels];
             channels[0] = new PgfWaveletTransform(fullWidth, fullHeight, header.NLevels);
             for (int c = 1; c < header.Channels; c++)
@@ -150,7 +175,7 @@ internal sealed class PgfDecodeSession
 
             return new PgfDecodeSession(
                 channels, decoder, quant, downsample, fullWidth, fullHeight, chromaWidth, header.NLevels, header.Mode, colorTable,
-                userData);
+                userData, rawChannelData: null);
         }
         catch (PgfFormatException)
         {
@@ -160,6 +185,48 @@ internal sealed class PgfDecodeSession
         {
             return null;
         }
+    }
+
+    /// <summary>Direct port of <c>CPGFImage::Open</c>'s <c>nLevels==0</c> read loop
+    /// (PGFimage.cpp:198-214): each channel's raw <c>DataT</c> (<see cref="int"/> in this port -
+    /// <c>PgfConstants</c>' own doc comment) coefficients, already color-converted (YUV-space) but
+    /// never wavelet-transformed or quantized (there is no forward transform to quantize the output
+    /// of, on this path), read sequentially - one whole channel's array, then the next, not
+    /// interleaved the way the leveled bitstream is. Channel 0 is always <paramref name="fullWidth"/>
+    /// x <paramref name="fullHeight"/>; channels 1..N-1 use <paramref name="chromaWidth"/>/
+    /// <paramref name="chromaHeight"/> instead when the caller's downsample decision applies -
+    /// confirmed directly against the native source that this decision is made identically regardless
+    /// of <c>nLevels</c> (PGFimage.cpp:175-187, evaluated before the <c>nLevels</c> branch), so a
+    /// downsample-eligible mode still spatially subsamples chroma even on this otherwise-lossless
+    /// path. Returns <see langword="null"/> on a truncated stream (this port's own fail-closed
+    /// convention), rather than the native's own <c>ReturnWithError(MissingData)</c> throw.</summary>
+    private static (int[] Data, int Width, int Height)[]? TryReadRawChannels(
+        PgfMemoryReader reader, byte channelCount, int fullWidth, int fullHeight, int chromaWidth, int chromaHeight)
+    {
+        (int[] Data, int Width, int Height)[] result = new (int[], int, int)[channelCount];
+        Span<byte> valueBytes = stackalloc byte[4];
+
+        for (int c = 0; c < channelCount; c++)
+        {
+            int width = c == 0 ? fullWidth : chromaWidth;
+            int height = c == 0 ? fullHeight : chromaHeight;
+            int size = checked(width * height);
+
+            int[] data = new int[size];
+            for (int i = 0; i < size; i++)
+            {
+                if (reader.Read(valueBytes) != 4)
+                {
+                    return null;
+                }
+
+                data[i] = BinaryPrimitives.ReadInt32LittleEndian(valueBytes);
+            }
+
+            result[c] = (data, width, height);
+        }
+
+        return result;
     }
 
     /// <summary>Decodes every subband at <paramref name="level"/> for every channel, then

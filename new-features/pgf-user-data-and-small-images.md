@@ -318,3 +318,37 @@ New tests (8, `PgfUntrustedLengthTests.cs`): width/height that don't fit in `int
 that overflows the buffer-size multiplication, zero width/height, the same fixed-closed behavior via
 `PgfProgressiveDecoder.TryOpen`, and a normal-sized-image regression proving the new bound doesn't
 narrow real, valid input. Full regression: `PictTag.PgfCodec.Tests` 1069 → 1077 (8 new, 0 failed).
+
+**Stage 4 (`nLevels=0` decode) — done.** `PgfDecodeSession.TryOpen` no longer rejects
+`header.NLevels == 0`: a new `TryReadRawChannels` helper reads each channel's raw `DataT`
+(`int`) coefficients directly and sequentially (whole channel, then the next - not interleaved the
+way the leveled bitstream is), matching `CPGFImage::Open`'s own `nLevels==0` branch exactly
+(PGFimage.cpp:198-214). The chroma downsample decision (quality/mode-driven) is computed once,
+before branching on `NLevels`, and applies identically to both paths - confirmed directly against
+the native source (PGFimage.cpp:161-187, evaluated before the `nLevels` check), not assumed. The
+result is stored as `PgfDecodeSession.RawChannelData`, populated at `TryOpen` time rather than
+lazily during level decode - mirroring the native codec's own timing (`CPGFImage::Open` reads this
+data synchronously; `Read(level)` is a no-op for `nLevels==0`, PGFimage.cpp:415-422). `PgfImageDecoder.
+TryDecode` and `PgfProgressiveDecoder` both seed their per-channel working array from
+`RawChannelData` when present, so their existing level loops (which naturally run zero iterations
+when `Levels == 0`) need no restructuring - only `PgfProgressiveDecoder.TryDecodeLevel`'s level-range
+guard needed a real change, to accept `level == 0` when `Levels == 0` (the old `level >= Levels`
+check rejected level 0 itself when `Levels` is 0) - this mirrors the native `ASSERT((level >= 0 &&
+level < m_header.nLevels) || m_header.nLevels == 0)` (PGFimage.cpp:403) exactly, which explicitly
+carves out this case rather than treating it as an ordinary range check.
+
+**A wrong assumption caught by its own test, not assumed correct**: an initial test asserted every
+quality level decodes pixel-identically on this path, reasoning "no forward transform, so no
+quantization." That's true, but incomplete - RGBA's chroma downsample decision (quality >
+`DownsampleThreshold`) is independent of quantization and applies on this path too (confirmed above),
+so quality 4/6/15 genuinely decode different (still correct, chroma-subsampled) pixels, not a bug.
+Split into `..._QualityAtOrBelowDownsampleThreshold_StillLossless` (0-3, byte-exact) and
+`..._AboveDownsampleThreshold_StillDecodesSuccessfully` (4/6/15, dimensions-only) once the real
+behavior was confirmed empirically rather than re-asserting the original wrong expectation.
+
+New tests (21, `PgfNLevelsZeroDecodeTests.cs`): byte-exact decode against the real native oracle
+(`NativePgfOracle.TryEncode`/`TryEncodeMode`, whose own size guard Open Question 1 already removed)
+across eight sizes down to 1x1, both single-shot and progressive decode, an indexed-color (paletted)
+tiny image, a truncated-stream fail-closed case, and `PgfProgressiveDecoder`'s level-0-only
+contract (rejecting level 1, idempotent on repeat level-0 requests). Full regression:
+`PictTag.PgfCodec.Tests` 1077 → 1098 (21 new, 0 failed); `PictTag.Data.Tests` 15/15 unchanged.

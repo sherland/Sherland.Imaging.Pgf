@@ -1,6 +1,7 @@
 # PGF codec: user data + small-image (nLevels=0) support — PRD
 
-**Status: in progress (Stage 1 of 6 done).** Closes two gaps documented in
+**Status: done, all 6 stages shipped** (see "Progress log" below for the full record). Closed two
+gaps documented in
 [`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md)'s "Explicitly out of scope" list ("Header metadata" —
 the user-data half specifically, not the color table, which `pgf-all-image-modes.md` already owns —
 and "The `nLevels=0` 'raw/uncoded' path"). Two genuinely distinct features bundled into one PRD
@@ -191,17 +192,24 @@ same goal this PRD is in service of.
 ## Open questions
 
 - **Whether the native shim's test-only encode export needs its own guard loosened** to produce real
-  `nLevels=0` oracle fixtures, given its existing rejection of this size range was itself motivated by
-  a real, unresolved crash risk (`managed-pgf-codec.md` Stage 1) — decide whether that risk is
-  specific to the debug-channel export this PRD doesn't need, or general enough to require real
-  caution here too, before assuming it's safe to just remove the guard.
-- **Exact public API shape for retrieving user data alongside a decoded image** — an additional `out`
-  parameter vs. a small result type vs. a separate explicit call — resolve by whichever reads most
-  naturally against this port's existing conventions once actually drafting it, not decided upfront.
-- **Whether exposing `UserdataPolicy`'s skip/prefix/cache-all distinction is worth the API surface**,
-  or whether a general consumer is just as well served by "always cache all, it's already bounded to
-  something sane" (Goal 3) — resolve based on how large real-world user data payloads actually tend to
-  be, if that's discoverable, rather than guessing.
+  `nLevels=0` oracle fixtures — **resolved: the guard was safe to remove.** An isolated scratch build
+  with only `pgf_encode_bgra_alloc`'s size guard removed survived 5000 encode-then-decode round trips
+  (ten sizes down to 1x1, mixed content, quality=0) with no crash. The original heap corruption was
+  most likely the separately-fixed `realloc()`/`delete[]` bug from the same investigation, not
+  anything specific to this size range; `pgf_debug_decode_channel`'s own, unrelated, still-unresolved
+  repeated-call crash risk was untouched. See Stage 1's Progress log entry below for the full account.
+- **Exact public API shape for retrieving user data alongside a decoded image** — **resolved: an
+  overload for the callback-based API, a property for the stateful one.**
+  `PgfImageDecoder.TryDecode` gained a second overload (`out PgfUserData` + policy parameters) since
+  C# forbids a required `out` parameter after optional ones, so a single widened signature wasn't
+  possible without breaking every existing call site; `PgfProgressiveDecoder` exposes `UserData` as a
+  plain property instead, matching how it already exposes `Width`/`Height`/`Levels`. See Stage 1's
+  Progress log entry.
+- **Whether exposing `UserdataPolicy`'s skip/prefix/cache-all distinction is worth the API surface** —
+  **resolved: yes, expose it, per Goal 2's own explicit mandate.** The "worth it" question is already
+  answered by the Goal itself committing to exposing it; real-world payload-size data wasn't needed to
+  make that call, since the API cost of a `PgfUserDataPolicy` parameter with a `CacheAll` default is
+  low and every existing call site is unaffected either way. See Stage 1's Progress log entry.
 
 ## Progress log
 
@@ -380,3 +388,17 @@ locking in is exactly what this stage changed; `TestBitmaps.MinimumSupportedDime
 comment was updated to stop calling this range "out of scope" now that every consumer (native shim,
 this port's decoder, this port's encoder) supports it. Full regression: `PictTag.PgfCodec.Tests`
 1098 → 1130 (32 new, 0 failed); `PictTag.Data.Tests` 15/15 unchanged.
+
+**Stage 6 (Documentation) — done.** This "Status" line flipped to done; every "Open questions" entry
+above marked resolved with a pointer to its own stage's reasoning; this Progress log verified end to
+end against the real `git log` for this PRD's five stage commits (Stage 1 through Stage 5, each
+landing the test-count delta its own entry above claims: 1043 → 1058 → 1069 → 1077 → 1098 → 1130) -
+every stage has a matching entry, none silently skipped, and the Open Question 1 experiment (folded
+into Stage 1's own commit rather than a separate one, since it was a direct prerequisite for that
+stage's own work resuming) is recorded with its real reasoning, not summarized after the fact.
+`docs/PGF-CODEC.md` updated: both "Explicitly out of scope" bullets this PRD closed (user data, the
+`nLevels=0` path) removed and folded into a new "Supported" bullet; the "If a real need for any of
+these shows up" and closing-summary paragraphs updated to stop listing this PRD's two gaps as
+open/future work (only `pgf-roi-support.md` remains undone in that framing); the "Proven byte-exact
+..." bullet's test count corrected to 1130. No new standalone summary document created, per this
+process's own convention.

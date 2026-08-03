@@ -42,9 +42,24 @@ made, what was tried, what broke and how it was fixed), see
   production-relevant shape; `TryEncodeMode` (every other mode) exists as test infrastructure to
   produce real fixtures to decode-test against, not a second production path.
 - Proven byte-exact against the real native decoder/encoder across a wide fixture/dimension/quality
-  matrix, every mode, both directions (`PictTag.PgfCodec.Tests`, 1043 tests) — see
+  matrix, every mode, both directions (`PictTag.PgfCodec.Tests`, 1130 tests) — see
   `managed-pgf-codec.md`'s Stage 7-9 progress log entries for the original RGBA-only verification and
   `pgf-all-image-modes.md`'s own Progress log for the per-mode extension.
+- **Header metadata: user data, and the `nLevels=0` "raw/uncoded" small-image path** — arbitrary
+  caller-supplied post-header user data round-trips byte-exact under any `PgfUserDataPolicy`
+  (`Skip`/`CachePrefix`/`CacheAll`, defaulting to `CacheAll`), read/written by `PgfHeaderIO.Read`/
+  `Write` and exposed via `PgfImageDecoder.TryDecode`'s `PgfUserData` overload and
+  `PgfProgressiveDecoder.UserData`; `PgfImageEncoder.TryEncode`/`TryEncodeMode` take it as an optional
+  parameter. Images below `TestBitmaps.MinimumSupportedDimension` (10, `min(width,height) < 10`) - too
+  small for even one wavelet level - decode and encode via the format's own wavelet-transform-free
+  "raw/uncoded" path (`PgfDecodeSession.RawChannelData`/`PgfImageEncoder`'s `WriteRawChannels`), rather
+  than failing closed the way this port used to. Untrusted header-declared lengths (post-header user
+  data size, and separately, `Width`/`Height` themselves) are bounds-checked against the real stream
+  before any allocation, failing closed on a corrupted/malicious claim instead of attempting an
+  oversized allocation or throwing an uncaught exception. See
+  [`new-features/pgf-user-data-and-small-images.md`](../new-features/pgf-user-data-and-small-images.md)
+  for the full record, including a real `OverflowException` bug this work found and fixed along the
+  way (Stage 3).
 - **Progress reporting and cooperative cancellation**: `PgfImageDecoder.TryDecode`,
   `PgfProgressiveDecoder.TryDecodeLevel`, and `PgfImageEncoder.TryEncode` all take optional
   `IProgress<double>?`/`CancellationToken` parameters (backward-compatible defaults — every existing
@@ -79,12 +94,6 @@ exercised — not an oversight, and not silently dropped.
   to special-case a file's own historical version flag, for a shape no real digiKam thumbnail or this
   port's own encoder (which always sets `Version7`) could ever produce — deliberately left unported,
   not silently dropped (`PgfColorConversion`'s Group G doc comment has the full reasoning).
-- **The `nLevels=0` "raw/uncoded" path** — for tiny images (`min(width,height) < 10`), the original
-  codec stores channel data directly with no wavelet transform at all. Not ported: both
-  `PgfDecodeSession.cs:70` (decode) and `PgfImageEncoder.cs:39` (encode) treat `NLevels == 0` as a
-  hard failure, matching `TestBitmaps.MinimumSupportedDimension` (10) — real digiKam thumbnails
-  never approach this size. Planned:
-  [`new-features/pgf-user-data-and-small-images.md`](../new-features/pgf-user-data-and-small-images.md).
 - **Region of interest (ROI) cropped decode/encode** — the native codec compiles this in
   unconditionally (`PGFplatform.h:60`'s `#define __PGFROISUPPORT__`, never suppressed in this
   build), but it's dead code in practice: nothing that touches this codebase ever sets the `PGFROI`
@@ -98,12 +107,6 @@ exercised — not an oversight, and not silently dropped.
 - **Legacy pre-Version5 entropy coding** (`DecodeInterleaved`, the older HL/LH interleaved scheme) —
   not ported; this port's encoder always sets the Version5 flag, and so does every modern real PGF
   file (`PgfDecoderCore.cs:104-105`).
-- **Header metadata: user data only** — `IndexedColor`'s color table (the other half of
-  `PGFPostHeader`) is fully supported (`PgfHeaderIO.Read`/`Write`, `PgfConstants.ColorTableSize`).
-  Arbitrary user data / `UserdataPolicy` handling is still not ported — `PgfHeaderIO.Write` never
-  writes any; reading skips over whatever post-header bytes remain once the color table (if any) is
-  accounted for, rather than parsing them. Planned:
-  [`new-features/pgf-user-data-and-small-images.md`](../new-features/pgf-user-data-and-small-images.md).
 - **Real per-level byte lengths on encode** — the encoder always writes zero placeholders instead of
   patching in the real values after encoding (`PgfImageEncoder.cs:10`) — grepping every consumer in
   this codebase found level-length data is genuinely optional/unused by the real decode path
@@ -124,16 +127,17 @@ and the doc comment at the matching C# file — each one already explains exactl
 change and why it was safe to skip until now. One real candidate for "a future need": if
 `PictTag.PgfCodec` is ever published as a standalone NuGet package, a general consumer's real usage
 won't be constrained to digiKam's own thumbnail shape (small, RGBA, metadata-free) the way this app's
-own usage is — several items above (user data, tiny images, large-image ROI) get noticeably more
-likely to matter under that framing, even though none of them have a current internal need.
-(Publishing as a NuGet also raises a real, separate question this list doesn't cover: this port
-is a close derivative of digiKam's vendored `libpgf`, LGPL-2.1+ — external distribution likely needs
-the license text/attribution bundled and a real compliance check, which is a legal question for
-someone else to own, not a technical gap to close here.)
+own usage is — large-image ROI is the remaining item above that gets noticeably more likely to matter
+under that framing (user data and tiny-image support, the other two candidates this reasoning
+originally applied to, are done — see `pgf-user-data-and-small-images.md`'s own Progress log), even
+though none of them have a current internal need. (Publishing as a NuGet also raises a real, separate
+question this list doesn't cover: this port is a close derivative of digiKam's vendored `libpgf`,
+LGPL-2.1+ — external distribution likely needs the license text/attribution bundled and a real
+compliance check, which is a legal question for someone else to own, not a technical gap to close
+here.)
 
-Two of these gaps still have draft PRDs (not started, written for completeness rather than an urgent
-product need — each says so honestly in its own Context section):
-[`pgf-roi-support.md`](../new-features/pgf-roi-support.md) and
-[`pgf-user-data-and-small-images.md`](../new-features/pgf-user-data-and-small-images.md).
-(`pgf-cancellation-and-progress.md` and `pgf-all-image-modes.md` are both done — see each one's own
+One of these gaps still has a draft PRD (not started, written for completeness rather than an urgent
+product need — it says so honestly in its own Context section):
+[`pgf-roi-support.md`](../new-features/pgf-roi-support.md). (`pgf-cancellation-and-progress.md`,
+`pgf-all-image-modes.md`, and `pgf-user-data-and-small-images.md` are all done — see each one's own
 Progress log.)

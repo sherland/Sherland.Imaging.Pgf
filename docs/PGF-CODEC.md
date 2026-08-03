@@ -144,13 +144,19 @@ to actually hit them:
   `CPGFImage::Read`, `PgfDecoderCore.cs:188-189`'s own doc comment cites the exact spot) for genuinely
   older PGF files; this port's decoder only implements the modern Version5+ tile-based scheme. A
   general library claiming PGF decode support would be expected to open files from before this scheme
-  existed.
+  existed. Decode-only (the reference encoder has never had a counterpart, at any point in its
+  history) and, uniquely among this list, without an obtainable independent native oracle to
+  cross-check against — see [`new-features/pgf-legacy-interleaved-decode.md`](../new-features/pgf-legacy-interleaved-decode.md)
+  for the full grounding and why.
 - **Bitmap's legacy pre-Version7 packed sub-variant** — the modern ("new unpacked since Version7")
   sub-variant is fully supported; the older packed format is real, reachable decode-side code in the
   native source, storing channel data at a different width entirely (one `DataT` per *byte*, not per
-  *pixel*) that would need `PgfDecodeSession`'s channel-allocation logic to special-case a file's own
-  historical version flag (`PgfColorConversion`'s Group G doc comment has the full reasoning for why
-  it was deferred, not why it's impossible).
+  *pixel*). Decode-only. See [`new-features/pgf-bitmap-legacy-packed.md`](../new-features/pgf-bitmap-legacy-packed.md)
+  for the full grounding — including a correction to this doc's own earlier framing: the real version
+  split is three-way (pre-Version5 / Version5-6-without-Version7 / Version7+), not the two-way split
+  this bullet used to imply, and `PgfDecodeSession`'s channel *allocation* turned out not to need any
+  change at all (both sub-variants size channel 0 identically); the real fix is entirely in
+  `PgfColorConversion`'s reading semantics.
 - **Real per-level byte lengths on encode** — confirmed by tracing the actual native call chain
   (`CPGFImage::WriteImage` → `UpdatePostHeaderSize`/`CEncoder::WriteLevelLength` writes a placeholder
   → every real `WriteMacroBlock` call accumulates into `m_levelLength[]` → `CEncoder::UpdateLevelLength`
@@ -160,25 +166,36 @@ to actually hit them:
   level lengths back (`CDecoder::ReadEncodedData` is the only real reader anywhere in `libpgf`, and
   it's never called from `Open`/`Read`/`GetBitmap` or this app's shim) — but a general NuGet consumer
   building their own tooling against this format's real, documented structure could reasonably expect
-  a value the format itself defines to be correct, not silently zeroed.
+  a value the format itself defines to be correct, not silently zeroed. The gap is narrower than it
+  first looks: the *decode* side already correctly parses level lengths off the wire
+  (`PgfHeaderIO.Read`) and just discards them — this is almost entirely an encode-side fix plus a thin
+  decode-side accessor, with a real, already-working native oracle to verify against
+  (`CPGFImage::GetEncodedLevelLength`). See [`new-features/pgf-real-level-lengths.md`](../new-features/pgf-real-level-lengths.md)
+  for the full grounding.
 - **Big-endian hosts** (`PGF_USE_BIG_ENDIAN`) — not handled; this port assumes a little-endian host
   throughout (`PgfDecoderCore.cs:128-131`). Every real deployment target *this app* runs on is
   little-endian, but a general NuGet consumer's target isn't this app's to assume. Lowest-priority
-  item on this list in practice (real big-endian .NET targets are rare), but a genuine correctness gap
-  if one is ever hit, not just an untested path.
+  item on this list in practice (real big-endian .NET targets are rare — no officially supported
+  big-endian target exists in mainline .NET today), but a genuine correctness gap if one is ever hit,
+  not just an untested path. Confirmed narrow: only two call sites (`PgfDecoderCore.cs`/
+  `PgfEncoderCore.cs`'s raw macroblock `MemoryMarshal.AsBytes` reinterprets) are actually at risk —
+  every other multi-byte field this port reads/writes already goes through host-endianness-safe
+  `BinaryPrimitives.*LittleEndian` calls. See [`new-features/pgf-big-endian-hosts.md`](../new-features/pgf-big-endian-hosts.md)
+  for the full grounding.
 
 ## If a real need for any of these shows up
 
 Large-image ROI was the previous version of this section's own flagged candidate for "gets more
 likely to matter under the NuGet framing" — it's done now (see the Supported section above and
-`pgf-roi-support.md`'s own Progress log). The four items in "Not yet ported" above are this doc's
-current, honest answer to "what does full C++ parity still require" — each one's doc comment at the
-matching C# file already explains exactly what would need to change. Publishing as a NuGet also
-raises a real, separate question this list doesn't cover: this port is a close derivative of
-digiKam's vendored `libpgf`, LGPL-2.1+ — external distribution likely needs the license text/
-attribution bundled and a real compliance check, which is a legal question for someone else to own,
-not a technical gap to close here.
+`pgf-roi-support.md`'s own Progress log). The four items in "Not yet ported" above each now have
+their own staged implementation PRD (linked above), grounded the same way `pgf-roi-support.md` was —
+none started yet. Publishing as a NuGet also raises a real, separate question this list doesn't
+cover: this port is a close derivative of digiKam's vendored `libpgf`, LGPL-2.1+ — external
+distribution likely needs the license text/attribution bundled and a real compliance check, which is
+a legal question for someone else to own, not a technical gap to close here.
 
-Every gap this codebase's own staged PRDs (`pgf-cancellation-and-progress.md`, `pgf-all-image-modes.md`,
-`pgf-user-data-and-small-images.md`, `pgf-roi-support.md`) originally tracked is closed — see each
-one's own Progress log for the full record. The four "Not yet ported" items above don't have PRDs yet.
+Every gap this codebase's own *completed* staged PRDs (`pgf-cancellation-and-progress.md`,
+`pgf-all-image-modes.md`, `pgf-user-data-and-small-images.md`, `pgf-roi-support.md`) originally
+tracked is closed — see each
+one's own Progress log for the full record. The four "Not yet ported" items above each have a staged
+PRD now (linked above) but haven't started implementation yet.

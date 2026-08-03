@@ -33,6 +33,22 @@ made, what was tried, what broke and how it was fixed), see
 - Proven byte-exact against the real native decoder/encoder across every quality level and a wide
   fixture/dimension matrix (`PictTag.PgfCodec.Tests`, 567 tests) — see that PRD's Stage 7-9 progress
   log entries for exactly what was checked.
+- **Progress reporting and cooperative cancellation**: `PgfImageDecoder.TryDecode`,
+  `PgfProgressiveDecoder.TryDecodeLevel`, and `PgfImageEncoder.TryEncode` all take optional
+  `IProgress<double>?`/`CancellationToken` parameters (backward-compatible defaults — every existing
+  call site keeps compiling and behaving unchanged). Progress reports once per level actually
+  decoded/encoded, as an area-weighted fraction in `[0, 1]` (mirroring the native codec's own
+  `percent *= 4`-per-level curve, since each level covers 4x the previous level's linear coverage in
+  the wavelet pyramid — a plain per-level-count fraction would misreport "almost done" after only the
+  cheap coarse levels finish). Cancellation is checked once per level, before that level's work
+  starts, and surfaces as `OperationCanceledException` — a deliberate departure from this codec's
+  usual fail-closed-return-`false` convention, since cancellation is caller-requested, not a
+  malformed-input failure mode. `PictTag.Data.PgfDecoding.PgfDecoder`'s facade passes both parameters
+  through; no UI call site consumes them yet (`DesktopProgressiveBitmapLoader`/
+  `BrowserProgressiveBitmapLoader` already have their own natural, coarser-grained cancellation point
+  between per-level calls). See
+  [`new-features/pgf-cancellation-and-progress.md`](../new-features/pgf-cancellation-and-progress.md)
+  for the full record.
 
 ## Explicitly out of scope
 
@@ -80,13 +96,6 @@ exercised — not an oversight, and not silently dropped.
 - **`CSubband::Dequantize`** — confirmed dead code even in the original (only called from an
   encode-time "verify what I just wrote" helper nothing here calls) — not ported
   (`PgfSubband.cs:11`).
-- **Progress callbacks and cooperative mid-decode cancellation** — the native `Read`/`Write` APIs
-  accept an optional callback invoked periodically with a percentage, which can request early abort.
-  `PictTag.PgfCodec`'s public API (`PgfImageDecoder.TryDecode`, `PgfImageEncoder.TryEncode`,
-  `PgfProgressiveDecoder.TryDecodeLevel`) has no equivalent parameter — no progress reporting, no
-  mid-decode abort hook. (The UI loaders layer their own `CancellationToken` checks *between* level
-  calls, but that's outside the codec itself, not a substitute for it.) Planned:
-  [`new-features/pgf-cancellation-and-progress.md`](../new-features/pgf-cancellation-and-progress.md).
 - **Big-endian hosts** (`PGF_USE_BIG_ENDIAN`) — not handled; this port assumes a little-endian host
   throughout (`PgfDecoderCore.cs:88-91`), matching every real deployment target here.
 
@@ -106,9 +115,9 @@ is a close derivative of digiKam's vendored `libpgf`, LGPL-2.1+ — external dis
 the license text/attribution bundled and a real compliance check, which is a legal question for
 someone else to own, not a technical gap to close here.)
 
-Four of these gaps already have draft PRDs (not started, written for completeness rather than an
+Three of these gaps already have draft PRDs (not started, written for completeness rather than an
 urgent product need — each says so honestly in its own Context section):
-[`pgf-cancellation-and-progress.md`](../new-features/pgf-cancellation-and-progress.md),
 [`pgf-roi-support.md`](../new-features/pgf-roi-support.md),
 [`pgf-all-image-modes.md`](../new-features/pgf-all-image-modes.md), and
 [`pgf-user-data-and-small-images.md`](../new-features/pgf-user-data-and-small-images.md).
+(`pgf-cancellation-and-progress.md` is done — see its own Progress log.)

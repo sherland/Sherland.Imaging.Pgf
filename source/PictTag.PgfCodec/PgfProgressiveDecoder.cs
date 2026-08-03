@@ -87,7 +87,9 @@ public sealed class PgfProgressiveDecoder
     /// deliberate, stricter fail-closed behavior than the native shim has for the same misuse
     /// (managed-pgf-codec.md Tier 5's general philosophy), not a difference in the valid/documented
     /// usage pattern.</summary>
-    public bool TryDecodeLevel<TResult>(int level, PgfDecodedCallback<TResult> onDecoded, out TResult? result)
+    public bool TryDecodeLevel<TResult>(
+        int level, PgfDecodedCallback<TResult> onDecoded, out TResult? result,
+        IProgress<double>? progress = null, CancellationToken cancellationToken = default)
     {
         result = default;
 
@@ -96,8 +98,16 @@ public sealed class PgfProgressiveDecoder
             return false;
         }
 
+        // pgf-cancellation-and-progress.md: progress is a per-call sweep over just the levels this
+        // call decodes (levelsInThisCall may be 0 for a same-level re-request - see
+        // PgfProgressCurve's doc comment for why per-call, not whole-image PM_Absolute, was chosen).
+        int levelsInThisCall = currentLevel - level;
+        int levelsCompleted = 0;
+
         while (currentLevel > level)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             (short[] Data, int Width, int Height)[]? decoded = session.DecodeOneLevel(currentLevel);
             if (decoded is null)
             {
@@ -106,6 +116,8 @@ public sealed class PgfProgressiveDecoder
 
             Array.Copy(decoded, lastDecoded, 4);
             currentLevel--;
+            levelsCompleted++;
+            progress?.Report(PgfProgressCurve.FractionAfter(levelsCompleted, levelsInThisCall));
         }
 
         int outWidth = lastDecoded[0].Width;

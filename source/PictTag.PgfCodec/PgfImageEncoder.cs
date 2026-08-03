@@ -18,10 +18,18 @@ namespace PictTag.PgfCodec;
 /// deferred-accounting (a value spans macroblocks that don't align with level boundaries) for a field
 /// nothing decodes or asserts on - this PRD's "decode-correctness, not bitstream-identity" guarantee
 /// (see managed-pgf-codec.md) explicitly does not require byte-identical files anyway.
+///
+/// pgf-cancellation-and-progress.md: <c>progress</c>/<c>cancellationToken</c>
+/// mirror <see cref="PgfImageDecoder.TryDecode{TResult}"/>'s own semantics exactly (once per level,
+/// area-weighted fraction, <see cref="OperationCanceledException"/> on cancellation) - ported for
+/// completeness/symmetry, not because a production caller exists yet (this type has none, see
+/// managed-pgf-codec.md's Non-goals).
 /// </summary>
 internal static class PgfImageEncoder
 {
-    public static bool TryEncode(ReadOnlySpan<byte> bgra, int width, int height, byte quality, out byte[]? pgfBytes)
+    public static bool TryEncode(
+        ReadOnlySpan<byte> bgra, int width, int height, byte quality, out byte[]? pgfBytes,
+        IProgress<double>? progress = null, CancellationToken cancellationToken = default)
     {
         pgfBytes = null;
 
@@ -89,12 +97,22 @@ internal static class PgfImageEncoder
 
         PgfEncoderCore encoder = new(writer);
 
+        int totalLevels = header.NLevels;
+        int levelsCompleted = 0;
+
         // Direct port of CPGFImage::WriteImage's level loop (PGFimage.cpp:1182) calling WriteLevel
         // (PGFimage.cpp:1104-1118): all 4 channels' subbands at the current level, extracted
         // (encoded) before moving to the next level - same channel-interleaved-per-level ordering as
         // decode, for the same reason (the bitstream interleaves that way).
+        //
+        // Cancellation is checked once per level, before that level's work starts (pgf-
+        // cancellation-and-progress.md Goal 3/architecture note), mirroring TryDecode's own
+        // per-level (not per-channel) grain - the forward-transform pass above isn't where the
+        // native callback fires, so it's left uninstrumented.
         for (int currentLevel = header.NLevels; currentLevel > 0; currentLevel--)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             for (int c = 0; c < 4; c++)
             {
                 PgfWaveletTransform wt = channels[c];
@@ -107,6 +125,9 @@ internal static class PgfImageEncoder
                 wt.GetSubband(currentLevel, PgfSubbandOrientation.Lh).ExtractTile(encoder);
                 wt.GetSubband(currentLevel, PgfSubbandOrientation.Hh).ExtractTile(encoder);
             }
+
+            levelsCompleted++;
+            progress?.Report(PgfProgressCurve.FractionAfter(levelsCompleted, totalLevels));
         }
 
         encoder.Flush();

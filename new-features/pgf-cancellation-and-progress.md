@@ -1,7 +1,8 @@
 # PGF codec: cancellation + progress reporting — PRD
 
-**Status: not started.** Closes a gap documented in [`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md)'s
-"Explicitly out of scope" list ("Progress callbacks and cooperative mid-decode cancellation").
+**Status: done, all 5 stages shipped** (see "Progress log" below for the full record). Closed a gap
+documented in [`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md), which now lists this under "Supported"
+instead of "Explicitly out of scope".
 
 ## Context
 
@@ -199,6 +200,68 @@ numbers).
 
 ## Progress log
 
-_(Empty — fill in as each stage above is actually implemented and tested, following
-`managed-pgf-codec.md`'s own progress-log convention: what was built, what was found, what broke and
-how it was fixed, real test counts.)_
+**Stage 1 — done.** Resolved both open questions before writing any of the threading code:
+
+- **Progress curve: area-weighted, mirroring the native's `pow(0.25, levelDiff)` shape, not a plain
+  per-level-count linear sweep.** A count-based fraction (`levelsCompleted / totalLevels`) would
+  misreport "almost done" after finishing only the cheap, coarse levels — in a 2D wavelet pyramid
+  each level covers 4x the previous level's linear coverage, so the *last* level decoded (finest,
+  full resolution) dominates the real work, not the level count. New internal
+  `PgfProgressCurve.FractionAfter(levelsCompleted, levelsInThisCall)` computes
+  `(4^levelsCompleted - 1) / (4^levelsInThisCall - 1)` — monotonically increasing, reaches exactly
+  `1.0` when `levelsCompleted == levelsInThisCall`, and doesn't need to bit-match the native formula
+  (this port's own "decode-correctness, not bitstream-identity" bar, `managed-pgf-codec.md`) to be a
+  meaningfully more honest signal than linear-by-count.
+- **`PM_Relative`-equivalent (per-call sweep), not `PM_Absolute` (whole-image share), and not exposed
+  as public API** — matches the Non-goals' instruction to default to whichever is simpler. For
+  `TryDecode`/`TryEncode` (always the full level range) the two coincide anyway; it only matters for
+  `TryDecodeLevel`'s partial-range calls, where per-call is simpler (no cross-call state to track) and
+  already matches the native's own default mode.
+
+**Stage 2 — done.** `PgfImageDecoder.TryDecode<TResult>` and `PgfProgressiveDecoder.
+TryDecodeLevel<TResult>` both gained `IProgress<double>? progress = null, CancellationToken
+cancellationToken = default` as trailing optional parameters (not separate overloads — optional
+parameters on the existing signature already keep every current call site compiling and behaving
+unchanged, with no logic duplication). `cancellationToken.ThrowIfCancellationRequested()` runs at the
+top of each level-loop iteration, before that level's `DecodeOneLevel` call; `progress?.Report(...)`
+runs after it completes. `PgfDecodeSession.DecodeOneLevel` itself is untouched, exactly as the
+architecture note specified — both loops live entirely in the caller. 43 new tests in the new
+`PgfProgressAndCancellationTests.cs` (monotonic-non-decreasing-ends-at-1.0 across every
+`TestBitmaps.EdgeCaseDimensions()`/quality combination, pre-cancelled-token, cancel-mid-operation at
+both an early and a late level with an exact-count assertion, same-level re-request reporting zero
+times, and a fresh-unrelated-call-after-cancellation check). Full suite: 610/610 green (567 + 43).
+Nothing broke — no surprises here, the existing loop shapes already matched the architecture note
+exactly.
+
+**Stage 3 — done.** Same treatment for `PgfImageEncoder.TryEncode`, instrumented at the same grain as
+decode: once per level in the entropy-encode loop (`WriteImage`'s mirror), not in the earlier
+forward-transform pass (which is where the native callback never fires, per the PRD's own "Where the
+callback fires" citations). 21 more tests added to the same test file (encode-side progress/
+cancellation, using this port's own encoder — Stage 8 of `managed-pgf-codec.md` — to produce fixtures
+rather than the native oracle, since `PgfImageEncoder` has no cross-implementation correctness claim
+to prove here). Full suite: 631/631 green (567 + 64 in the new file).
+
+**Stage 4 — done.** `PictTag.Data.PgfDecoding.PgfDecoder.TryDecode` and `ProgressivePgfDecoder.
+TryDecodeLevel` both gained the same trailing optional parameters, passed straight through to
+`PictTag.PgfCodec`. Checked both real UI call sites before wiring anything further:
+`DesktopProgressiveBitmapLoader.DecodeProgressivePgf` and `BrowserProgressiveBitmapLoader.
+DecodeProgressivePgf` **already** call `cancellationToken.ThrowIfCancellationRequested()` once per
+level in their own outer loop, around each `TryDecodeLevel` call — exactly the natural,
+coarser-grained cancellation point this PRD's Context section predicted they'd have "for free".
+Wiring the new inner per-level token into these call sites on top of that would be redundant, not
+"cheap and correct," so neither loader was changed. `PictTag.Api.Thumbnails.ThumbnailService` has no
+`CancellationToken` threaded into its decode call at all today and no real product need for one
+(sub-11ms decodes, per this PRD's own Context section) — left unwired. This capability is therefore
+shipped as tested, documented, available-but-unused library surface at the facade layer, exactly the
+outcome the PRD's own "Open questions"/Stage 4 description called a legitimate result.
+`PictTag.Data.Tests` (the facade's pre-existing regression suite): 15/15 still green, unchanged.
+Full solution build (`PictTag.slnx`, including the Browser/WASM head) confirmed clean.
+
+**Stage 5 — done.** `docs/PGF-CODEC.md`: moved this item from "Explicitly out of scope" to
+"Supported" with a summary of the shape and the Stage 4 decision to leave UI call sites unwired;
+updated the "if a real need shows up" footer's PRD count from four to three. This PRD's own Status
+line and this Progress log updated to match.
+
+**Final state**: `PictTag.PgfCodec.Tests` — 631/631 passing (567 original + 64 new). Full solution
+build green. No production call site's behavior changed (every new parameter is optional and unused
+at its default), matching the Acceptance Criteria's explicit bar.

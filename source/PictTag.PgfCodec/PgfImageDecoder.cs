@@ -24,11 +24,19 @@ namespace PictTag.PgfCodec;
 /// <see cref="PgfMemoryReader"/>/<see cref="PgfDecoderCore"/> is a real-but-invalid-input signal, not
 /// a programming error, so it's caught inside <see cref="PgfDecodeSession"/> rather than left to
 /// propagate.
+///
+/// pgf-cancellation-and-progress.md: <paramref name="progress"/> reports once per level actually
+/// decoded (an area-weighted fraction, see <see cref="PgfProgressCurve"/>, since each level covers 4x
+/// the previous level's linear coverage); <paramref name="cancellationToken"/> is checked once per
+/// level, before that level's work starts, and surfaces as <see cref="OperationCanceledException"/> -
+/// a deliberate departure from this method's usual fail-closed-return-false convention, since
+/// cancellation is caller-requested, not a malformed-input failure mode.
 /// </summary>
 public static class PgfImageDecoder
 {
     public static bool TryDecode<TResult>(
-        ReadOnlyMemory<byte> pgfData, PgfDecodedCallback<TResult> onDecoded, out TResult? result)
+        ReadOnlyMemory<byte> pgfData, PgfDecodedCallback<TResult> onDecoded, out TResult? result,
+        IProgress<double>? progress = null, CancellationToken cancellationToken = default)
     {
         result = default;
 
@@ -40,12 +48,21 @@ public static class PgfImageDecoder
 
         (short[] Data, int Width, int Height)[] channelData = new (short[], int, int)[4];
 
+        int totalLevels = session.Levels;
+        int levelsCompleted = 0;
+
         // Direct port of CPGFImage::Read's non-ROI, non-interleaved (Version5+) loop
         // (PGFimage.cpp:428-475): entropy-decode all 4 channels' subbands at the current level
         // before inverse-transforming any of them - the bitstream interleaves channels
         // level-by-level, not channel-by-channel, so this ordering is load-bearing, not cosmetic.
+        //
+        // Cancellation is checked once per level, before that level's work starts (pgf-
+        // cancellation-and-progress.md Goal 3/architecture note) - an already-decoded level is never
+        // thrown away by a cancellation that arrives just as it finishes.
         for (int currentLevel = session.Levels; currentLevel > 0; currentLevel--)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             (short[] Data, int Width, int Height)[]? decoded = session.DecodeOneLevel(currentLevel);
             if (decoded is null)
             {
@@ -53,6 +70,8 @@ public static class PgfImageDecoder
             }
 
             channelData = decoded;
+            levelsCompleted++;
+            progress?.Report(PgfProgressCurve.FractionAfter(levelsCompleted, totalLevels));
         }
 
         int bufferSize = checked(session.FullWidth * session.FullHeight * 4);

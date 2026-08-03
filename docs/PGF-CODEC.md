@@ -24,15 +24,27 @@ made, what was tried, what broke and how it was fixed), see
 
 ## Supported
 
-- **Image mode: RGBA / 32bpp only** (4 channels — B, G, R, A) — the one format real digiKam
-  thumbnails and this app's own encoder actually use.
+- **Every image mode the format defines** — RGBA/32bpp (4 channels — B, G, R, A, the one format
+  real digiKam thumbnails and this app's own encoder actually use) plus GrayScale, IndexedColor
+  (paletted, with a real color table), HSLColor, HSBColor, LabColor/Lab48, RGBColor, Gray16, RGB48,
+  CMYKColor, CMYK64, Gray32, Bitmap (1bpp, modern/Version7 packing only — see
+  [`new-features/pgf-all-image-modes.md`](../new-features/pgf-all-image-modes.md)'s own Progress log
+  for why the legacy pre-Version7 sub-variant was deliberately left unported), RGB12, and RGB16.
+  Decode always normalizes to BGRA32 regardless of source mode (`PgfImageDecoder.ConvertToBgra`'s
+  mode dispatch) — every real consumer of a decoded bitmap wants pixels it can render, not a
+  mode-specific raw buffer. `PgfModeInfo` is the canonical per-mode (bpp, channels,
+  downsample-eligibility) table.
 - **Decode**: single-shot (`PgfImageDecoder.TryDecode`) and progressive, level-by-level
   (`PgfProgressiveDecoder.TryOpen`/`TryDecodeLevel`/`TryGetLevelSize`).
-- **Encode**: single-shot (`PgfImageEncoder.TryEncode`), every quality value `0..MaxQuality` (`15`
-  in this build).
-- Proven byte-exact against the real native decoder/encoder across every quality level and a wide
-  fixture/dimension matrix (`PictTag.PgfCodec.Tests`, 567 tests) — see that PRD's Stage 7-9 progress
-  log entries for exactly what was checked.
+- **Encode**: single-shot, every quality value `0..MaxQuality` (`31` in this build —
+  `__PGF32SUPPORT__` is genuinely active in the real oracle build, a correction to this doc's own
+  earlier `15` claim, see `PgfConstants`' doc comment). `PgfImageEncoder.TryEncode` (RGBA) is the one
+  production-relevant shape; `TryEncodeMode` (every other mode) exists as test infrastructure to
+  produce real fixtures to decode-test against, not a second production path.
+- Proven byte-exact against the real native decoder/encoder across a wide fixture/dimension/quality
+  matrix, every mode, both directions (`PictTag.PgfCodec.Tests`, 1043 tests) — see
+  `managed-pgf-codec.md`'s Stage 7-9 progress log entries for the original RGBA-only verification and
+  `pgf-all-image-modes.md`'s own Progress log for the per-mode extension.
 - **Progress reporting and cooperative cancellation**: `PgfImageDecoder.TryDecode`,
   `PgfProgressiveDecoder.TryDecodeLevel`, and `PgfImageEncoder.TryEncode` all take optional
   `IProgress<double>?`/`CancellationToken` parameters (backward-compatible defaults — every existing
@@ -56,13 +68,17 @@ Each of these was a deliberate decision made by grepping this codebase's own rea
 encoder, every real digiKam thumbnail encountered) and confirming the feature is never actually
 exercised — not an oversight, and not silently dropped.
 
-- **Every color mode except RGBA/32bpp** — no `GrayScale`/`Gray16`/`Gray32`, `RGBColor`/`RGB12`/
-  `RGB16`/`RGB48`, `IndexedColor` (paletted, with a color table), `Bitmap` (1-bit), `Lab`/`Lab48`,
-  `HSL`/`HSB`, or `CMYKColor`/`CMYK64`. Confirmed by `PgfConstants.cs:50-52` only defining
-  `ImageModeIndexedColor` (to reject it) and `ImageModeRGBA`; `PgfDecodeSession.cs:63` fails closed
-  on any other mode/channel count/bpp, and `PgfHeaderIO.Read` (`PgfHeader.cs:112`) throws outright
-  on indexed color specifically rather than silently mis-parsing a color table this port never
-  models. Planned: [`new-features/pgf-all-image-modes.md`](../new-features/pgf-all-image-modes.md).
+- **Four reserved Adobe image modes with no real-world PGF usage** — `Multichannel`(7)/`Duotone`(8)/
+  `DeepMultichannel`(14)/`Duotone16`(15) — never defined by any real encoder, PGF-specific or
+  otherwise; `PgfModeInfo.TryGetBppAndChannels` returns `false` for them, matching this PRD's own
+  Non-goals.
+- **Bitmap's legacy pre-Version7 packed sub-variant** — the modern ("new unpacked since Version7")
+  sub-variant is fully supported (decode and encode); the older packed format is real, reachable
+  decode-side code in the native source, but stores channel data at a different width entirely (one
+  `DataT` per *byte*, not per *pixel*), which would need `PgfDecodeSession`'s channel-allocation logic
+  to special-case a file's own historical version flag, for a shape no real digiKam thumbnail or this
+  port's own encoder (which always sets `Version7`) could ever produce — deliberately left unported,
+  not silently dropped (`PgfColorConversion`'s Group G doc comment has the full reasoning).
 - **The `nLevels=0` "raw/uncoded" path** — for tiny images (`min(width,height) < 10`), the original
   codec stores channel data directly with no wavelet transform at all. Not ported: both
   `PgfDecodeSession.cs:70` (decode) and `PgfImageEncoder.cs:39` (encode) treat `NLevels == 0` as a
@@ -82,11 +98,11 @@ exercised — not an oversight, and not silently dropped.
 - **Legacy pre-Version5 entropy coding** (`DecodeInterleaved`, the older HL/LH interleaved scheme) —
   not ported; this port's encoder always sets the Version5 flag, and so does every modern real PGF
   file (`PgfDecoderCore.cs:104-105`).
-- **Header metadata** — no color table, no user data (`PGFPostHeader`), no `UserdataPolicy`
-  handling. `PgfHeaderIO.Write` always writes a bare header with `hSize = HeaderSize`
-  (`PgfHeader.cs:152,184`); reading skips over any post-header bytes rather than parsing them.
-  Planned: color table via [`new-features/pgf-all-image-modes.md`](../new-features/pgf-all-image-modes.md)
-  (needed for `IndexedColor`); user data via
+- **Header metadata: user data only** — `IndexedColor`'s color table (the other half of
+  `PGFPostHeader`) is fully supported (`PgfHeaderIO.Read`/`Write`, `PgfConstants.ColorTableSize`).
+  Arbitrary user data / `UserdataPolicy` handling is still not ported — `PgfHeaderIO.Write` never
+  writes any; reading skips over whatever post-header bytes remain once the color table (if any) is
+  accounted for, rather than parsing them. Planned:
   [`new-features/pgf-user-data-and-small-images.md`](../new-features/pgf-user-data-and-small-images.md).
 - **Real per-level byte lengths on encode** — the encoder always writes zero placeholders instead of
   patching in the real values after encoding (`PgfImageEncoder.cs:10`) — grepping every consumer in
@@ -108,16 +124,16 @@ and the doc comment at the matching C# file — each one already explains exactl
 change and why it was safe to skip until now. One real candidate for "a future need": if
 `PictTag.PgfCodec` is ever published as a standalone NuGet package, a general consumer's real usage
 won't be constrained to digiKam's own thumbnail shape (small, RGBA, metadata-free) the way this app's
-own usage is — several items above (color modes, user data, tiny images, large-image ROI) get
-noticeably more likely to matter under that framing, even though none of them have a current internal
-need. (Publishing as a NuGet also raises a real, separate question this list doesn't cover: this port
+own usage is — several items above (user data, tiny images, large-image ROI) get noticeably more
+likely to matter under that framing, even though none of them have a current internal need.
+(Publishing as a NuGet also raises a real, separate question this list doesn't cover: this port
 is a close derivative of digiKam's vendored `libpgf`, LGPL-2.1+ — external distribution likely needs
 the license text/attribution bundled and a real compliance check, which is a legal question for
 someone else to own, not a technical gap to close here.)
 
-Three of these gaps already have draft PRDs (not started, written for completeness rather than an
-urgent product need — each says so honestly in its own Context section):
-[`pgf-roi-support.md`](../new-features/pgf-roi-support.md),
-[`pgf-all-image-modes.md`](../new-features/pgf-all-image-modes.md), and
+Two of these gaps still have draft PRDs (not started, written for completeness rather than an urgent
+product need — each says so honestly in its own Context section):
+[`pgf-roi-support.md`](../new-features/pgf-roi-support.md) and
 [`pgf-user-data-and-small-images.md`](../new-features/pgf-user-data-and-small-images.md).
-(`pgf-cancellation-and-progress.md` is done — see its own Progress log.)
+(`pgf-cancellation-and-progress.md` and `pgf-all-image-modes.md` are both done — see each one's own
+Progress log.)

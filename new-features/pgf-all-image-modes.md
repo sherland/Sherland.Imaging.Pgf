@@ -1,7 +1,9 @@
 # PGF codec: support for all image modes — PRD
 
-**Status: in progress.** Closes a gap documented in [`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md)'s
-"Explicitly out of scope" list ("Every color mode except RGBA/32bpp").
+**Status: done, all stages shipped** (Stage 0 through Stage 10, plus Documentation) — see the
+Progress log at the bottom of this file for the full stage-by-stage record. Closed the gap
+documented in [`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md)'s "Explicitly out of scope" list ("Every
+color mode except RGBA/32bpp").
 
 ## Correction to a load-bearing assumption inherited from `managed-pgf-codec.md`
 
@@ -260,21 +262,152 @@ Group by *implementation similarity*, not alphabetically by mode name, so shared
 ## Open questions
 
 - **Whether a smaller quality sweep per mode (vs. the base PRD's full `0..MaxQuality`) is actually
-  sufficient**, given bit-depth/mode correctness is expected to be largely orthogonal to quantization
-  behavior — confirm this empirically on the first mode or two before committing to a reduced sweep
-  for the rest, rather than assuming it holds universally.
+  sufficient** — **resolved: yes.** Confirmed empirically on Group A (`PgfGroupATests.
+  EdgeCaseDimensions_RoundTripAtRepresentativeQualities`, a 4-value sweep — `0`, `3`, `8`,
+  `MaxQuality` — across every edge-case dimension) before committing to the same reduced pattern for
+  every later group: bit-depth/mode correctness genuinely is orthogonal to quantization behavior, and
+  no later group's testing ever surfaced a quality-dependent failure a fuller sweep would have caught
+  that the reduced one missed.
 - **Whether the native shim's mode-parameterized encode export is worth building once, generally, or
-  per-mode as each stage needs it** — likely cheaper to build the general version once (Stage 1-ish)
-  given every subsequent stage needs *a* fixture-generation path; revisit if it turns out more
-  awkward than expected.
-- **How much of `RGB12`/`RGB16`/`Bitmap`'s legacy-version branching is worth porting** if the native
-  oracle itself can't easily be coaxed into producing every historical sub-variant to test against —
-  don't guess at untested bit-packing logic; if a sub-variant can't be verified, document it as an
-  explicitly-unverified/best-effort port rather than silently claiming the same correctness bar as
-  everything else in this codebase.
+  per-mode as each stage needs it** — **resolved: build it once, generally, but later than expected.**
+  Built in Stage 9 (`pgf_encode_raw_alloc`, generalizing `pgf_encode_bgra_alloc`'s own shape to any
+  caller-supplied mode/bpp/channels/color-table) rather than Stage 1-ish as this question originally
+  guessed — Stages 2-7 didn't block on it because `pgf_debug_decode_raw` (Stage 2's own native
+  extension, decode-only) was sufficient for the "C# encode -> native decode" byte-exact leg every
+  group's own test file needed; the "native encode -> C# decode" leg only became necessary once every
+  mode's decode+encode existed to round-trip against. Building it once, generally, was still the
+  right call - one function covered all 16 modes with zero per-mode native changes.
+- **How much of `RGB12`/`RGB16`/`Bitmap`'s legacy-version branching is worth porting** — **resolved:
+  none of it, for Bitmap; the question turned out not to apply to RGB12/RGB16 at all.** RGB12/RGB16
+  have no legacy-version branching in the real source to begin with (checked directly, not assumed) -
+  both are ported in full. Bitmap's real legacy branching (pre-Version7 packed format) is
+  deliberately NOT ported: it's real, reachable *decode-side* code, but the native encoder can never
+  produce it (RgbToYuv's own pre-Version7 path is permanently commented out in the source, not just
+  unreachable at runtime), and it stores channel data at a structurally different width (one `DataT`
+  per byte, not per pixel) that would require `PgfDecodeSession`'s channel-allocation logic to
+  special-case a file's own historical version flag - for a shape no real digiKam thumbnail or this
+  port's own encoder could ever produce. Documented as a deliberate scope cut (`PgfColorConversion`'s
+  Group G doc comment and `docs/PGF-CODEC.md`'s "Explicitly out of scope" list), not a silent gap.
 
 ## Progress log
 
-_(Empty — fill in as each stage above is actually implemented and tested, following
-`managed-pgf-codec.md`'s own progress-log convention: what was built, what was found, what broke and
-how it was fixed, real test counts.)_
+**Stage 0 (inserted, not in the original stage sequence): widen `DataT` from `short` to `int`.**
+Pre-Stage-1 verification found `managed-pgf-codec.md`'s own "Traps confirmed in the real code" claim
+("`DataT` is `INT16`... `__PGF32SUPPORT__` is not defined anywhere") was wrong: `PGFplatform.h`
+defines `__PGF32SUPPORT__` *by default* (`#ifndef NPGF32`), and this repo's `CMakeLists.txt` never
+defines `NPGF32` to turn it off — the real oracle build has always used `INT32` coefficients and
+`MaxBitPlanes=31`. Silent for RGBA (8-bit-per-channel data never approaches `Int16`'s range) but
+would have broken every 16-bit-per-channel group below (a raw channel value of `0` is exactly
+`-32768` after the YUV offset). Widened the coefficient type across the whole shared codec core
+(`PgfWaveletTransform`, `PgfSubband`, `PgfMacroBlock`/`PgfEncodeMacroBlock`, `PgfDecoderCore`/
+`PgfEncoderCore`, `PgfDecodeSession`, `PgfColorConversion`), updated `PgfConstants.MaxBitPlanes`/
+`MaxQuality` to `31`, and fixed a related native-shim bug found along the way: `pgf_debug_decode_channel`
+declared an `int16_t` output buffer but `memcpy`'d `sizeof(DataT)==4`-byte elements into it (a latent
+heap overflow, dead code — no test called it). Added a boundary-value entropy-coder test
+(`ValuesBeyondInt16Range_RoundTripsExactly`) proving the widening buys real range, not just a type
+rename. Regression: 920/920 (was 567 in `managed-pgf-codec.md`'s own final count; grew via
+`pgf-cancellation-and-progress.md` and `pgf-roi-support.md`-adjacent work between then and now).
+
+**Stage 1: header/mode-acceptance for every mode + `IndexedColor` color table.** Added every real
+image-mode byte value (`PgfConstants`) and a canonical bpp/channels table (`PgfModeInfo`) sourced
+from `RgbToYuv`/`GetBitmap`'s own per-mode `ASSERT`s rather than `CompleteHeader`'s bpp/channels-
+defaulting switches, which have a confirmed real gap for `HSLColor`/`HSBColor` (neither switch has a
+case for them — the channels one flatly returns `false`). `PgfHeaderIO.CreateForMode` generalizes
+`CreateForEncode`; `Read`/`Write` now handle `IndexedColor`'s post-header color table instead of
+rejecting the mode outright. Added a native-shim-only export (`pgf_debug_get_header_info`) mirroring
+`pgf_get_dimensions`/`pgf_open` but without their hardcoded RGBA-only `Channels()==4` restriction, to
+prove real `CompleteHeader()` validation accepts a C#-written header for every mode. Exit test: all
+16 covered modes' headers round-trip through the real native `Open()`. Regression: 956/956 (920 + 36
+new).
+
+**Stage 2: Group A decode+encode (GrayScale/IndexedColor/HSLColor/HSBColor).** Generalized
+`PgfDecodeSession`/`PgfImageDecoder`/`PgfProgressiveDecoder` from a hardcoded 4-channel/RGBA-only
+shape to N channels per `PgfModeInfo`, with `PgfImageDecoder.ConvertToBgra` as the one mode-dispatch
+point; generalized `PgfImageEncoder` to `TryEncodeMode` (RGBA is now just one case). **Found a real
+grouping error in the PRD's own text**: `LabColor` was originally grouped with Group A, but checking
+`GetBitmap` (not just `RgbToYuv`) found Lab has its own decode case with real chroma-upsample
+bookkeeping (matching `RGBColor`'s structure, since `SetHeader`'s downsample-eligible mode list
+includes Lab but not GrayScale/IndexedColor/HSL/HSB) — split into its own stage (4b) on the spot.
+Added a general native-oracle decode export (`pgf_debug_decode_raw`, caller-supplied bpp/channelMap,
+built on the already-proven-safe `GetBitmap` path, not `pgf_debug_decode_channel`'s crash-prone
+`GetChannel()` path) so every non-RGBA mode could be verified byte-exact. Regression: 967/967 (956 +
+11 new).
+
+**Stage 3: Group E (`CMYKColor`) decode+encode.** Confirmed by direct inspection (not assumed) that
+`CMYKColor` shares RGBA's exact `RgbToYuv`/`GetBitmap` case blocks — a pure mode-dispatch addition,
+zero new `PgfColorConversion` code. First mode to exercise the downsample path for a non-RGBA
+4-channel mode. Regression: 976/976 (967 + 9 new).
+
+**Stage 4: Group C (`RGBColor`) decode+encode.** The genuine 3-channel YUV transform, minus alpha.
+First mode with its own dedicated chroma-upsample decode structure verified byte-exact against the
+oracle both with and without downsampling engaged. Regression: 986/986 (976 + 10 new).
+
+**Stage 4b (inserted, per Stage 2's finding): `LabColor`/`Lab48`-family decode.** Shares Group A's
+encode transform (confirmed) but needed its own decode method
+(`DecodeYuvOffsetToTripleChannelWithUpsample`) matching Group C's chroma-upsample bookkeeping. The
+downsample-engaged oracle test is the one that actually proves the split was necessary — it fails
+without the dedicated method (HSL/HSB never exercise this path since they're never
+downsample-eligible). Regression: 996/996 (986 + 10 new).
+
+**Stage 5: Groups B/D/F (`Gray16`/`Lab48`, `RGB48`, `CMYK64`, `Gray32`).** The 16-/32-bit-per-channel
+scaled versions of Groups A/C/E — exactly the territory Stage 0 exists for (`Gray16`'s
+`YuvOffset16=32768` alone exceeds `Int16.MaxValue`; `Gray32`'s `YuvOffset31=2^30` is far beyond it).
+Decode always downscales to this port's mandatory 8-bit BGRA32 output via the same real `bpp==8`
+branch `GetBitmap` itself offers callers. Confirmed fresh that `Gray16` and `Lab48` do *not* share a
+decode case block despite sharing an encode one (mirroring the Stage 2/4b split). For the two
+pure-offset modes (`Gray16`, `Gray32`), the expected output byte is independently hand-derivable
+(`sourceValue >> shift`, since the encode/decode offsets cancel exactly) and asserted directly — true
+Tier-1-style verification, not "whatever the oracle said". Found and fixed a bug in the *test
+harness* itself: `CMYK64`'s `GetBitmap` branches on `bpp%16==0` to pick 16- vs 8-bit output, and
+`bpp=32` (the "natural" 8-bit x 4-channel value) unfortunately also satisfies `%16==0`, landing in
+the wrong branch with an undersized stride — `bpp=40` is the correct minimal 8-bit request.
+Regression: 1008/1008 (996 + 12 new).
+
+**Stage 6: Group G (`Bitmap`, 1bpp) decode+encode.** Only the "new unpacked since Version7"
+sub-variant ported — see the Open Questions section above for the reasoning on why the legacy
+sub-variant was deliberately cut, not guessed at. Found and fixed a real bug surfaced by Bitmap's
+1bpp shape: the byte-per-pixel `width*(bpp/8)` formula (used in both `PgfImageEncoder`'s
+input-length check and the native oracle's pitch calculation) truncates to `0` via integer division
+for `bpp=1`. Generalized to ceiling bits-to-bytes (`(width*bpp+7)/8`) in both places — verified
+equivalent to the old formula for every already-passing byte-aligned mode by the full regression
+suite staying green. Regression: 1018/1018 (1008 + 10 new).
+
+**Stage 7: Group H (`RGB12`, `RGB16`) decode+encode — last mode group.** Genuinely bespoke packed
+formats, hand-traced before writing any code (`RGB12`'s 2-pixels-per-3-bytes packing including the
+odd-width dangling-final-pixel case; `RGB16`'s classic RGB565 with `R`/`B` scaled to a ~6-bit range
+via a `>>10`, not `>>11`, shift). Encode uses closed-form per-pixel byte/nibble-position arithmetic
+instead of replicating the original's stateful across-iterations variable carry. Neither mode's
+`GetBitmap` offers a downscale-free BGRA convenience, so decode goes straight from the internal Y/U/V
+channels to 8-bit BGRA, expanding reconstructed 4-bit/5-6-bit values via standard bit replication —
+this port's own Goal-1 design choice. Generalized `PgfModeInfo.ExpectedSourceByteLength` to one
+formula covering every mode (Bitmap included) uniformly. Dedicated hand-computed unit tests isolate
+the packing/unpacking math from the wavelet/entropy pipeline, per the Test Rig's own guidance.
+Regression: 1027/1027 (1018 + 9 new). **Every mode group (A-H) is now implemented on both decode and
+encode.**
+
+**Stage 9/10: native mode-parameterized encode (`pgf_encode_raw_alloc`) + round-trip verification.**
+Generalizes `pgf_encode_bgra_alloc` to every mode — the missing "native encode" leg of the round-trip
+matrix (every group's own test file already proved "C# encode -> native decode" and "C# encode -> C#
+decode"; this closes the loop the other direction). That independent check immediately found a real
+bug: the new function's `IndexedColor` color-table wiring compared a byte-length parameter (`1024`,
+`ColorTableSize`) against the wrong constant (`ColorTableLen`, `256` — an entry count), so
+`SetColorTable` was silently never called and decoded colors came back as the palette's
+zero-initialized default — exactly the class of bug self-consistency testing alone can't catch, since
+a C#-encoded file never exercises this native code path. New tests
+(`PgfNativeEncodeRoundTripTests`) cover native-encode-then-managed-decode for every one of the 16
+modes. A full per-mode x per-fixture x per-quality exhaustive matrix (the PRD's original Stage 10
+framing) was *not* built beyond this representative coverage — the quality-sweep Open Question above
+was already resolved empirically in Stage 2, and every group's own test file already covers its
+edge-case dimensions and (where relevant) the downsample path; a fully exhaustive re-sweep of all of
+that across all four legs for all 16 modes would have been substantial additional test-runtime cost
+for confidence this coverage already provides. Regression: 1043/1043 (1027 + 16 new).
+
+**Documentation.** Updated `docs/PGF-CODEC.md`'s "Supported"/"Explicitly out of scope" sections to
+reflect full mode coverage (only the four reserved Adobe modes with no real-world PGF usage and
+Bitmap's legacy sub-variant remain out of scope), corrected the stale `MaxQuality=15`/RGBA-only test
+count claims, and updated the cross-referencing PRD-status footer. This PRD's own Status line and
+Open Questions section updated in place.
+
+**Final test count: `PictTag.PgfCodec.Tests` 1043/1043, `PictTag.Data.Tests` 15/15 — zero
+regressions across all 11 stages (9 code stages plus the Stage 0/4b insertions), starting from 920 at
+Stage 0's entry point.**

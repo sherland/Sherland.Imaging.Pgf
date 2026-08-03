@@ -30,6 +30,11 @@ internal static partial class NativePgfOracle
         nint bgra, uint width, uint height, byte quality, out nint outData, out nuint outLen);
 
     [LibraryImport(LibraryName)]
+    [return: MarshalAs(UnmanagedType.U1)]
+    private static partial bool pgf_encode_bgra_alloc_roi(
+        nint bgra, uint width, uint height, byte quality, out nint outData, out nuint outLen);
+
+    [LibraryImport(LibraryName)]
     private static partial void pgf_free_encoded(nint data);
 
     [LibraryImport(LibraryName)]
@@ -282,6 +287,45 @@ internal static partial class NativePgfOracle
         fixed (byte* bgraPtr = bgra)
         {
             encoded = pgf_encode_bgra_alloc((nint)bgraPtr, (uint)width, (uint)height, quality, out dataPtr, out dataLen);
+        }
+
+        if (!encoded)
+        {
+            return false;
+        }
+
+        try
+        {
+            byte[] result = new byte[dataLen];
+            fixed (byte* resultPtr = result)
+            {
+                Buffer.MemoryCopy((void*)dataPtr, resultPtr, dataLen, dataLen);
+            }
+
+            pgfBytes = result;
+            return true;
+        }
+        finally
+        {
+            pgf_free_encoded(dataPtr);
+        }
+    }
+
+    /// <summary>pgf-roi-support.md Stage 5: real-native-encoder leg of the cross-implementation ROI
+    /// round-trip matrix - identical to <see cref="TryEncode"/> except the produced file is
+    /// ROI-flagged/tile-structured (<c>pgf_encode_bgra_alloc_roi</c>, shim.cpp's own doc comment: the
+    /// one real difference is <c>SetHeader(header, PGFROI)</c>).</summary>
+    public static unsafe bool TryEncodeRoi(
+        ReadOnlySpan<byte> bgra, int width, int height, byte quality, out byte[]? pgfBytes)
+    {
+        pgfBytes = null;
+
+        nint dataPtr;
+        nuint dataLen;
+        bool encoded;
+        fixed (byte* bgraPtr = bgra)
+        {
+            encoded = pgf_encode_bgra_alloc_roi((nint)bgraPtr, (uint)width, (uint)height, quality, out dataPtr, out dataLen);
         }
 
         if (!encoded)

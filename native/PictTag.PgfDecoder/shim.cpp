@@ -362,6 +362,70 @@ PICTTAG_EXPORT void pgf_free_encoded(uint8_t* data)
     delete[] data;
 }
 
+// pgf-roi-support.md Stage 5: identical to pgf_encode_bgra_alloc except for one line -
+// img.SetHeader(header, PGFROI) instead of img.SetHeader(header) - enabling the real, tile-structured
+// ROI encoding scheme (CPGFImage::ROIisSupported() becomes true, so CPGFImage::WriteHeader/WriteLevel's
+// own #ifdef __PGFROISUPPORT__ branches activate: WriteHeader's own unconditional per-channel
+// SetROI(fullRect) call, WriteLevel's per-tile ExtractTile/EncodeTileBuffer sequencing - see PGFimage.h's
+// own doc comment on SetHeader's flags parameter: "In case you use level-wise encoding then set flag =
+// PGFROI"). This is the cross-implementation encode leg the managed port's Stage 5 needs: a genuinely
+// independent (non-C#) encoder producing real PGFROI-flagged bytes to decode-test the managed ROI
+// decoder against, closing the loop the same way pgf_encode_bgra_alloc already does for the base
+// (non-ROI) round-trip matrix. See that function's own doc comment for every other design choice this
+// one shares unchanged (allocation/exception-safety shape, the nLevels==0 guard history).
+PICTTAG_EXPORT bool pgf_encode_bgra_alloc_roi(
+    const uint8_t* bgra, uint32_t width, uint32_t height, uint8_t quality,
+    uint8_t** outData, size_t* outLen)
+{
+    if (bgra == nullptr || width == 0 || height == 0 || outData == nullptr || outLen == nullptr)
+    {
+        return false;
+    }
+
+    *outData = nullptr;
+    *outLen = 0;
+
+    size_t bufferCapacity = static_cast<size_t>(width) * height * 4 * 2 + 65536;
+    uint8_t* rawBuffer = new uint8_t[bufferCapacity];
+
+    try
+    {
+        PGFHeader header;
+        header.width = width;
+        header.height = height;
+        header.nLevels = 0; // 0 = auto, same as pgf_encode_bgra_alloc
+        header.quality = quality;
+        header.bpp = 32;
+        header.channels = 4;
+        header.mode = ImageModeRGBA;
+        header.usedBitsPerChannel = 8;
+
+        CPGFImage img;
+        img.ConfigureEncoder(false); // no OpenMP - determinism, matches pgf_encode_bgra_alloc
+        img.SetHeader(header, PGFROI); // the one real difference from pgf_encode_bgra_alloc
+
+        int channelMap[] = { 0, 1, 2, 3 };
+        img.ImportBitmap(static_cast<int>(width) * 4, const_cast<uint8_t*>(bgra), 32, channelMap);
+
+        CPGFMemoryStream stream(rawBuffer, bufferCapacity);
+        img.Write(&stream);
+
+        size_t written = static_cast<size_t>(stream.GetPos());
+        uint8_t* result = new uint8_t[written];
+        memcpy(result, stream.GetBuffer(), written);
+        delete[] rawBuffer;
+
+        *outData = result;
+        *outLen = written;
+        return true;
+    }
+    catch (...)
+    {
+        delete[] rawBuffer;
+        return false;
+    }
+}
+
 // pgf-all-image-modes.md Stage 9: general mode-parameterized encode, generalizing
 // pgf_encode_bgra_alloc (RGBA-only) to every mode this PRD covers - the missing "real native
 // encoder" leg of the round-trip matrix for non-RGBA modes. PgfImageEncoder.TryEncodeMode was

@@ -454,3 +454,46 @@ finding #1) this is real, hard evidence that Stage 3's decode-side code is corre
 
 Regression gate: full `PictTag.PgfCodec.Tests` suite - **1166/1166 passed** (1154 existing + 12 new
 round-trip tests, zero regressions).
+
+### Stage 5: Native shim ROI-capable encode export
+
+Resolved this PRD's second Open Question ("whether the native shim needs its own ROI-capable encode
+export, or whether the C# encoder is sufficient... decide based on how Stage 3/4 actually goes"):
+decided **yes**, worth doing - Stage 3/4 went well but were only cross-checked against this port's
+*own* encoder/decoder pair (self-consistency); a genuinely independent reference was still missing,
+and unlike `managed-pgf-codec.md`'s original Stage 5 (which hit a real, still-unresolved native
+crash-risk and had to fall back to self-consistency-only), nothing here suggested a native ROI encode
+export would be risky.
+
+Verified the native build toolchain first (`docs/TESTING.md`'s documented `cmake --build` command,
+via `vcvarsall.bat` + the Ninja/CMake binaries bundled with the installed Visual Studio, since neither
+was on `PATH` directly) - confirmed it produces a real, working `PictTagPgfDecoder.dll` before writing
+any new C++.
+
+Added `pgf_encode_bgra_alloc_roi` (shim.cpp) - identical to the existing `pgf_encode_bgra_alloc` except
+one line: `img.SetHeader(header, PGFROI)` instead of `img.SetHeader(header)`. This was a much smaller
+change than expected: `PGFROI` is a documented public parameter of `CPGFImage::SetHeader` itself
+("In case you use level-wise encoding then set flag = PGFROI", PGFimage.h:279) - the real library
+already does *all* the ROI setup (`WriteHeader`'s own unconditional per-channel `SetROI(fullRect)`,
+`WriteLevel`'s tile-based `ExtractTile`/`EncodeTileBuffer` sequencing) automatically once
+`ROIisSupported()` is true; no manual `SetROI` call or other new shim code was needed. Added the
+matching `NativePgfOracle.TryEncodeRoi` P/Invoke wrapper.
+
+New `PgfRoiNativeCrossImplementationTests` - decode-tests the managed `PgfProgressiveDecoder` against
+files the *real native C++ encoder* produced, both full-image and partial-ROI requests, comparing
+against the native decoder's own plain (non-ROI) decode of the same source image. **All 7 tests passed
+on the first run** - strong, genuinely independent evidence (not just internal self-consistency) that
+Stage 3's decode-side port - the highest-risk code in this whole PRD, including the delicate
+`InverseTransform` offset-reconciliation logic - is correct.
+
+**Scope decision, not an omission**: the reverse leg (native *decoding* this port's own ROI-encoded
+output) is not exercised - the native shim has no ROI-aware decode export at all (`pgf_open`/
+`pgf_decode_level_bgra` both always call the plain, non-ROI `Read(level)`), and adding one would be
+real new native surface (calling `CPGFImage::Read(rect,...)` instead) for a capability with no
+production call site (this PRD's own Context section) once the higher-value leg - proving the managed
+*decoder* correct against an independent reference, the component with the real regression risk - was
+already closed. If a genuine need for that leg emerges later, `pgf_open`'s own doc comment pattern
+(stateful handle + level-by-level decode) is the template to extend.
+
+Regression gate: full `PictTag.PgfCodec.Tests` suite - **1173/1173 passed** (1166 existing + 7 new
+cross-implementation tests, zero regressions).

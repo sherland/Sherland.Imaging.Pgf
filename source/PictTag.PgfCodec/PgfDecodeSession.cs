@@ -124,7 +124,7 @@ internal sealed class PgfDecodeSession
     /// Shared by <see cref="PgfImageDecoder"/> (calls this once per level down to 0) and
     /// <see cref="PgfProgressiveDecoder"/> (calls this once per level down to whatever level the
     /// caller most recently requested).</summary>
-    public (short[] Data, int Width, int Height)[]? DecodeOneLevel(int level)
+    public (int[] Data, int Width, int Height)[]? DecodeOneLevel(int level)
     {
         try
         {
@@ -141,10 +141,10 @@ internal sealed class PgfDecodeSession
                 wt.GetSubband(level, PgfSubbandOrientation.Hh).PlaceTile(Decoder, Quant);
             }
 
-            (short[] Data, int Width, int Height)[] result = new (short[], int, int)[4];
+            (int[] Data, int Width, int Height)[] result = new (int[], int, int)[4];
             for (int c = 0; c < 4; c++)
             {
-                PgfCodecError err = Channels[c].InverseTransform(level, out int w, out int h, out short[] data);
+                PgfCodecError err = Channels[c].InverseTransform(level, out int w, out int h, out int[] data);
                 if (err != PgfCodecError.None)
                 {
                     return null;

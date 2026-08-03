@@ -178,7 +178,8 @@ internal static partial class NativePgfOracle
     /// (<c>Encoder.cpp</c>, exported test-only via <c>pgf_encode_bgra_alloc</c> - see that
     /// function's doc comment in shim.cpp). One leg of the 4-way round-trip matrix
     /// (<c>new-features/managed-pgf-codec.md</c>). <paramref name="quality"/>: 0 = lossless, up to
-    /// <c>MaxQuality</c> (15 in this build).</summary>
+    /// <c>MaxQuality</c> (31 in this build - pgf-all-image-modes.md's DataT correction; the real
+    /// oracle build genuinely has <c>__PGF32SUPPORT__</c> active, not 15 as earlier docs assumed).</summary>
     public static unsafe bool TryEncode(
         ReadOnlySpan<byte> bgra, int width, int height, byte quality, out byte[]? pgfBytes)
     {
@@ -214,13 +215,23 @@ internal static partial class NativePgfOracle
         }
     }
 
-    /// <summary>Dumps one channel's raw post-decode/pre-colorconversion <c>DataT</c> (INT16) buffer
-    /// after decoding down to <paramref name="level"/> - lets the C# port's own intermediate YUV
-    /// channel data be compared stage-by-stage against this real oracle, isolating entropy-decode/
+    /// <summary>Dumps one channel's raw post-decode/pre-colorconversion <c>DataT</c> (INT32 - see
+    /// <c>PictTag.PgfCodec.PgfConstants</c>'s doc comment: the real oracle build genuinely has
+    /// <c>__PGF32SUPPORT__</c> active, not INT16 as earlier docs in this repo assumed) buffer after
+    /// decoding down to <paramref name="level"/> - lets the C# port's own intermediate YUV channel
+    /// data be compared stage-by-stage against this real oracle, isolating entropy-decode/
     /// inverse-transform correctness from color conversion (Tier 3,
-    /// <c>new-features/managed-pgf-codec.md</c>).</summary>
+    /// <c>new-features/managed-pgf-codec.md</c>).
+    ///
+    /// pgf-all-image-modes.md correction: the native shim's <c>outBuffer</c> parameter and this
+    /// wrapper's probe buffer were previously <c>int16_t</c>/<see cref="short"/>, while the real
+    /// <c>memcpy(outBuffer, channelData, required * sizeof(DataT))</c> on the native side always
+    /// copies <c>required * 4</c> bytes (real <c>sizeof(DataT) == 4</c>) - a native heap-buffer
+    /// overflow of up to <c>required * 2</c> bytes past the old, too-small buffer, latent because
+    /// this method was never actually called from any test. Both sides now agree on
+    /// <c>int32_t</c>/<see cref="int"/>.</summary>
     public static unsafe bool TryDebugDecodeChannel(
-        ReadOnlySpan<byte> pgfData, int level, int channel, out short[]? channelData, out int width, out int height)
+        ReadOnlySpan<byte> pgfData, int level, int channel, out int[]? channelData, out int width, out int height)
     {
         channelData = null;
         width = height = 0;
@@ -233,11 +244,11 @@ internal static partial class NativePgfOracle
             return false;
         }
 
-        short[] buffer = new short[checked(fullWidth * fullHeight)];
+        int[] buffer = new int[checked(fullWidth * fullHeight)];
         bool ok;
         uint w, h;
         fixed (byte* dataPtr = pgfData)
-        fixed (short* bufferPtr = buffer)
+        fixed (int* bufferPtr = buffer)
         {
             ok = pgf_debug_decode_channel(
                 (nint)dataPtr, (nuint)pgfData.Length, level, channel,

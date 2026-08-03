@@ -24,8 +24,9 @@ namespace PictTag.PgfCodec;
 internal sealed class PgfMacroBlock
 {
     /// <summary>Decoded output coefficients, index <c>[0, BufferSize)</c>. <c>DataT</c> in the
-    /// original - <see cref="short"/> in this build (no <c>__PGF32SUPPORT__</c>).</summary>
-    public readonly short[] Value = new short[PgfConstants.BufferSize];
+    /// original - <see cref="int"/> in this build (real <c>__PGF32SUPPORT__</c> build, see
+    /// <see cref="PgfConstants"/>'s doc comment).</summary>
+    public readonly int[] Value = new int[PgfConstants.BufferSize];
 
     /// <summary>Encoded input bitstream, one macroblock's worth, in 32-bit words.</summary>
     public readonly uint[] CodeBuffer = new uint[PgfConstants.BufferSize];
@@ -83,13 +84,13 @@ internal sealed class PgfMacroBlock
             nPlanes = PgfConstants.MaxBitPlanes + 1;
         }
 
-        // planeMask deliberately allowed to overflow short's positive range when nPlanes=16
-        // (1 << 15 = 32768, which as a signed 16-bit value truncates to -32768/0x8000) - matching
+        // planeMask deliberately allowed to overflow int's positive range when nPlanes=32
+        // (1 << 31 = 0x80000000, which as a signed 32-bit value is int.MinValue) - matching
         // the original's own implementation-defined-but-universally-two's-complement C++ behavior
         // (DataT planeMask = 1 << (nPlanes-1)). SetBitAtPos/SetSign only ever treat this as a raw
         // bit pattern (OR/subtract), never as a signed magnitude, so the wraparound is harmless and
         // must be reproduced exactly, not "fixed."
-        short planeMask = unchecked((short)(1 << (int)(nPlanes - 1)));
+        int planeMask = unchecked(1 << (int)(nPlanes - 1));
 
         for (int plane = (int)nPlanes - 1; plane >= 0; plane--)
         {
@@ -145,7 +146,7 @@ internal sealed class PgfMacroBlock
             }
 
             codePos = BitStream.AlignWordPos(codePos + bufferSize - sigLen);
-            planeMask = unchecked((short)(planeMask >> 1));
+            planeMask = unchecked(planeMask >> 1);
         }
 
         ValuePos = 0;
@@ -154,7 +155,7 @@ internal sealed class PgfMacroBlock
     /// <summary>Reconstructs one bitplane from separately-stored significant/refinement/sign
     /// bitsets (no RLE at all) - direct port of the non-RLE <c>ComposeBitplane</c>
     /// (Decoder.cpp:773). Returns the bit-length of <paramref name="sigBits"/> actually consumed.</summary>
-    private uint ComposeBitplane(uint bufferSize, short planeMask, ReadOnlySpan<uint> sigBits, ReadOnlySpan<uint> refBits, ReadOnlySpan<uint> signBits)
+    private uint ComposeBitplane(uint bufferSize, int planeMask, ReadOnlySpan<uint> sigBits, ReadOnlySpan<uint> refBits, ReadOnlySpan<uint> signBits)
     {
         uint valPos = 0, signPos = 0, refPos = 0, sigPos = 0;
 
@@ -206,7 +207,7 @@ internal sealed class PgfMacroBlock
     /// coefficient. <paramref name="codePos"/> is a *bit* position into <see cref="CodeBuffer"/>
     /// (unlike the other overload, which takes pre-sliced word spans) because sig/sign bits and the
     /// adaptive counter share the same bit cursor here.</summary>
-    private uint ComposeBitplaneRld(uint bufferSize, short planeMask, uint codePos, ReadOnlySpan<uint> refBits)
+    private uint ComposeBitplaneRld(uint bufferSize, int planeMask, uint codePos, ReadOnlySpan<uint> refBits)
     {
         uint valPos = 0, refPos = 0;
         uint sigPos = 0;
@@ -307,7 +308,7 @@ internal sealed class PgfMacroBlock
     /// *complement* of the sibling overload's): a run of <c>2^k</c> positive signs is coded as a
     /// single 1 bit; a run of <c>count</c> positive signs followed by a negative is coded
     /// <c>0&lt;count&gt;</c>.</summary>
-    private uint ComposeBitplaneRld(uint bufferSize, short planeMask, ReadOnlySpan<uint> sigBits, ReadOnlySpan<uint> refBits, uint signPos)
+    private uint ComposeBitplaneRld(uint bufferSize, int planeMask, ReadOnlySpan<uint> sigBits, ReadOnlySpan<uint> refBits, uint signPos)
     {
         uint valPos = 0, refPos = 0;
         uint sigPos = 0;
@@ -406,14 +407,14 @@ internal sealed class PgfMacroBlock
     /// <summary>Direct port of <c>SetBitAtPos</c> (Decoder.h:87) - accumulates a magnitude bit into
     /// <see cref="Value"/>[pos] while preserving whatever sign was set on the first significant bit
     /// for that position (OR for non-negative accumulation, subtract for negative - since a negative
-    /// short's bit pattern isn't a plain sign-magnitude representation, "subtract to add magnitude"
+    /// int's bit pattern isn't a plain sign-magnitude representation, "subtract to add magnitude"
     /// is the correct operation, not OR).</summary>
-    private void SetBitAtPos(uint pos, short planeMask)
+    private void SetBitAtPos(uint pos, int planeMask)
     {
-        short current = Value[pos];
+        int current = Value[pos];
         Value[pos] = current >= 0
-            ? unchecked((short)(current | planeMask))
-            : unchecked((short)(current - planeMask));
+            ? unchecked(current | planeMask)
+            : unchecked(current - planeMask);
     }
 
     /// <summary>Direct port of <c>SetSign</c> (Decoder.h:88) - negates <see cref="Value"/>[pos] if
@@ -423,7 +424,7 @@ internal sealed class PgfMacroBlock
     {
         if (sign)
         {
-            Value[pos] = unchecked((short)-Value[pos]);
+            Value[pos] = unchecked(-Value[pos]);
         }
     }
 }

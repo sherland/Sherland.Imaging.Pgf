@@ -15,10 +15,10 @@ public class PgfColorConversionTests
     private static byte[] RoundTripNoDownsample(byte[] bgra, int width, int height)
     {
         int pixelCount = width * height;
-        short[] y = new short[pixelCount];
-        short[] u = new short[pixelCount];
-        short[] v = new short[pixelCount];
-        short[] a = new short[pixelCount];
+        int[] y = new int[pixelCount];
+        int[] u = new int[pixelCount];
+        int[] v = new int[pixelCount];
+        int[] a = new int[pixelCount];
 
         PgfColorConversion.EncodeBgraToYuva(bgra, width, height, y, u, v, a);
 
@@ -86,10 +86,10 @@ public class PgfColorConversionTests
     {
         (byte[] bgra, int width, int height) = TestBitmaps.SolidColor(16, 16, b: 30, g: 200, r: 90, a: 128);
         int pixelCount = width * height;
-        short[] y = new short[pixelCount];
-        short[] u = new short[pixelCount];
-        short[] v = new short[pixelCount];
-        short[] a = new short[pixelCount];
+        int[] y = new int[pixelCount];
+        int[] u = new int[pixelCount];
+        int[] v = new int[pixelCount];
+        int[] a = new int[pixelCount];
         PgfColorConversion.EncodeBgraToYuva(bgra, width, height, y, u, v, a);
 
         (int uw, int uh) = PgfColorConversion.Downsample(u, width, height);
@@ -112,7 +112,7 @@ public class PgfColorConversionTests
     [InlineData(17, 17, 9, 9)] // odd both
     public void Downsample_ReturnsExpectedDimensions(int width, int height, int expectedWidth, int expectedHeight)
     {
-        short[] channel = new short[width * height];
+        int[] channel = new int[width * height];
 
         (int newWidth, int newHeight) = PgfColorConversion.Downsample(channel, width, height);
 
@@ -125,7 +125,7 @@ public class PgfColorConversionTests
     [Fact]
     public void Downsample_KnownValues_ComputesExactBoxAverage()
     {
-        short[] channel =
+        int[] channel =
         [
             0, 4, 8, 12,
             4, 8, 12, 16,
@@ -154,7 +154,7 @@ public class PgfColorConversionTests
     [Fact]
     public void Downsample_OddDimensions_ComputesExactBoxAverage()
     {
-        short[] channel =
+        int[] channel =
         [
             0, 10, 100,
             20, 30, 200,

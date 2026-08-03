@@ -15,9 +15,9 @@ namespace PictTag.PgfCodec.Tests;
 /// </summary>
 public class PgfWaveletTransformTests
 {
-    private static short[] RoundTrip(short[] original, int width, int height, int levels)
+    private static int[] RoundTrip(int[] original, int width, int height, int levels)
     {
-        short[] working = (short[])original.Clone(); // ForwardTransform consumes its buffer in place
+        int[] working = (int[])original.Clone(); // ForwardTransform consumes its buffer in place
         PgfWaveletTransform wt = new(width, height, levels, working);
 
         for (int level = 0; level < levels; level++)
@@ -26,10 +26,10 @@ public class PgfWaveletTransformTests
             Assert.Equal(PgfCodecError.None, err);
         }
 
-        short[] result = [];
+        int[] result = [];
         for (int srcLevel = levels; srcLevel >= 1; srcLevel--)
         {
-            PgfCodecError err = wt.InverseTransform(srcLevel, out int w, out int h, out short[] data);
+            PgfCodecError err = wt.InverseTransform(srcLevel, out int w, out int h, out int[] data);
             Assert.Equal(PgfCodecError.None, err);
             if (srcLevel == 1)
             {
@@ -42,27 +42,27 @@ public class PgfWaveletTransformTests
         return result;
     }
 
-    private static short[] GradientPattern(int width, int height)
+    private static int[] GradientPattern(int width, int height)
     {
-        short[] data = new short[width * height];
+        int[] data = new int[width * height];
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                data[(y * width) + x] = (short)(((x * 7) + (y * 13)) % 512 - 256);
+                data[(y * width) + x] = (int)(((x * 7) + (y * 13)) % 512 - 256);
             }
         }
 
         return data;
     }
 
-    private static short[] RandomPattern(int width, int height, int seed)
+    private static int[] RandomPattern(int width, int height, int seed)
     {
         Random random = new(seed);
-        short[] data = new short[width * height];
+        int[] data = new int[width * height];
         for (int i = 0; i < data.Length; i++)
         {
-            data[i] = (short)random.Next(-2000, 2001);
+            data[i] = (int)random.Next(-2000, 2001);
         }
 
         return data;
@@ -78,9 +78,9 @@ public class PgfWaveletTransformTests
     [InlineData(128, 96, 4)]
     public void GradientPattern_RoundTripsExactly_AtQuality0(int width, int height, int levels)
     {
-        short[] original = GradientPattern(width, height);
+        int[] original = GradientPattern(width, height);
 
-        short[] result = RoundTrip(original, width, height, levels);
+        int[] result = RoundTrip(original, width, height, levels);
 
         Assert.Equal(original, result);
     }
@@ -91,9 +91,9 @@ public class PgfWaveletTransformTests
     [InlineData(10, 10, 1)]
     public void RandomPattern_RoundTripsExactly_AtQuality0(int width, int height, int levels)
     {
-        short[] original = RandomPattern(width, height, seed: width * 1000 + height);
+        int[] original = RandomPattern(width, height, seed: width * 1000 + height);
 
-        short[] result = RoundTrip(original, width, height, levels);
+        int[] result = RoundTrip(original, width, height, levels);
 
         Assert.Equal(original, result);
     }
@@ -118,10 +118,10 @@ public class PgfWaveletTransformTests
     [Fact]
     public void SolidColor_RoundTripsExactly()
     {
-        short[] original = new short[64 * 64];
-        Array.Fill(original, (short)500);
+        int[] original = new int[64 * 64];
+        Array.Fill(original, (int)500);
 
-        short[] result = RoundTrip(original, width: 64, height: 64, levels: 3);
+        int[] result = RoundTrip(original, width: 64, height: 64, levels: 3);
 
         Assert.Equal(original, result);
     }
@@ -133,9 +133,9 @@ public class PgfWaveletTransformTests
     [InlineData(10, 10)] // even width, even height
     public void AllParityCombinations_RoundTripExactly(int width, int height)
     {
-        short[] original = GradientPattern(width, height);
+        int[] original = GradientPattern(width, height);
 
-        short[] result = RoundTrip(original, width, height, levels: 1);
+        int[] result = RoundTrip(original, width, height, levels: 1);
 
         Assert.Equal(original, result);
     }

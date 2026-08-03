@@ -2,9 +2,19 @@ namespace PictTag.PgfCodec;
 
 /// <summary>
 /// Numeric constants mirrored directly from <c>PGFtypes.h</c>/<c>PGFplatform.h</c>/
-/// <c>WaveletTransform.h</c>, for this build's configuration specifically (no
-/// <c>__PGF32SUPPORT__</c> - confirmed via <c>CMakeLists.txt</c> never defining it, so
-/// <c>DataT</c> is <see cref="short"/>, <c>MaxBitPlanes</c> is 15, not 31).
+/// <c>WaveletTransform.h</c>, for this build's configuration specifically.
+///
+/// <b>Correction (pgf-all-image-modes.md, pre-Stage-1 verification):</b> earlier docs/comments in
+/// this codebase (including <c>managed-pgf-codec.md</c>'s own "Traps confirmed in the real code")
+/// claimed <c>__PGF32SUPPORT__</c> was not defined here, reasoning only from
+/// <c>CMakeLists.txt</c> never defining it directly. That's wrong: <c>PGFplatform.h:66-67</c>
+/// defines <c>__PGF32SUPPORT__</c> <i>by default</i> (<c>#ifndef NPGF32</c>), and
+/// <c>CMakeLists.txt</c> never defines <c>NPGF32</c> either, so the real compiled oracle DLL has
+/// it active: <c>DataT = INT32</c> (<c>PGFtypes.h:273</c>), <c>MaxBitPlanes = 31</c>. This was
+/// never caught by the RGBA-only test suite because 8-bit-per-channel data never approaches
+/// <c>Int16</c>'s range: it stopped being silent once pgf-all-image-modes.md's 16-bit-per-channel
+/// groups (Gray16/Lab48/RGB48/CMYK64) needed it. <c>DataT</c> is <see cref="int"/> in this port,
+/// matching the real oracle build.
 /// </summary>
 internal static class PgfConstants
 {
@@ -18,7 +28,7 @@ internal static class PgfConstants
     public const int ColorTableSize = ColorTableLen * 4; // RGBQUAD = 4 bytes each
 
     public const int MaxLevel = 30;
-    public const int MaxBitPlanes = 15; // 16 minus sign bit, non-PGF32SUPPORT build
+    public const int MaxBitPlanes = 31; // 32 minus sign bit, __PGF32SUPPORT__ build (see class doc comment)
     public const int MaxBitPlanesLog = 5; // bits needed to encode MaxBitPlanes
     public const int MaxQuality = MaxBitPlanes;
     public const int DownsampleThreshold = 3;
@@ -58,12 +68,16 @@ internal static class PgfConstants
     public const byte CodecYear = 19;
     public const byte CodecWeek = 3;
 
-    /// <summary>The exact <see cref="PgfVersionFlags"/> this port's encoder always writes: no
-    /// <c>PGF32</c> (this build's <c>DataT</c> is <see cref="short"/>, matching the native shim's
-    /// own non-<c>__PGF32SUPPORT__</c> build), no <c>PGFROI</c> (this port never emits ROI-flagged
-    /// files - see managed-pgf-codec.md's "ROI is always compiled in" decode-side trap; encode
-    /// simply never sets the bit). Matches <c>shim.cpp</c>'s <c>pgf_encode_bgra_alloc</c> exactly
-    /// (<c>SetHeader(header)</c>, <c>flags=0</c> default).</summary>
+    /// <summary>The exact <see cref="PgfVersionFlags"/> this port's encoder always writes:
+    /// <c>PGF32</c> included (pgf-all-image-modes.md's DataT correction - the real build's
+    /// <c>PGFVersion</c> constant, PGFtypes.h:76, includes it, and <c>CPGFImage::SetHeader</c>,
+    /// PGFimage.cpp:905, writes <c>PGFVersion | flags</c> into every real file's preheader), no
+    /// <c>PGFROI</c> (this port never emits ROI-flagged files - see managed-pgf-codec.md's "ROI is
+    /// always compiled in" decode-side trap; encode simply never sets the bit). The bit itself only
+    /// ever feeds <c>ChannelDepth()</c>/<c>MaxChannelDepth()</c> (PGFimage.h:406,518), a reporting
+    /// accessor never called from the shim or this port's decode path, so this is metadata
+    /// faithfulness, not a functional decode/encode dependency.</summary>
     public const PgfVersionFlags EncoderVersionFlags =
-        PgfVersionFlags.Version2 | PgfVersionFlags.Version5 | PgfVersionFlags.Version6 | PgfVersionFlags.Version7;
+        PgfVersionFlags.Version2 | PgfVersionFlags.PGF32 | PgfVersionFlags.Version5 |
+        PgfVersionFlags.Version6 | PgfVersionFlags.Version7;
 }

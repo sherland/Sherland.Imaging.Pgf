@@ -31,7 +31,7 @@ internal sealed class PgfSubband
     public PgfSubbandOrientation Orientation { get; private set; }
 
     private int size;
-    private short[]? data;
+    private int[]? data;
     private int dataPos;
 
     public void Initialize(int width, int height, int level, PgfSubbandOrientation orientation)
@@ -54,7 +54,7 @@ internal sealed class PgfSubband
             return true;
         }
 
-        data = new short[size];
+        data = new int[size];
         return true;
     }
 
@@ -63,23 +63,23 @@ internal sealed class PgfSubband
     /// <summary>Direct port of <c>CSubband::SetBuffer</c> (Subband.h:148) - used only for level-0's
     /// LL subband, which shares the channel's own raw pixel array rather than owning its own
     /// allocation (<c>CWaveletTransform::InitSubbands</c>'s <c>data</c> parameter).</summary>
-    public void SetBuffer(short[] buffer) => data = buffer;
+    public void SetBuffer(int[] buffer) => data = buffer;
 
-    public short[] GetBuffer()
+    public int[] GetBuffer()
     {
         System.Diagnostics.Debug.Assert(data is not null, "Subband buffer accessed before AllocMemory/SetBuffer.");
         return data!;
     }
 
-    public void SetData(int pos, short value) => GetBuffer()[pos] = value;
+    public void SetData(int pos, int value) => GetBuffer()[pos] = value;
 
-    public short GetData(int pos) => GetBuffer()[pos];
+    public int GetData(int pos) => GetBuffer()[pos];
 
     public void InitBuffPos() => dataPos = 0;
 
-    public void WriteBuffer(short value) => GetBuffer()[dataPos++] = value;
+    public void WriteBuffer(int value) => GetBuffer()[dataPos++] = value;
 
-    public short ReadBuffer() => GetBuffer()[dataPos++];
+    public int ReadBuffer() => GetBuffer()[dataPos++];
 
     /// <summary>Direct port of <c>CSubband::Quantize</c> (Subband.cpp:112) - scalar
     /// quantization-with-deadzone, called per-subband from <c>CWaveletTransform::ForwardTransform</c>
@@ -88,7 +88,7 @@ internal sealed class PgfSubband
     /// call - see this class's doc comment for why <c>Dequantize</c> itself isn't ported).</summary>
     public void Quantize(int quantParam)
     {
-        short[] buffer = GetBuffer();
+        int[] buffer = GetBuffer();
 
         if (Orientation == PgfSubbandOrientation.Ll)
         {
@@ -99,8 +99,8 @@ internal sealed class PgfSubband
                 for (int i = 0; i < size; i++)
                 {
                     buffer[i] = buffer[i] < 0
-                        ? unchecked((short)-(((-buffer[i] >> quantParam) + 1) >> 1))
-                        : unchecked((short)(((buffer[i] >> quantParam) + 1) >> 1));
+                        ? unchecked((int)-(((-buffer[i] >> quantParam) + 1) >> 1))
+                        : unchecked((int)(((buffer[i] >> quantParam) + 1) >> 1));
                 }
             }
         }
@@ -115,11 +115,11 @@ internal sealed class PgfSubband
                 {
                     if (buffer[i] < -threshold)
                     {
-                        buffer[i] = unchecked((short)-(((-buffer[i] >> quantParam) + 1) >> 1));
+                        buffer[i] = unchecked((int)-(((-buffer[i] >> quantParam) + 1) >> 1));
                     }
                     else if (buffer[i] > threshold)
                     {
-                        buffer[i] = unchecked((short)(((buffer[i] >> quantParam) + 1) >> 1));
+                        buffer[i] = unchecked((int)(((buffer[i] >> quantParam) + 1) >> 1));
                     }
                     else
                     {

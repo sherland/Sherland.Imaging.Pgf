@@ -46,7 +46,7 @@ public static class PgfImageDecoder
             return false;
         }
 
-        (short[] Data, int Width, int Height)[] channelData = new (short[], int, int)[4];
+        (int[] Data, int Width, int Height)[] channelData = new (int[], int, int)[4];
 
         int totalLevels = session.Levels;
         int levelsCompleted = 0;
@@ -63,7 +63,7 @@ public static class PgfImageDecoder
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            (short[] Data, int Width, int Height)[]? decoded = session.DecodeOneLevel(currentLevel);
+            (int[] Data, int Width, int Height)[]? decoded = session.DecodeOneLevel(currentLevel);
             if (decoded is null)
             {
                 return false;

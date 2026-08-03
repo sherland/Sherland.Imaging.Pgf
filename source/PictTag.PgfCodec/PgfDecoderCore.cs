@@ -27,14 +27,14 @@ internal sealed class PgfDecoderCore
     /// coefficient consumer every subband-filling loop (<see cref="Partition"/>) calls. Fetches the
     /// next macroblock if the current one is exhausted, then writes <c>value &lt;&lt; quantParam</c>
     /// into <paramref name="band"/> at <paramref name="bandPos"/>.</summary>
-    public void DequantizeValue(Span<short> band, int bandPos, int quantParam)
+    public void DequantizeValue(Span<int> band, int bandPos, int quantParam)
     {
         if (currentBlock.IsCompletelyRead)
         {
             GetNextMacroBlock();
         }
 
-        band[bandPos] = unchecked((short)(currentBlock.Value[currentBlock.ValuePos] << quantParam));
+        band[bandPos] = unchecked(currentBlock.Value[currentBlock.ValuePos] << quantParam);
         currentBlock.ValuePos++;
     }
 
@@ -105,7 +105,7 @@ internal sealed class PgfDecoderCore
     /// this port's encoder always sets <see cref="PgfVersionFlags.Version5"/>, and so does every
     /// modern real PGF file, so <c>CPGFImage::Read</c>'s <c>else</c> branch calling it is dead code
     /// for this port's real-world scope.</summary>
-    public void Partition(Span<short> band, int quantParam, int width, int height, int startPos, int pitch)
+    public void Partition(Span<int> band, int quantParam, int width, int height, int startPos, int pitch)
     {
         int wq = Math.DivRem(width, PgfConstants.LinBlockSize, out int wr);
         int hq = Math.DivRem(height, PgfConstants.LinBlockSize, out int hr);

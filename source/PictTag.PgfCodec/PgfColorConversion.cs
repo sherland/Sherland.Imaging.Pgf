@@ -20,7 +20,7 @@ internal static class PgfColorConversion
     /// separate step (<see cref="Downsample"/>), matching <c>ImportBitmap</c> calling them
     /// separately.</summary>
     public static void EncodeBgraToYuva(
-        ReadOnlySpan<byte> bgra, int width, int height, Span<short> y, Span<short> u, Span<short> v, Span<short> a)
+        ReadOnlySpan<byte> bgra, int width, int height, Span<int> y, Span<int> u, Span<int> v, Span<int> a)
     {
         int pos = 0;
         int cnt = 0;
@@ -32,10 +32,10 @@ internal static class PgfColorConversion
             byte r = bgra[cnt + 2];
             byte alpha = bgra[cnt + 3];
 
-            y[pos] = unchecked((short)(((b + (g << 1) + r) >> 2) - YuvOffset8));
-            u[pos] = unchecked((short)(r - g));
-            v[pos] = unchecked((short)(b - g));
-            a[pos] = unchecked((short)(alpha - YuvOffset8));
+            y[pos] = unchecked((int)(((b + (g << 1) + r) >> 2) - YuvOffset8));
+            u[pos] = unchecked((int)(r - g));
+            v[pos] = unchecked((int)(b - g));
+            a[pos] = unchecked((int)(alpha - YuvOffset8));
 
             cnt += 4;
         }
@@ -48,7 +48,7 @@ internal static class PgfColorConversion
     /// the first <c>NewWidth * NewHeight</c> elements of <paramref name="channel"/> are valid on
     /// return; the caller must slice accordingly (matching the original's <c>m_width[ch]</c>/
     /// <c>m_height[ch]</c> shrinking in place instead of reallocating).</summary>
-    public static (int NewWidth, int NewHeight) Downsample(Span<short> channel, int width, int height)
+    public static (int NewWidth, int NewHeight) Downsample(Span<int> channel, int width, int height)
     {
         int w2 = width / 2;
         int h2 = height / 2;
@@ -60,14 +60,14 @@ internal static class PgfColorConversion
         {
             for (int j = 0; j < w2; j++)
             {
-                channel[sampledPos] = unchecked((short)((channel[loPos] + channel[loPos + 1] + channel[hiPos] + channel[hiPos + 1]) >> 2));
+                channel[sampledPos] = unchecked((int)((channel[loPos] + channel[loPos + 1] + channel[hiPos] + channel[hiPos + 1]) >> 2));
                 loPos += 2; hiPos += 2;
                 sampledPos++;
             }
 
             if (oddW != 0)
             {
-                channel[sampledPos] = unchecked((short)((channel[loPos] + channel[hiPos]) >> 1));
+                channel[sampledPos] = unchecked((int)((channel[loPos] + channel[hiPos]) >> 1));
                 loPos++; hiPos++;
                 sampledPos++;
             }
@@ -79,7 +79,7 @@ internal static class PgfColorConversion
         {
             for (int j = 0; j < w2; j++)
             {
-                channel[sampledPos] = unchecked((short)((channel[loPos] + channel[loPos + 1]) >> 1));
+                channel[sampledPos] = unchecked((int)((channel[loPos] + channel[loPos + 1]) >> 1));
                 loPos += 2; hiPos += 2;
                 sampledPos++;
             }
@@ -103,7 +103,7 @@ internal static class PgfColorConversion
     /// <paramref name="width"/> x <paramref name="height"/>, same layout as <paramref name="y"/>,
     /// when false).</summary>
     public static void DecodeYuvaToBgra(
-        ReadOnlySpan<short> y, ReadOnlySpan<short> u, ReadOnlySpan<short> v, ReadOnlySpan<short> a,
+        ReadOnlySpan<int> y, ReadOnlySpan<int> u, ReadOnlySpan<int> v, ReadOnlySpan<int> a,
         int width, int height, int chromaWidth, bool downsample, Span<byte> bgra)
     {
         int yOffset = 0;
@@ -118,8 +118,8 @@ internal static class PgfColorConversion
 
             for (int j = 0; j < width; j++)
             {
-                short uAvg = u[uPos];
-                short vAvg = v[uPos];
+                int uAvg = u[uPos];
+                int vAvg = v[uPos];
                 byte aAvg = Clamp8(a[uPos] + YuvOffset8);
 
                 byte g = Clamp8(y[yPos] + YuvOffset8 - ((uAvg + vAvg) >> 2));

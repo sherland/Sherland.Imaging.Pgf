@@ -54,10 +54,10 @@ internal static class PgfImageEncoder
         bool downsample = quality > PgfConstants.DownsampleThreshold;
         int quant = downsample ? quality - 1 : quality;
 
-        short[] y = new short[width * height];
-        short[] u = new short[width * height];
-        short[] v = new short[width * height];
-        short[] a = new short[width * height];
+        int[] y = new int[width * height];
+        int[] u = new int[width * height];
+        int[] v = new int[width * height];
+        int[] a = new int[width * height];
         PgfColorConversion.EncodeBgraToYuva(bgra, width, height, y, u, v, a);
 
         int chromaWidth = width;

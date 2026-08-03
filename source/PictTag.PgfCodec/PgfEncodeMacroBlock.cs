@@ -14,8 +14,10 @@ namespace PictTag.PgfCodec;
 internal sealed class PgfEncodeMacroBlock
 {
     /// <summary>Raw (post-quantization, pre-entropy-coding) coefficients collected via
-    /// <see cref="WriteValue"/>, index <c>[0, BufferSize)</c>.</summary>
-    public readonly short[] Value = new short[PgfConstants.BufferSize];
+    /// <see cref="WriteValue"/>, index <c>[0, BufferSize)</c>. <c>DataT</c> in the original -
+    /// <see cref="int"/> in this build (real <c>__PGF32SUPPORT__</c> build, see
+    /// <see cref="PgfConstants"/>'s doc comment).</summary>
+    public readonly int[] Value = new int[PgfConstants.BufferSize];
 
     /// <summary>Entropy-coded output bitstream, one macroblock's worth, in 32-bit words.</summary>
     public readonly uint[] CodeBuffer = new uint[PgfConstants.BufferSize];
@@ -52,15 +54,15 @@ internal sealed class PgfEncodeMacroBlock
     /// itself once a block fills up, mirroring <c>CEncoder::WriteValue</c> calling
     /// <c>EncodeBuffer</c> inline). Stores <paramref name="value"/> and updates
     /// <see cref="MaxAbsValue"/>.</summary>
-    public void WriteValue(short value)
+    public void WriteValue(int value)
     {
         Value[ValuePos++] = value;
 
-        // Promote to int before Abs - matches the original's abs(DataT) implicitly promoting a
-        // short to int first (there is no short-overload of C's abs()), which matters for
-        // short.MinValue (-32768): Math.Abs((short)) would throw OverflowException, but
-        // Math.Abs((int)) correctly yields 32768 with no overflow, exactly like the C++ does.
-        uint magnitude = (uint)Math.Abs((int)value);
+        // Promote to long before Abs - matches the original's abs(DataT) needing headroom for
+        // int.MinValue (-2147483648): Math.Abs((int)) would throw OverflowException there, but
+        // Math.Abs((long)) correctly yields 2147483648 with no overflow, exactly like the C++'s
+        // wider-than-DataT abs() does.
+        uint magnitude = (uint)Math.Abs((long)value);
         if (magnitude > MaxAbsValue)
         {
             MaxAbsValue = magnitude;
@@ -359,7 +361,7 @@ internal sealed class PgfEncodeMacroBlock
     }
 
     /// <summary>Direct port of <c>GetBitAtPos</c> (Encoder.h:98) - tests one bit of
-    /// <c>abs(Value[pos])</c>. Promotes to <see cref="int"/> before <see cref="Math.Abs(int)"/> for
-    /// the same short.MinValue reason as <see cref="WriteValue"/>.</summary>
-    private bool GetBitAtPos(uint pos, uint planeMask) => ((uint)Math.Abs((int)Value[pos]) & planeMask) > 0;
+    /// <c>abs(Value[pos])</c>. Promotes to <see cref="long"/> before <see cref="Math.Abs(long)"/> for
+    /// the same int.MinValue reason as <see cref="WriteValue"/>.</summary>
+    private bool GetBitAtPos(uint pos, uint planeMask) => ((uint)Math.Abs((long)Value[pos]) & planeMask) > 0;
 }

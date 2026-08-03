@@ -19,7 +19,7 @@ internal sealed class PgfEncoderCore
 
     /// <summary>Direct port of <c>CEncoder::WriteValue</c> (Encoder.cpp:326) - stores one coefficient,
     /// triggering an encode-and-flush of the current macroblock first if it's already full.</summary>
-    public void WriteValue(short value)
+    public void WriteValue(int value)
     {
         if (currentBlock.IsFull)
         {
@@ -75,7 +75,7 @@ internal sealed class PgfEncoderCore
     /// arithmetic, calling <see cref="WriteValue"/> instead of <c>DequantizeValue</c>). Takes a flat
     /// coefficient buffer for the same reason as the decode side - <c>CSubband::GetData</c> is just
     /// <c>return m_data[pos]</c> (Subband.h:113).</summary>
-    public void Partition(ReadOnlySpan<short> band, int width, int height, int startPos, int pitch)
+    public void Partition(ReadOnlySpan<int> band, int width, int height, int startPos, int pitch)
     {
         int wq = Math.DivRem(width, PgfConstants.LinBlockSize, out int wr);
         int hq = Math.DivRem(height, PgfConstants.LinBlockSize, out int hr);

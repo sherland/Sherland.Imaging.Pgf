@@ -1,7 +1,41 @@
 # PGF codec: support for all image modes — PRD
 
-**Status: not started.** Closes a gap documented in [`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md)'s
+**Status: in progress.** Closes a gap documented in [`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md)'s
 "Explicitly out of scope" list ("Every color mode except RGBA/32bpp").
+
+## Correction to a load-bearing assumption inherited from `managed-pgf-codec.md`
+
+Before Stage 1, real-code verification (this PRD's own "grounded in the real algorithm" standard)
+found that `managed-pgf-codec.md`'s "Traps confirmed in the real code" claim — "`DataT` is `INT16`,
+not `INT32`, in this build (`__PGF32SUPPORT__` is not defined anywhere in `CMakeLists.txt`/
+`PGFplatform.h`'s defaults)" — is wrong, and was wrong from the start:
+
+- `PGFplatform.h:66-67` defines `__PGF32SUPPORT__` **by default** (`#ifndef NPGF32` /
+  `#define __PGF32SUPPORT__`). `native/PictTag.PgfDecoder/CMakeLists.txt` never defines `NPGF32`
+  anywhere, so the real compiled oracle DLL this whole codec is verified against has
+  `__PGF32SUPPORT__` **active**: `DataT = INT32` (`PGFtypes.h:273`), `MaxBitPlanes = 31`,
+  `MaxQuality = 31` (`PGFtypes.h:89`) — not the `INT16`/`15` this port (`PgfConstants.MaxBitPlanes`)
+  and every prior PRD's documentation assumed.
+- This was never caught by the existing 567-test RGBA suite because 8-bit-per-channel pixel data's
+  YUV-transformed magnitudes never approach `Int16`'s boundary — the bug was real but silent.
+- It stops being silent for this PRD's Groups B/D/F (`Gray16`/`Lab48`/`RGB48`/`CMYK64`, all
+  16-bit-per-channel): a raw channel value of `0` (pure black, an entirely ordinary real pixel)
+  becomes `y = 0 - 32768 = -32768` after the YUV offset — exactly at `Int16`'s boundary — and
+  `PgfWaveletTransform.cs`'s forward-transform lifting steps (`unchecked((short)(...))` truncating
+  casts on sums of two such values) overflow for any image with normal contrast, not a contrived
+  edge case. The real oracle (genuine `DataT=INT32`) carries this arithmetic through without
+  truncating, so a `short`-based port would silently diverge from the oracle for these modes,
+  failing this codec's own byte-exact bar (Goal 4).
+
+**Decision (user-confirmed before Stage 1 work began): widen `DataT` from `short` to `int` across
+the shared codec core** (`PgfWaveletTransform`, `PgfSubband`, `PgfMacroBlock`/`PgfEncodeMacroBlock`,
+`BitStream`'s value-block widths, `PgfDecoderCore`/`PgfEncoderCore`, `PgfDecodeSession`,
+`PgfColorConversion`'s channel spans), plus `PgfConstants.MaxBitPlanes`/`MaxBitPlanesLog`/
+`MaxQuality` updated to match the real oracle build (`31`/`5`/`31`) — rather than scoping this PRD
+down to 8-bit-only groups or duplicating a parallel wide-coefficient pipeline. This is now
+**Stage 0**, inserted before the PRD's own Stage 1 below, precisely because it touches code shared
+with the already-shipped RGBA path: it must re-verify the full existing regression suite stays
+byte-exact under the wider type before any new mode work begins on top of it.
 
 ## Context
 

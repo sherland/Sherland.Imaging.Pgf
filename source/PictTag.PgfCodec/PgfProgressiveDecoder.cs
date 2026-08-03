@@ -27,7 +27,7 @@ namespace PictTag.PgfCodec;
 public sealed class PgfProgressiveDecoder
 {
     private readonly PgfDecodeSession session;
-    private readonly (short[] Data, int Width, int Height)[] lastDecoded = new (short[], int, int)[4];
+    private readonly (int[] Data, int Width, int Height)[] lastDecoded = new (int[], int, int)[4];
     private int currentLevel;
 
     private PgfProgressiveDecoder(PgfDecodeSession session)
@@ -108,7 +108,7 @@ public sealed class PgfProgressiveDecoder
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            (short[] Data, int Width, int Height)[]? decoded = session.DecodeOneLevel(currentLevel);
+            (int[] Data, int Width, int Height)[]? decoded = session.DecodeOneLevel(currentLevel);
             if (decoded is null)
             {
                 return false;

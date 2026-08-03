@@ -265,7 +265,8 @@ PICTTAG_EXPORT void pgf_close(PgfDecoderHandle* handle)
 // than something only reachable via real digiKam-produced fixtures.
 
 // Encodes a BGRA buffer (top-down, pitch = width*4) into a newly heap-allocated PGF byte buffer.
-// quality: 0 = lossless, up to MaxQuality (15 in this build - see PGFtypes.h; SetHeader's own
+// quality: 0 = lossless, up to MaxQuality (31 in this build - __PGF32SUPPORT__ is active by
+// PGFplatform.h's own default, since NPGF32 is never defined - see PGFtypes.h; SetHeader's own
 // ASSERT(header.quality <= MaxQuality) is the actual enforced bound, not the narrower "0/4/6" preset
 // list PGFHeader's doc comment calls out by name).
 // The caller owns the returned buffer and must free it with pgf_free_encoded - an owned-pointer
@@ -383,7 +384,7 @@ PICTTAG_EXPORT void pgf_free_encoded(uint8_t* data)
 // twice per test process until this is properly root-caused.
 PICTTAG_EXPORT bool pgf_debug_decode_channel(
     const uint8_t* data, size_t dataLen, int level, int channel,
-    int16_t* outBuffer, size_t outBufferLen, uint32_t* outWidth, uint32_t* outHeight)
+    int32_t* outBuffer, size_t outBufferLen, uint32_t* outWidth, uint32_t* outHeight)
 {
     if (data == nullptr || dataLen == 0 || outBuffer == nullptr || outWidth == nullptr ||
         outHeight == nullptr || level < 0 || channel < 0)

@@ -40,7 +40,7 @@ public class PgfImageEncoderTests
     }
 
     [Theory]
-    [InlineData(16)]
+    [InlineData(32)] // PgfConstants.MaxQuality + 1 (31 + 1, pgf-all-image-modes.md's DataT correction)
     [InlineData(255)]
     public void QualityAboveMax_FailsClosed_WithoutThrowing(int quality)
     {

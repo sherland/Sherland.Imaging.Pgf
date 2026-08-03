@@ -352,3 +352,31 @@ across eight sizes down to 1x1, both single-shot and progressive decode, an inde
 tiny image, a truncated-stream fail-closed case, and `PgfProgressiveDecoder`'s level-0-only
 contract (rejecting level 1, idempotent on repeat level-0 requests). Full regression:
 `PictTag.PgfCodec.Tests` 1077 → 1098 (21 new, 0 failed); `PictTag.Data.Tests` 15/15 unchanged.
+
+**Stage 5 (`nLevels=0` encode, completing the round trip) — done.** `PgfImageEncoder.TryEncodeMode`'s
+old `if (header.NLevels == 0) return false;` hard-fail is gone. Color conversion and the chroma
+downsample decision run exactly as before (both are shared with the normal path, unaffected by
+`NLevels`); a new `header.NLevels == 0` branch, inserted right where the normal path would otherwise
+start building `PgfWaveletTransform`s, instead writes the header and then each channel's
+already-color-converted (and, if downsampled, already-subsampled) coefficients directly via a new
+`WriteRawChannels` helper - no forward transform, no entropy coding at all, matching
+`CPGFImage::WriteImage`'s own `nLevels==0` branch exactly (PGFimage.cpp:1159-1175) and mirroring
+`PgfDecodeSession`'s Stage 4 decode-side reader (same per-channel-sequential order, same `int`/
+`DataT` little-endian representation). `progress` reports once at `1.0` (no incremental per-level
+work to report across, matching the native callback's own single fire here);
+`cancellationToken` is checked once before writing, for parity with the normal path's "once per unit
+of work" grain even though there's only one unit of work on this path.
+
+New tests (32, `PgfNLevelsZeroEncodeTests.cs`): self-consistent round trip (this port's own encoder →
+decoder) at every size from 1x1 through `MinimumSupportedDimension`, plus a handful of extreme aspect
+ratios (1x100, 100x1); a cross-check that the **real native decoder** opens this port's own
+`nLevels=0`-encoded output byte-exact (the strongest available proof, matching this codec's usual bar
+- not just internal self-consistency); the same downsample-threshold quality split Stage 4 needed
+(lossless at quality 0-3, dimensions-only above); indexed-color and user-data composed with the raw
+path; progressive decode of this port's own encoded output; and a progress-reports-1.0 check. One
+existing test (`PgfImageEncoderTests.BelowMinimumDimension_FailsClosed_WithoutThrowing`) was renamed
+to `..._NoLongerFailsClosed_EncodesViaRawPath` and its assertion flipped, since the behavior it was
+locking in is exactly what this stage changed; `TestBitmaps.MinimumSupportedDimension`'s own doc
+comment was updated to stop calling this range "out of scope" now that every consumer (native shim,
+this port's decoder, this port's encoder) supports it. Full regression: `PictTag.PgfCodec.Tests`
+1098 → 1130 (32 new, 0 failed); `PictTag.Data.Tests` 15/15 unchanged.

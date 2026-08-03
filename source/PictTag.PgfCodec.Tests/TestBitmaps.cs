@@ -80,11 +80,16 @@ internal static class TestBitmaps
 
     /// <summary>Below this size (in either dimension), <c>CPGFImage::ComputeLevels()</c> falls back
     /// to <c>nLevels=0</c> - a completely different, wavelet-transform-free "store raw/uncoded
-    /// channel data" path that real digiKam thumbnails never reach and that the native shim's
-    /// test-only <c>pgf_encode_bgra_alloc</c>/<c>pgf_debug_decode_channel</c> exports deliberately
-    /// reject (see shim.cpp's doc comments) rather than exercise - a real, unrelated-to-the-C#-port
-    /// heap-corruption risk was found in that path during this test rig's own development
-    /// (new-features/managed-pgf-codec.md). Out of scope for this port: matches the shim's own
-    /// guard exactly.</summary>
+    /// channel data" path. Originally out of scope for both this port and the native shim's own
+    /// test-only <c>pgf_encode_bgra_alloc</c>/<c>pgf_debug_decode_channel</c> exports (a real
+    /// heap-corruption risk was found exercising it during this test rig's early development,
+    /// new-features/managed-pgf-codec.md) - <c>pgf_debug_decode_channel</c>'s own, unrelated,
+    /// still-unresolved repeated-call crash risk remains, but the size-range guard itself didn't
+    /// reproduce once isolated and re-tested (pgf-user-data-and-small-images.md's Open Question 1),
+    /// so both the native shim's `pgf_encode_bgra_alloc`/`pgf_encode_raw_alloc` and this port's own
+    /// decoder/encoder (<see cref="PgfDecodeSession"/>/<see cref="PgfImageEncoder"/>, Stages 4-5 of
+    /// that same PRD) now support this range like any other. Still marks a real, meaningful boundary
+    /// worth naming - the point where the format switches from wavelet-coded to raw storage, not an
+    /// unsupported region anymore.</summary>
     public const int MinimumSupportedDimension = 10;
 }

@@ -23,23 +23,23 @@ public class PgfImageEncoderTests
 
     /// <summary>Matches <see cref="TestBitmaps.MinimumSupportedDimension"/> - the same real,
     /// vendored-library <c>nLevels=0</c> boundary (managed-pgf-codec.md's scope notes), ported here
-    /// via <c>PgfHeaderIO.ComputeLevels</c> returning 0. This port's own encoder still hard-fails on
-    /// it (unlike the native oracle, which now supports it again as of
-    /// pgf-user-data-and-small-images.md's Open Question 1) until that same PRD's own Stage 5 lands
-    /// real <c>nLevels=0</c> encode support here.</summary>
+    /// via <c>PgfHeaderIO.ComputeLevels</c> returning 0. Used to hard-fail here; now encodes via the
+    /// raw/uncoded path (pgf-user-data-and-small-images.md Stage 5) - see
+    /// <see cref="PgfNLevelsZeroEncodeTests"/> for the real round-trip proof, this just confirms the
+    /// old hard-failure is gone.</summary>
     [Theory]
     [InlineData(1, 1)]
     [InlineData(1, 7)]
     [InlineData(7, 1)]
     [InlineData(9, 9)]
-    public void BelowMinimumDimension_FailsClosed_WithoutThrowing(int width, int height)
+    public void BelowMinimumDimension_NoLongerFailsClosed_EncodesViaRawPath(int width, int height)
     {
         (byte[] bgra, int w, int h) = TestBitmaps.Gradient(width, height);
 
         bool encoded = PgfImageEncoder.TryEncode(bgra, w, h, quality: 0, out byte[]? pgfBytes);
 
-        Assert.False(encoded, $"Expected {width}x{height} (below MinimumSupportedDimension) to be rejected.");
-        Assert.Null(pgfBytes);
+        Assert.True(encoded, $"Expected {width}x{height} (below MinimumSupportedDimension) to encode via the nLevels=0 raw path.");
+        Assert.NotNull(pgfBytes);
     }
 
     [Theory]

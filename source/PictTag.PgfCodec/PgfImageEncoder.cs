@@ -1,3 +1,5 @@
+using System.Buffers.Binary;
+
 namespace PictTag.PgfCodec;
 
 /// <summary>
@@ -71,12 +73,6 @@ internal static class PgfImageEncoder
         }
 
         PgfHeader header = PgfHeaderIO.CreateForMode((uint)width, (uint)height, quality, mode);
-        if (header.NLevels == 0)
-        {
-            // The wavelet-transform-free "raw" path - out of scope, matching the native shim's own
-            // MinimumSupportedDimension guard (managed-pgf-codec.md's scope notes).
-            return false;
-        }
 
         bool downsample = quality > PgfConstants.DownsampleThreshold && PgfModeInfo.SupportsDownsample(mode);
         int quant = downsample ? quality - 1 : quality;
@@ -152,6 +148,30 @@ internal static class PgfImageEncoder
             }
         }
 
+        if (header.NLevels == 0)
+        {
+            // pgf-user-data-and-small-images.md Goal 4/Stage 5: the wavelet-transform-free
+            // "raw/uncoded" path (CPGFImage::WriteImage's nLevels==0 branch, PGFimage.cpp:1159-1175)
+            // - the color-converted (and, if applicable, chroma-downsampled) coefficients above are
+            // written directly, uncoded, instead of being forward-transformed/entropy-encoded at
+            // all. Cancellation is checked once, matching the normal path's "once per unit of work"
+            // grain even though there's only one unit of work here (no per-level loop to check
+            // between iterations of).
+            cancellationToken.ThrowIfCancellationRequested();
+
+            PgfByteWriter rawWriter = new();
+            PgfHeaderIO.Write(rawWriter, header, colorTable, userData);
+            WriteRawChannels(rawWriter, channelBuffers, channelCount, chromaWidth, chromaHeight, downsample);
+
+            // Matches CPGFImage::WriteImage's own nLevels==0 branch (PGFimage.cpp:1170-1173): the
+            // callback fires once, at 1.0, since there's no incremental per-level work to report
+            // progress across.
+            progress?.Report(1.0);
+
+            pgfBytes = rawWriter.WrittenSpan.ToArray();
+            return true;
+        }
+
         int chromaSize = chromaWidth * chromaHeight;
         PgfWaveletTransform[] channels = new PgfWaveletTransform[channelCount];
         channels[0] = new PgfWaveletTransform(width, height, header.NLevels, channelBuffers[0]);
@@ -217,5 +237,35 @@ internal static class PgfImageEncoder
 
         pgfBytes = writer.WrittenSpan.ToArray();
         return true;
+    }
+
+    /// <summary>Direct port of <c>CPGFImage::WriteImage</c>'s <c>nLevels==0</c> write loop
+    /// (PGFimage.cpp:1159-1175): each channel's already color-converted (and, if
+    /// <paramref name="downsample"/>, chroma-subsampled) coefficients, written sequentially - whole
+    /// channel, then the next, matching <see cref="PgfDecodeSession"/>'s decode-side mirror exactly
+    /// (same order, same <see cref="int"/>/<c>DataT</c> little-endian representation). Channel 0's
+    /// buffer is always tightly sized to the full image (never downsampled), so its own
+    /// <c>Length</c> is used directly; channels 1..N-1 write only their first
+    /// <paramref name="chromaWidth"/> x <paramref name="chromaHeight"/> values when
+    /// <paramref name="downsample"/> (<see cref="PgfColorConversion.Downsample"/> already compacted
+    /// them there in place, leaving stale values past that point) - matching the same slicing the
+    /// normal <see cref="PgfWaveletTransform"/> construction path already does just above this
+    /// method's own call site.</summary>
+    private static void WriteRawChannels(
+        PgfByteWriter writer, int[][] channelBuffers, int channelCount, int chromaWidth, int chromaHeight, bool downsample)
+    {
+        Span<byte> valueBytes = stackalloc byte[4];
+
+        for (int c = 0; c < channelCount; c++)
+        {
+            int[] buffer = channelBuffers[c];
+            int size = c == 0 || !downsample ? buffer.Length : chromaWidth * chromaHeight;
+
+            for (int i = 0; i < size; i++)
+            {
+                BinaryPrimitives.WriteInt32LittleEndian(valueBytes, buffer[i]);
+                writer.Write(valueBytes);
+            }
+        }
     }
 }

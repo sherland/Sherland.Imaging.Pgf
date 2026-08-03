@@ -37,7 +37,10 @@ number of distinct implementations needed versus the raw mode count:
   behavior, not an idealized colorimetric one. `IndexedColor` additionally needs the color table
   (palette) read/written: `PGFPostHeader.clut` (`ColorTableLen`=256 `RGBQUAD` entries,
   `PgfConstants.ColorTableSize`=1024 bytes — already defined, unused until now),
-  `CPGFImage::GetColorTable`/`SetColorTable` (`PGFimage.cpp:1349,1363`).
+  `CPGFImage::GetColorTable`/`SetColorTable` (`PGFimage.cpp:1349,1363`). This PRD owns the color
+  table specifically; the *other* half of `PGFPostHeader` (arbitrary user data, `UserdataPolicy`) is
+  [`pgf-user-data-and-small-images.md`](pgf-user-data-and-small-images.md)'s scope, not this one's —
+  don't duplicate that work here.
 - **Group B — `Gray16`/`Lab48`** (16bpp per channel, shares one case block, `PGFimage.cpp:1474-1504`
   encode side) — same "N independent channels" structure as Group A, scaled to 16 bits, with a
   `shift`/`yuvOffset16` computed from `UsedBitsPerChannel()` rather than a fixed 128.

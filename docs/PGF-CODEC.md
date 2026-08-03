@@ -51,7 +51,8 @@ exercised — not an oversight, and not silently dropped.
   codec stores channel data directly with no wavelet transform at all. Not ported: both
   `PgfDecodeSession.cs:70` (decode) and `PgfImageEncoder.cs:39` (encode) treat `NLevels == 0` as a
   hard failure, matching `TestBitmaps.MinimumSupportedDimension` (10) — real digiKam thumbnails
-  never approach this size.
+  never approach this size. Planned:
+  [`new-features/pgf-user-data-and-small-images.md`](../new-features/pgf-user-data-and-small-images.md).
 - **Region of interest (ROI) cropped decode/encode** — the native codec compiles this in
   unconditionally (`PGFplatform.h:60`'s `#define __PGFROISUPPORT__`, never suppressed in this
   build), but it's dead code in practice: nothing that touches this codebase ever sets the `PGFROI`
@@ -65,9 +66,12 @@ exercised — not an oversight, and not silently dropped.
 - **Legacy pre-Version5 entropy coding** (`DecodeInterleaved`, the older HL/LH interleaved scheme) —
   not ported; this port's encoder always sets the Version5 flag, and so does every modern real PGF
   file (`PgfDecoderCore.cs:104-105`).
-- **Header metadata** — no color table, no user data (`PGFPostHeader`), no `UserDataPolicy`
+- **Header metadata** — no color table, no user data (`PGFPostHeader`), no `UserdataPolicy`
   handling. `PgfHeaderIO.Write` always writes a bare header with `hSize = HeaderSize`
   (`PgfHeader.cs:152,184`); reading skips over any post-header bytes rather than parsing them.
+  Planned: color table via [`new-features/pgf-all-image-modes.md`](../new-features/pgf-all-image-modes.md)
+  (needed for `IndexedColor`); user data via
+  [`new-features/pgf-user-data-and-small-images.md`](../new-features/pgf-user-data-and-small-images.md).
 - **Real per-level byte lengths on encode** — the encoder always writes zero placeholders instead of
   patching in the real values after encoding (`PgfImageEncoder.cs:10`) — grepping every consumer in
   this codebase found level-length data is genuinely optional/unused by the real decode path
@@ -92,10 +96,19 @@ None of the above are architectural dead ends — they're scope cuts based on *t
 not permanent limitations of the approach. If a real digiKam library or a future feature ever needs
 one of them (a non-RGBA thumbnail mode, say), start from the equivalent native code path cited above
 and the doc comment at the matching C# file — each one already explains exactly what would need to
-change and why it was safe to skip until now.
+change and why it was safe to skip until now. One real candidate for "a future need": if
+`PictTag.PgfCodec` is ever published as a standalone NuGet package, a general consumer's real usage
+won't be constrained to digiKam's own thumbnail shape (small, RGBA, metadata-free) the way this app's
+own usage is — several items above (color modes, user data, tiny images, large-image ROI) get
+noticeably more likely to matter under that framing, even though none of them have a current internal
+need. (Publishing as a NuGet also raises a real, separate question this list doesn't cover: this port
+is a close derivative of digiKam's vendored `libpgf`, LGPL-2.1+ — external distribution likely needs
+the license text/attribution bundled and a real compliance check, which is a legal question for
+someone else to own, not a technical gap to close here.)
 
-Three of these gaps already have draft PRDs (not started, written for completeness rather than an
+Four of these gaps already have draft PRDs (not started, written for completeness rather than an
 urgent product need — each says so honestly in its own Context section):
 [`pgf-cancellation-and-progress.md`](../new-features/pgf-cancellation-and-progress.md),
-[`pgf-roi-support.md`](../new-features/pgf-roi-support.md), and
-[`pgf-all-image-modes.md`](../new-features/pgf-all-image-modes.md).
+[`pgf-roi-support.md`](../new-features/pgf-roi-support.md),
+[`pgf-all-image-modes.md`](../new-features/pgf-all-image-modes.md), and
+[`pgf-user-data-and-small-images.md`](../new-features/pgf-user-data-and-small-images.md).

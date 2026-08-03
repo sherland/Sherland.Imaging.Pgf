@@ -57,6 +57,11 @@ internal static partial class NativePgfOracle
 
     [LibraryImport(LibraryName)]
     [return: MarshalAs(UnmanagedType.U1)]
+    private static partial bool pgf_debug_get_level_lengths(
+        nint data, nuint dataLen, nint outLevelLengths, int levelLengthsCapacity, out int outLevelCount);
+
+    [LibraryImport(LibraryName)]
+    [return: MarshalAs(UnmanagedType.U1)]
     private static partial bool pgf_debug_decode_raw(
         nint data, nuint dataLen, byte bpp, nint channelMap, int channelMapLen,
         nint outBuffer, nuint outBufferLen, out uint outWidth, out uint outHeight);
@@ -189,6 +194,42 @@ internal static partial class NativePgfOracle
         width = (int)w;
         height = (int)h;
         return ok;
+    }
+
+    /// <summary>pgf-real-level-lengths.md Stage 4: real per-level byte lengths, reported via
+    /// <c>CPGFImage::GetEncodedLevelLength</c> (shim.cpp's <c>pgf_debug_get_level_lengths</c> doc
+    /// comment) - the native oracle leg for <see cref="PictTag.PgfCodec.PgfProgressiveDecoder.
+    /// TryGetLevelLength"/>'s cross-implementation verification (Stage 5). Learns <c>Levels()</c>
+    /// via <see cref="TryGetHeaderInfo"/> first so the caller-supplied buffer is sized correctly -
+    /// the shim itself fails closed on an undersized one rather than truncating. Index order matches
+    /// the public level-0-is-full-resolution convention both this port's and the native's own public
+    /// accessor use, not the raw on-wire array order.</summary>
+    public static unsafe bool TryGetLevelLengths(ReadOnlySpan<byte> pgfData, out uint[]? levelLengths)
+    {
+        levelLengths = null;
+
+        if (!TryGetHeaderInfo(pgfData, out _, out _, out int levels, out _, out _, out _, out _))
+        {
+            return false;
+        }
+
+        uint[] buffer = new uint[Math.Max(levels, 1)];
+        bool ok;
+        int reportedLevelCount;
+        fixed (byte* dataPtr = pgfData)
+        fixed (uint* bufferPtr = buffer)
+        {
+            ok = pgf_debug_get_level_lengths(
+                (nint)dataPtr, (nuint)pgfData.Length, (nint)bufferPtr, buffer.Length, out reportedLevelCount);
+        }
+
+        if (!ok)
+        {
+            return false;
+        }
+
+        levelLengths = buffer[..reportedLevelCount];
+        return true;
     }
 
     /// <summary>General-purpose decode oracle for any mode (pgf-all-image-modes.md): asks

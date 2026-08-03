@@ -309,3 +309,29 @@ parsed" step, not new parsing logic or a new native oracle to prove correctness 
   not-yet-built accessor — writing it here, once the accessor existed, is what actually verified
   Stage 2's patch logic is correct (all 36 cases passed on the first run, both plain and ROI).
 - Full regression suite: 1295/1295 passed (1259 existing + 36 new).
+
+### Stage 4: native shim extension
+
+- Added `pgf_debug_get_level_lengths` to `shim.cpp`, right after `pgf_debug_get_header_info` (same
+  Open()-plus-plain-accessors shape, so it doesn't share `pgf_debug_decode_channel`'s unresolved
+  repeated-call crash risk). Loops `img.GetEncodedLevelLength(i)` for `i in [0, img.Levels())` into a
+  caller-supplied buffer, following `pgf_debug_decode_raw`'s own caller-supplied-buffer convention;
+  fails closed (returns `false`, writes nothing) if the buffer is smaller than `Levels()`.
+  `GetEncodedLevelLength` was already confirmed correct and unconditionally populated on every real
+  `Open()` (this PRD's own Context section) - a pure "report back" extension, no new native parsing.
+- **Index-order design note** (not in the original PRD text, worth recording): the export reports
+  `outLevelLengths[i] = GetEncodedLevelLength(i)` directly, i.e. in the *public* level-0-is-
+  full-resolution order both `CPGFImage`'s own public accessor and
+  `PgfProgressiveDecoder.TryGetLevelLength` use - not `PgfHeaderIO.Read`'s raw on-wire array order
+  (which is coarsest-first). This makes Stage 5's cross-implementation comparison a direct
+  index-for-index match against `TryGetLevelLength(level, ...)`, with no index-flip needed on either
+  side of the test.
+- Added `NativePgfOracle.TryGetLevelLengths` (learns `Levels()` via the existing
+  `TryGetHeaderInfo` first, then calls the new export) and the matching `LibraryImport` declaration.
+- Rebuilt `PictTagPgfDecoder.dll` via the VS-bundled CMake/Ninja toolchain (`cmake --build
+  native/PictTag.PgfDecoder/build --config Release`, run from a `vcvars64.bat`-initialized
+  environment - `cmake`/`ninja` are not on the default `PATH` in this environment, only reachable
+  under Visual Studio's own install tree). The project's existing `<None Include="...
+  PictTagPgfDecoder.dll" CopyToOutputDirectory="PreserveNewest">` item picked up the rebuilt DLL on
+  the next `dotnet build` automatically - no `.csproj` change needed.
+- Full regression suite (existing tests, unaffected by the shim addition): 1295/1295 passed.

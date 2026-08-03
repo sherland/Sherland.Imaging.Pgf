@@ -633,6 +633,64 @@ PICTTAG_EXPORT bool pgf_debug_get_header_info(
     }
 }
 
+// pgf-real-level-lengths.md Stage 4: reports the real per-level byte lengths
+// CPGFImage::GetEncodedLevelLength (PGFimage.h:367) already computes correctly today - m_levelLength
+// is populated unconditionally on every real Open() (CDecoder's constructor, Decoder.cpp:188-207,
+// whenever preHeader.version > 0), not lazily, so this is a pure "report back" extension: no new
+// parsing or decode-path change, same Open()-plus-plain-accessors shape as
+// pgf_debug_get_header_info just above (not GetChannel()/Read(level), so this doesn't share
+// pgf_debug_decode_channel's unresolved repeated-call crash risk either).
+//
+// outLevelLengths/levelLengthsCapacity follow this shim's own established caller-supplied-buffer
+// convention (pgf_debug_decode_raw's outBuffer): the caller learns Levels() from
+// pgf_debug_get_header_info first, then passes a buffer sized to at least that many entries. Fails
+// closed (returns false, writes nothing) if the buffer is too small, rather than truncating
+// silently - GetEncodedLevelLength(level) itself only ASSERTs level is in range, so this shim's own
+// bound check is the only thing making an undersized buffer safe.
+//
+// outLevelLengths[i] is GetEncodedLevelLength(i) directly - i.e. indexed in the *public* API's
+// level-0-is-full-resolution order (GetEncodedLevelLength's own formula flips that against the
+// on-wire/m_levelLength array order internally), matching
+// PictTag.PgfCodec.PgfProgressiveDecoder.TryGetLevelLength's own level parameter one-to-one, not
+// PgfHeaderIO.Read's raw on-wire uint[] order.
+PICTTAG_EXPORT bool pgf_debug_get_level_lengths(
+    const uint8_t* data, size_t dataLen,
+    uint32_t* outLevelLengths, int32_t levelLengthsCapacity, int32_t* outLevelCount)
+{
+    if (data == nullptr || dataLen == 0 || outLevelLengths == nullptr || levelLengthsCapacity < 0 ||
+        outLevelCount == nullptr)
+    {
+        return false;
+    }
+
+    try
+    {
+        CPGFMemoryStream stream(const_cast<UINT8*>(data), dataLen);
+        CPGFImage img;
+        img.ConfigureDecoder(false);
+        img.Open(&stream);
+
+        const int levels = img.Levels();
+        *outLevelCount = levels;
+
+        if (levels > levelLengthsCapacity)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < levels; i++)
+        {
+            outLevelLengths[i] = img.GetEncodedLevelLength(i);
+        }
+
+        return true;
+    }
+    catch (...)
+    {
+        return false;
+    }
+}
+
 // pgf-all-image-modes.md: general-purpose oracle decode for any mode, with a caller-supplied bpp/
 // channelMap - unlike pgf_decode_bgra (hardcoded bpp=32/RGBA channelMap, Channels()==4-only), this
 // lets the test rig ask for exactly the interleaving a given mode's own real shape needs (e.g.

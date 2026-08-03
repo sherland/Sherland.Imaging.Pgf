@@ -1,5 +1,9 @@
 # Managed (pure C#) PGF codec — PRD
 
+**Status: done, all 14 stages shipped** (see "Progress log" below for the full record). For the
+current-state reference — what's supported vs. deliberately out of scope, with source pointers —
+see [`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md) instead of re-deriving it from this narrative.
+
 ## Context
 
 `new-features/client-side-pgf-and-remove-thumbnail-cache.md` and `docs/GUI.md`'s "Browser/WASM native

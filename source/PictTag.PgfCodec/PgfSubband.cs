@@ -14,11 +14,14 @@ namespace PictTag.PgfCodec;
 /// <c>SetHeader()</c>+<c>ImportBitmap()</c>+<c>Write()</c> for encode) - genuinely dead code for
 /// this port's scope, not an oversight.
 ///
-/// ROI is not ported (see <see cref="PgfMacroBlock"/>'s doc comment for why that's justified, not
-/// assumed) - <c>AllocMemory</c> simplifies accordingly: the real version's <c>oldSize &gt;=
-/// newSize</c> reuse-check only matters when ROI can shrink/grow <c>m_size</c> after
-/// <c>Initialize</c>; without ROI, size is fixed for this subband's whole lifetime, so allocation is
-/// just "allocate once if not already allocated."
+/// ROI tile geometry (<see cref="NTiles"/>/<see cref="TilePosition"/>/<see cref="TileIndex"/>/
+/// <see cref="AlignedRoi"/>) is ported as of <c>pgf-roi-support.md</c> Stage 2, but ROI-aware data
+/// flow is not yet: <see cref="AllocMemory"/> still simplifies the real version's <c>oldSize &gt;=
+/// newSize</c> reuse-check (which only matters once ROI can shrink/grow <c>m_size</c> after
+/// <c>Initialize</c> via <see cref="BufferWidth"/>) to "allocate <see cref="Width"/>*<see cref="Height"/>
+/// once if not already allocated" - <see cref="PlaceTile"/>/<see cref="ExtractTile"/> still only
+/// port the non-ROI branches too. Stage 3 (decode) and Stage 4 (encode) wire the tile geometry this
+/// stage adds into actual data placement/extraction.
 /// </summary>
 internal sealed class PgfSubband
 {
@@ -34,6 +37,27 @@ internal sealed class PgfSubband
     private int[]? data;
     private int dataPos;
 
+    /// <summary>Mirrors <c>CSubband::m_nTiles</c> - number of tiles in one dimension in this
+    /// subband, set by <see cref="SetNTiles"/> before <see cref="TilePosition"/>/<see cref="TileIndex"/>
+    /// are called (<c>pgf-roi-support.md</c> Stage 2 - tile geometry only, no decode/encode data flow
+    /// yet).</summary>
+    public int NTiles { get; private set; }
+
+    /// <summary>Mirrors <c>CSubband::m_ROI</c> - the region of interest actually reconstructable at
+    /// this subband's level, aligned to tile/wavelet-margin boundaries by
+    /// <see cref="PgfWaveletTransform.SetROI"/> (never pixel-exact to the caller's requested
+    /// rectangle - see this PRD's "Why this needs to be grounded" section on
+    /// <c>GetAlignedROI</c>/<c>ComputeLevelROI</c>). Defaults to the full subband
+    /// (<c>Initialize</c>'s own default, matching the native's <c>Initialize</c>) until a real
+    /// <see cref="SetAlignedRoi"/> call narrows it.</summary>
+    public PgfRoi AlignedRoi { get; private set; }
+
+    /// <summary>Mirrors <c>CSubband::BufferWidth</c> (Subband.h:154) - the data buffer's row stride
+    /// once ROI-aligned allocation is wired in (Stage 3/4); not yet consumed by
+    /// <see cref="AllocMemory"/> at this stage (still full <see cref="Width"/>/<see cref="Height"/>
+    /// allocation - see class doc comment).</summary>
+    public int BufferWidth => AlignedRoi.Width;
+
     public void Initialize(int width, int height, int level, PgfSubbandOrientation orientation)
     {
         Width = width;
@@ -43,6 +67,180 @@ internal sealed class PgfSubband
         Orientation = orientation;
         data = null;
         dataPos = 0;
+        AlignedRoi = new PgfRoi(0, 0, width, height);
+        NTiles = 0;
+    }
+
+    /// <summary>Mirrors <c>CSubband::SetNTiles</c> (Subband.h:158) - must be called before
+    /// <see cref="TileIndex"/>/<see cref="TilePosition"/>, exactly like the native's own doc
+    /// comment.</summary>
+    public void SetNTiles(int nTiles) => NTiles = nTiles;
+
+    /// <summary>Direct port of <c>CSubband::SetAlignedROI</c> (Subband.cpp:240) - stores
+    /// <paramref name="roi"/>, clamped so it never exceeds this subband's real <see cref="Width"/>/
+    /// <see cref="Height"/> (a tile-aligned ROI can legitimately overshoot at the bottom-right edge,
+    /// same as the native's own clamp).</summary>
+    public void SetAlignedRoi(PgfRoi roi)
+    {
+        int right = Math.Min(roi.Right, Width);
+        int bottom = Math.Min(roi.Bottom, Height);
+        AlignedRoi = new PgfRoi(roi.Left, roi.Top, right, bottom);
+    }
+
+    /// <summary>Direct port of <c>CSubband::TilePosition</c> (Subband.cpp:257) - computes the pixel
+    /// position and size of tile (<paramref name="tileX"/>, <paramref name="tileY"/>) within this
+    /// subband's full (un-ROI'd) <see cref="Width"/>/<see cref="Height"/>, via the same recursive
+    /// binary halving the native uses (repeatedly bisecting <see cref="NTiles"/> down to 1, halving
+    /// the covered pixel span at each step) - not a plain <c>width/nTiles</c> division, since that
+    /// wouldn't reproduce the native's exact odd/even split (<c>(w+1)&gt;&gt;1</c> for the
+    /// lower-index half, matching its own worked example comment: tile widths <c>8 7 8 7</c> for
+    /// <c>width=30, nTiles=4</c>).</summary>
+    public void TilePosition(int tileX, int tileY, out int xPos, out int yPos, out int w, out int h)
+    {
+        int nTiles = NTiles;
+        int left = 0, right = nTiles;
+        int top = 0, bottom = nTiles;
+
+        xPos = 0;
+        yPos = 0;
+        w = Width;
+        h = Height;
+
+        while (nTiles > 1)
+        {
+            int m = left + ((right - left) >> 1);
+            if (tileX >= m)
+            {
+                xPos += (w + 1) >> 1;
+                w >>= 1;
+                left = m;
+            }
+            else
+            {
+                w = (w + 1) >> 1;
+                right = m;
+            }
+
+            m = top + ((bottom - top) >> 1);
+            if (tileY >= m)
+            {
+                yPos += (h + 1) >> 1;
+                h >>= 1;
+                top = m;
+            }
+            else
+            {
+                h = (h + 1) >> 1;
+                bottom = m;
+            }
+
+            nTiles >>= 1;
+        }
+    }
+
+    /// <summary>Direct port of <c>CSubband::TileIndex</c> (Subband.cpp:309) - the inverse of
+    /// <see cref="TilePosition"/>: given a pixel position, finds the tile index that
+    /// bounds/contains it via binary search over <see cref="NTiles"/>, plus the extremal aligned
+    /// pixel coordinate at that tile boundary. <paramref name="topLeft"/> selects which of the two
+    /// symmetric search variants the native has (exclusive-upper-bound search for a rectangle's
+    /// top-left corner vs. inclusive-upper-bound search for its bottom-right corner) - the two
+    /// aren't the same search run twice with different inputs, they use different comparison
+    /// operators (<c>xPos &lt; m</c> vs. <c>xPos &lt;= m</c>) and different starting tile indices
+    /// (<c>0</c> vs. <c>1</c>), exactly mirrored here rather than unified into one path.</summary>
+    public void TileIndex(bool topLeft, int xPos, int yPos, out int tileX, out int tileY, out int x, out int y)
+    {
+        int left = 0, right = Width;
+        int top = 0, bottom = Height;
+        int nTiles = NTiles;
+
+        if (xPos > Width)
+        {
+            xPos = Width;
+        }
+
+        if (yPos > Height)
+        {
+            yPos = Height;
+        }
+
+        if (topLeft)
+        {
+            tileX = 0;
+            while (nTiles > 1)
+            {
+                nTiles >>= 1;
+                int m = left + ((right - left + 1) >> 1);
+                if (xPos < m)
+                {
+                    right = m;
+                }
+                else
+                {
+                    tileX += nTiles;
+                    left = m;
+                }
+            }
+
+            x = left;
+
+            nTiles = NTiles;
+            tileY = 0;
+            while (nTiles > 1)
+            {
+                nTiles >>= 1;
+                int m = top + ((bottom - top + 1) >> 1);
+                if (yPos < m)
+                {
+                    bottom = m;
+                }
+                else
+                {
+                    tileY += nTiles;
+                    top = m;
+                }
+            }
+
+            y = top;
+        }
+        else
+        {
+            tileX = 1;
+            while (nTiles > 1)
+            {
+                nTiles >>= 1;
+                int m = left + ((right - left + 1) >> 1);
+                if (xPos <= m)
+                {
+                    right = m;
+                }
+                else
+                {
+                    tileX += nTiles;
+                    left = m;
+                }
+            }
+
+            x = right;
+
+            nTiles = NTiles;
+            tileY = 1;
+            while (nTiles > 1)
+            {
+                nTiles >>= 1;
+                int m = top + ((bottom - top + 1) >> 1);
+                if (yPos <= m)
+                {
+                    bottom = m;
+                }
+                else
+                {
+                    tileY += nTiles;
+                    top = m;
+                }
+            }
+
+            y = bottom;
+        }
     }
 
     /// <summary>Allocates <see cref="size"/> coefficients if not already allocated. Simplified from

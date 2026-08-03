@@ -16,10 +16,13 @@ internal enum PgfCodecError
 /// memory, so mixing them (as the original mixes pointer arithmetic and whole-row calls) is safe
 /// and behaves identically.
 ///
-/// ROI is not ported (see <see cref="PgfMacroBlock"/>'s doc comment for why that's justified) -
-/// <see cref="InverseTransform"/> and <see cref="SubbandsToInterleaved"/> port only the non-ROI
-/// <c>#else</c> branches of the original (Width/Height directly, <c>InitBuffPos()</c> resetting to
-/// 0, no aligned-ROI position bookkeeping).
+/// ROI tile-index geometry (<see cref="SetROI"/>/<see cref="GetNofTiles"/>/<see cref="TileIsRelevant"/>)
+/// is ported as of <c>pgf-roi-support.md</c> Stage 2, but <see cref="InverseTransform"/> and
+/// <see cref="SubbandsToInterleaved"/> still only port the non-ROI <c>#else</c> branches of the
+/// original (Width/Height directly, <c>InitBuffPos()</c> resetting to 0, no aligned-ROI position
+/// bookkeeping) - real ROI-aware reconstruction is a Stage 3 concern, not this stage's (see
+/// <see cref="SetROI"/>'s own doc comment for why the two are safely separable: pure tile-index
+/// geometry has no interaction with the pixel data flow until something actually calls it).
 /// </summary>
 internal sealed class PgfWaveletTransform
 {
@@ -28,6 +31,12 @@ internal sealed class PgfWaveletTransform
 
     private readonly int levelCount; // CWaveletTransform's own m_nLevels = levels + 1 (subband-plane count)
     private readonly PgfSubband[][] subbands;
+
+    /// <summary>Mirrors <c>CWaveletTransform::m_indices</c> - array of length <see cref="levelCount"/>
+    /// of tile *index* bounds (not pixel bounds) per level, computed by <see cref="SetROI"/>. Null
+    /// until <see cref="SetROI"/> is called (nothing calls it yet - Stage 3/4 wire ROI decode/encode
+    /// through it).</summary>
+    private PgfRoi[]? indices;
 
     public PgfWaveletTransform(int width, int height, int levels, int[]? data = null)
     {
@@ -63,6 +72,100 @@ internal sealed class PgfWaveletTransform
     }
 
     public PgfSubband GetSubband(int level, PgfSubbandOrientation orientation) => subbands[level][(int)orientation];
+
+    /// <summary>Direct port of <c>CWaveletTransform::GetNofTiles</c> (WaveletTransform.h:125) -
+    /// number of tiles in one dimension at <paramref name="level"/>, independent of any requested
+    /// ROI (doubling every level going finer, per this PRD's "Why this needs to be grounded"
+    /// section).</summary>
+    public int GetNofTiles(int level) => 1 << (levelCount - level - 1);
+
+    /// <summary>Direct port of <c>CWaveletTransform::TileIsRelevant</c> (WaveletTransform.h:119) -
+    /// whether tile (<paramref name="tileX"/>, <paramref name="tileY"/>) at <paramref name="level"/>
+    /// falls inside the tile-index bounds <see cref="SetROI"/> computed. Requires <see cref="SetROI"/>
+    /// to have been called first (mirrors the native's own <c>ASSERT(m_indices)</c>).</summary>
+    public bool TileIsRelevant(int level, int tileX, int tileY)
+    {
+        System.Diagnostics.Debug.Assert(indices is not null, "SetROI must be called before TileIsRelevant.");
+        return indices![level].IsInside(tileX, tileY);
+    }
+
+    /// <summary>Direct port of <c>CWaveletTransform::GetAlignedROI</c> (WaveletTransform.h:130) -
+    /// the aligned ROI (in pixels) of the LL subband at <paramref name="level"/>, as computed by
+    /// <see cref="SetROI"/>.</summary>
+    public PgfRoi GetAlignedROI(int level) => subbands[level][(int)PgfSubbandOrientation.Ll].AlignedRoi;
+
+    /// <summary>Direct port of <c>CWaveletTransform::SetROI</c> (WaveletTransform.cpp:519) - computes
+    /// and stores tile-index bounds (<see cref="indices"/>) and each subband's aligned pixel ROI, for
+    /// every level from 0 (finest) up to <see cref="levelCount"/>-1 (coarsest).
+    ///
+    /// Pure geometry: reads only each <see cref="PgfSubband"/>'s <see cref="PgfSubband.Width"/>/
+    /// <see cref="PgfSubband.Height"/> (fixed at construction) and writes only tile-index/aligned-ROI
+    /// bookkeeping - never touches pixel data, which is exactly why this is safe to port ahead of the
+    /// decode/encode data-flow changes that will actually *use* it (<c>pgf-roi-support.md</c> Stage 2
+    /// vs. Stage 3/4).
+    ///
+    /// The native's own margin-enlargement step (<c>delta = (FilterSize &gt;&gt; 1) &lt;&lt;
+    /// m_nLevels</c>, added to the requested rect before tiling) accounts for the wavelet filter's
+    /// support width needing extra source pixels beyond the exact requested rectangle at every level
+    /// - ported byte-for-byte, not re-derived, since getting the margin wrong would silently decode a
+    /// too-small or misaligned region rather than visibly fail.
+    ///
+    /// The native's own cross-level nesting invariant (<c>WaveletTransform.cpp:544-545</c>) is a
+    /// no-op <c>ASSERT</c> in the original (compiled out in Release) - ported here as a real,
+    /// always-checked exception instead, per this PRD's "verify it, don't just port it silently"
+    /// instruction, so an off-by-one in this geometry fails loudly here rather than silently
+    /// decoding/encoding the wrong tiles three stages later.</summary>
+    public void SetROI(PgfRoi roi)
+    {
+        int delta = (PgfConstants.FilterSize >> 1) << levelCount;
+
+        indices = new PgfRoi[levelCount];
+
+        int left = roi.Left > delta ? roi.Left - delta : 0;
+        int top = roi.Top > delta ? roi.Top - delta : 0;
+        int right = roi.Right + delta;
+        int bottom = roi.Bottom + delta;
+
+        for (int l = 0; l < levelCount; l++)
+        {
+            int nTiles = GetNofTiles(l);
+            PgfSubband ll = subbands[l][(int)PgfSubbandOrientation.Ll];
+
+            ll.SetNTiles(nTiles);
+            ll.TileIndex(true, left, top, out int indicesLeft, out int indicesTop, out int alignedLeft, out int alignedTop);
+            ll.TileIndex(false, right, bottom, out int indicesRight, out int indicesBottom, out int alignedRight, out int alignedBottom);
+            var tileIndices = new PgfRoi(indicesLeft, indicesTop, indicesRight, indicesBottom);
+            var alignedRoi = new PgfRoi(alignedLeft, alignedTop, alignedRight, alignedBottom);
+            ll.SetAlignedRoi(alignedRoi);
+
+            if (l > 0)
+            {
+                PgfRoi prev = indices[l - 1];
+                if (prev.Left < 2 * tileIndices.Left || prev.Top < 2 * tileIndices.Top ||
+                    prev.Right > 2 * tileIndices.Right || prev.Bottom > 2 * tileIndices.Bottom)
+                {
+                    throw new InvalidOperationException(
+                        $"ROI tile-index nesting invariant violated between level {l - 1} and {l}.");
+                }
+            }
+
+            indices[l] = tileIndices;
+
+            for (int b = 1; b < PgfConstants.NSubbands; b++)
+            {
+                PgfSubband sb = subbands[l][b];
+                sb.SetNTiles(nTiles);
+                sb.TilePosition(tileIndices.Left, tileIndices.Top, out int aroiLeft, out int aroiTop, out _, out _);
+                sb.TilePosition(tileIndices.Right - 1, tileIndices.Bottom - 1, out int aroiRight, out int aroiBottom, out int w, out int h);
+                sb.SetAlignedRoi(new PgfRoi(aroiLeft, aroiTop, aroiRight + w, aroiBottom + h));
+            }
+
+            left = alignedRoi.Left >> 1;
+            top = alignedRoi.Top >> 1;
+            right = (alignedRoi.Right + 1) >> 1;
+            bottom = (alignedRoi.Bottom + 1) >> 1;
+        }
+    }
 
     /// <summary>Direct port of <c>CWaveletTransform::ForwardTransform</c> (WaveletTransform.cpp:89) -
     /// forward lifting transform of the LL subband at <paramref name="level"/>, splitting the result

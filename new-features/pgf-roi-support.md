@@ -268,3 +268,54 @@ Regression gate: full `PictTag.PgfCodec.Tests` suite, before and after -
 other PRDs' work landed more tests between then and now, confirmed by running the suite rather than
 trusting the cited count). No regressions; behavior is bit-identical for every non-ROI file, as
 expected from the above analysis.
+
+### Stage 2: Tile mechanics (pure geometry)
+
+Added `PgfRoi` (new file) - a plain `readonly record struct` mirroring `PGFRect` exactly
+(`Left`/`Top`/`Right`/`Bottom`, `Width`/`Height`/`IsInside`).
+
+`PgfSubband` gained `NTiles`/`SetNTiles`, `AlignedRoi`/`SetAlignedRoi` (clamped to the subband's real
+`Width`/`Height`, mirroring `CSubband::SetAlignedROI`), `BufferWidth` (defined now, not yet consumed
+by `AllocMemory` - see below), and direct ports of `CSubband::TilePosition`/`TileIndex`
+(Subband.cpp:257-386) - the two binary-search tile-geometry routines the encode/decode tile machinery
+both depend on. `PgfWaveletTransform` gained `GetNofTiles`/`TileIsRelevant`/`GetAlignedROI` and a
+direct port of `CWaveletTransform::SetROI` (WaveletTransform.cpp:519), including the margin-enlargement
+step (`delta = (FilterSize>>1) << levelCount`) ported byte-for-byte rather than re-derived.
+
+**The native's own cross-level nesting invariant** (`WaveletTransform.cpp:544-545`) is a no-op
+`ASSERT` in the original (compiled out in Release builds) - per this PRD's "verify it, don't just
+port it silently" instruction, this port makes it a real, always-checked
+`InvalidOperationException` instead, so a geometry bug fails loudly at the exact level it occurs
+rather than silently decoding/encoding the wrong tiles three stages later, undetectably, in Release.
+
+**Real finding, not just re-confirming the PRD**: reading `WaveletTransform.cpp`'s ROI branch in
+full (needed to scope this stage correctly) surfaced that the existing (pre-this-PRD) port's
+`InverseTransform`/`SubbandsToInterleaved` doc comments already flagged "ROI is not ported... ports
+only the non-ROI `#else` branches" - but the *real* native ROI branch of `InverseTransform`
+(WaveletTransform.cpp:257-332) is substantially more involved than the PRD's own "Proposed
+architecture" section implies: it reconciles *independently-computed* per-subband aligned-ROI
+offsets (LL vs. HL/LH/HH can each have a different `GetAlignedROI().left/top` at a tile boundary,
+requiring an explicit `srcOffsetX`/`srcOffsetY`/`destROI` reconciliation dance, not just "read from
+wherever the ROI starts"), and `SubbandsToInterleaved`'s ROI branch has its own `storePos`/
+`IncBuffRow` buffer-position save/restore bookkeeping for when a subband's tile buffer is narrower
+than the row being reconstructed. The PRD's architecture section undersells this as part of a
+generic "PgfDecoderCore/PgfEncoderCore: SkipTileBuffer... entropy-coder-level tile bookkeeping" -
+it's really its own delicate unit of work squarely inside Stage 3's scope (decode-side), not
+something Stage 2 needs to touch (this stage is provably pixel-data-flow-free: `SetROI` only reads
+each subband's fixed `Width`/`Height` and writes tile-index/aligned-ROI bookkeeping, confirmed by
+the fact that every test above constructs a `PgfWaveletTransform` and calls `SetROI` without ever
+calling `AllocMemory`/`ForwardTransform`/`InverseTransform` at all). Flagging this now so Stage 3's
+own scope estimate accounts for it up front rather than being "discovered" mid-stage - this is
+exactly the kind of PRD-architecture-section correction the `implement-prd` skill's step 1
+anticipates, not a reason to stop.
+
+Two hand-traced exit tests (`PgfRoiTileGeometryTests.PartialRoi_MatchesHandTracedTileIndicesAndAlignedRoi`,
+64x64/3-levels/ROI=(0,0,8,8), traced through the real binary-search arithmetic by hand to
+`indices[0]=(0,0,5,5)`, `indices[1]=(0,0,3,3)`, aligned ROI `(0,0,40,40)`/`(0,0,24,24)`) plus a
+full-image-coverage sweep, a `GetNofTiles` doubling check, and a 9-case sweep of corners/edges/
+odd-unaligned rectangles across four different image sizes/level counts asserting the nesting
+invariant holds without throwing - **17 new tests**, all pure geometry (no decode/encode, no pixel
+data, matching this stage's own exit-test scope from the Stage sequence).
+
+Regression gate: full `PictTag.PgfCodec.Tests` suite - **1147/1147 passed** (1130 existing + 17 new,
+zero regressions).

@@ -211,19 +211,20 @@ internal static class PgfHeaderIO
         return (preHeader, header, levelLengths, colorTable, userData);
     }
 
-    /// <summary>Writes pre-header, header, an optional <paramref name="colorTable"/>, and a zeroed
-    /// level-length placeholder array - matching the header-writing portion of <c>CEncoder</c>'s
-    /// constructor plus <c>WriteLevelLength</c> (Encoder.cpp:70,112-128,177). Unlike the original,
-    /// the level-length placeholder is never patched with real values afterward (no
-    /// <c>UpdateLevelLength</c> equivalent) - see <see cref="PgfImageEncoder"/>'s doc comment for why
-    /// that's a deliberate, permanent scope cut rather than unfinished work: nothing in this
-    /// codebase's real decode path ever reads level lengths.
-    ///
-    /// Scope limitation, deliberate: never writes user data (this port never emits any, matching
-    /// <c>pgf_encode_bgra_alloc</c>'s own scope) - <paramref name="colorTable"/> is the one piece of
-    /// <c>PGFPostHeader</c> this PRD owns (pgf-all-image-modes.md; the other half, arbitrary user
-    /// data, is pgf-user-data-and-small-images.md's scope).</summary>
-    public static void Write(PgfByteWriter writer, PgfHeader header, ReadOnlySpan<byte> colorTable = default)
+    /// <summary>Writes pre-header, header, an optional <paramref name="colorTable"/>, optional
+    /// <paramref name="userData"/> (pgf-user-data-and-small-images.md Stage 2 - previously this port
+    /// never wrote any, matching <c>pgf_encode_bgra_alloc</c>'s own scope, which also never passed
+    /// <c>SetHeader</c> any), and a zeroed level-length placeholder array - matching the
+    /// header-writing portion of <c>CEncoder</c>'s constructor plus <c>WriteLevelLength</c>
+    /// (Encoder.cpp:70,112-128,177) and <c>SetHeader</c>'s own userData copy (PGFimage.cpp:940-947).
+    /// Unlike the original, the level-length placeholder is never patched with real values afterward
+    /// (no <c>UpdateLevelLength</c> equivalent) - see <see cref="PgfImageEncoder"/>'s doc comment for
+    /// why that's a deliberate, permanent scope cut rather than unfinished work: nothing in this
+    /// codebase's real decode path ever reads level lengths. <c>PGFPostHeader ::= [ColorTable]
+    /// [UserData]</c> (Encoder.cpp:38) - color table always precedes user data when both are
+    /// present, matching <see cref="Read"/>'s own read order.</summary>
+    public static void Write(
+        PgfByteWriter writer, PgfHeader header, ReadOnlySpan<byte> colorTable = default, ReadOnlySpan<byte> userData = default)
     {
         bool hasColorTable = header.Mode == PgfConstants.ImageModeIndexedColor && !colorTable.IsEmpty;
         if (hasColorTable && colorTable.Length != PgfConstants.ColorTableSize)
@@ -231,7 +232,7 @@ internal static class PgfHeaderIO
             throw new ArgumentException($"Color table must be exactly {PgfConstants.ColorTableSize} bytes.", nameof(colorTable));
         }
 
-        uint hSize = PgfConstants.HeaderSize + (hasColorTable ? (uint)PgfConstants.ColorTableSize : 0);
+        uint hSize = PgfConstants.HeaderSize + (hasColorTable ? (uint)PgfConstants.ColorTableSize : 0) + (uint)userData.Length;
 
         Span<byte> preHeaderBytes = stackalloc byte[PgfConstants.PreHeaderSize];
         PgfConstants.Magic.CopyTo(preHeaderBytes);
@@ -254,6 +255,11 @@ internal static class PgfHeaderIO
         if (hasColorTable)
         {
             writer.Write(colorTable);
+        }
+
+        if (!userData.IsEmpty)
+        {
+            writer.Write(userData);
         }
 
         Span<byte> zero = stackalloc byte[4];

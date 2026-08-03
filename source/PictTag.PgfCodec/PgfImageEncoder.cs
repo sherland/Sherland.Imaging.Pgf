@@ -30,10 +30,14 @@ namespace PictTag.PgfCodec;
 /// </summary>
 internal static class PgfImageEncoder
 {
+    /// <summary>pgf-user-data-and-small-images.md Stage 2: <paramref name="userData"/> is optional
+    /// caller-supplied metadata written into the encoded file's post-header (empty by default -
+    /// every existing call site keeps compiling and behaving unchanged). Round-trips byte-exact
+    /// through <see cref="PgfHeaderIO.Read"/> on the decode side.</summary>
     public static bool TryEncode(
         ReadOnlySpan<byte> bgra, int width, int height, byte quality, out byte[]? pgfBytes,
-        IProgress<double>? progress = null, CancellationToken cancellationToken = default) =>
-        TryEncodeMode(bgra, width, height, quality, PgfConstants.ImageModeRGBA, out pgfBytes, colorTable: default, progress, cancellationToken);
+        IProgress<double>? progress = null, CancellationToken cancellationToken = default, ReadOnlySpan<byte> userData = default) =>
+        TryEncodeMode(bgra, width, height, quality, PgfConstants.ImageModeRGBA, out pgfBytes, colorTable: default, progress, cancellationToken, userData);
 
     /// <summary>General form of <see cref="TryEncode"/>, for any mode <see cref="PgfImageDecoder.
     /// IsModeSupported"/> covers - test infrastructure only (Goal 2), used to produce real fixtures
@@ -42,10 +46,12 @@ internal static class PgfImageEncoder
     /// identity channel order - same "every real caller uses the identity map, pitch = width*bpp/8"
     /// contract <see cref="PgfColorConversion"/>'s own doc comment establishes for RGBA, extended to
     /// every mode). <paramref name="colorTable"/> is required (and only meaningful) for
-    /// <see cref="PgfConstants.ImageModeIndexedColor"/>.</summary>
+    /// <see cref="PgfConstants.ImageModeIndexedColor"/>. <paramref name="userData"/>: see
+    /// <see cref="TryEncode"/>'s own doc comment.</summary>
     public static bool TryEncodeMode(
         ReadOnlySpan<byte> source, int width, int height, byte quality, byte mode, out byte[]? pgfBytes,
-        ReadOnlySpan<byte> colorTable = default, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
+        ReadOnlySpan<byte> colorTable = default, IProgress<double>? progress = null, CancellationToken cancellationToken = default,
+        ReadOnlySpan<byte> userData = default)
     {
         pgfBytes = null;
 
@@ -170,7 +176,7 @@ internal static class PgfImageEncoder
         }
 
         PgfByteWriter writer = new();
-        PgfHeaderIO.Write(writer, header, colorTable);
+        PgfHeaderIO.Write(writer, header, colorTable, userData);
 
         PgfEncoderCore encoder = new(writer);
 

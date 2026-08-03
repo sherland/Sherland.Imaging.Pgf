@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using PictTag.PgfCodec.Tests.Oracle;
 
 namespace PictTag.PgfCodec.Tests;
 
@@ -7,7 +8,8 @@ namespace PictTag.PgfCodec.Tests;
 /// (Goal 1/2) and the untrusted-length defensive bound (Goal 3). This port's own encoder doesn't
 /// write user data yet (Stage 2's scope) - matching the PRD's own Stage 1 exit test wording ("a
 /// real-or-synthetic file"), these tests hand-assemble synthetic PGF byte buffers via
-/// <see cref="BuildHeaderBytes"/> rather than waiting on the encoder.
+/// <see cref="BuildHeaderBytes"/> rather than waiting on the encoder. Stage 2's own tests (further
+/// down this file) exercise the real encoder instead, now that it can write user data.
 /// </summary>
 public class PgfUserDataTests
 {
@@ -298,5 +300,136 @@ public class PgfUserDataTests
         bool decoded = progressive.TryDecodeLevel(0, static (span, w, h) => span.ToArray(), out byte[]? decodedBgra);
         Assert.True(decoded);
         Assert.Equal(bgra, decodedBgra);
+    }
+
+    // --- Stage 2: encode-side user data. ---
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(37)]
+    [InlineData(256)]
+    public void TryEncode_WithUserData_RoundTripsByteExact(int userDataLength)
+    {
+        byte[] userData = new byte[userDataLength];
+        for (int i = 0; i < userData.Length; i++)
+        {
+            userData[i] = (byte)(i * 31);
+        }
+
+        (byte[] bgra, int width, int height) = TestBitmaps.Gradient(64, 64);
+
+        bool encoded = PgfImageEncoder.TryEncode(bgra, width, height, quality: 0, out byte[]? pgfBytes, userData: userData);
+        Assert.True(encoded);
+
+        bool decoded = PgfImageDecoder.TryDecode(
+            pgfBytes!, static (span, w, h) => span.ToArray(), out byte[]? decodedBgra, out PgfUserData decodedUserData);
+
+        Assert.True(decoded);
+        Assert.Equal(bgra, decodedBgra);
+        Assert.Equal(userData, decodedUserData.CachedBytes);
+        Assert.Equal((uint)userData.Length, decodedUserData.TotalLength);
+    }
+
+    [Fact]
+    public void TryEncode_NoUserData_DecodesAsNone()
+    {
+        (byte[] bgra, int width, int height) = TestBitmaps.SolidColor(32, 32, 10, 20, 30, 255);
+
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 0, out byte[]? pgfBytes));
+
+        bool decoded = PgfImageDecoder.TryDecode(
+            pgfBytes!, static (span, w, h) => span.ToArray(), out byte[]? decodedBgra, out PgfUserData decodedUserData);
+
+        Assert.True(decoded);
+        Assert.Equal(bgra, decodedBgra);
+        Assert.Empty(decodedUserData.CachedBytes);
+        Assert.Equal(0u, decodedUserData.TotalLength);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(4)]
+    [InlineData(6)]
+    public void TryEncode_WithUserData_LossyQuality_UserDataStillByteExact(byte quality)
+    {
+        // User data is plain bytes, never quantized - it must round-trip exactly regardless of the
+        // image's own lossy quality level, unlike the pixel data.
+        byte[] userData = "metadata survives lossy encoding"u8.ToArray();
+        (byte[] bgra, int width, int height) = TestBitmaps.Gradient(64, 64);
+
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality, out byte[]? pgfBytes, userData: userData));
+
+        bool decoded = PgfImageDecoder.TryDecode(
+            pgfBytes!, static (span, w, h) => span.ToArray(), out _, out PgfUserData decodedUserData);
+
+        Assert.True(decoded);
+        Assert.Equal(userData, decodedUserData.CachedBytes);
+        Assert.Equal((uint)userData.Length, decodedUserData.TotalLength);
+    }
+
+    [Fact]
+    public void TryEncodeMode_IndexedColorWithUserData_ColorTableAndUserDataBothRoundTrip()
+    {
+        byte[] colorTable = new byte[PgfConstants.ColorTableSize];
+        for (int i = 0; i < colorTable.Length; i++)
+        {
+            colorTable[i] = (byte)(i * 5);
+        }
+
+        byte[] userData = "indexed-color image metadata"u8.ToArray();
+        (byte[] indices, int width, int height) = TestBitmaps.Gradient(32, 32);
+        byte[] indexSource = new byte[width * height];
+        for (int i = 0; i < indexSource.Length; i++)
+        {
+            indexSource[i] = indices[i * 4]; // arbitrary single-channel projection, any byte value is a valid index
+        }
+
+        bool encoded = PgfImageEncoder.TryEncodeMode(
+            indexSource, width, height, 0, PgfConstants.ImageModeIndexedColor, out byte[]? pgfBytes,
+            colorTable, userData: userData);
+        Assert.True(encoded);
+
+        PgfMemoryReader reader = new(pgfBytes!);
+        (_, _, _, byte[]? decodedColorTable, PgfUserData decodedUserData) = PgfHeaderIO.Read(reader);
+
+        Assert.Equal(colorTable, decodedColorTable);
+        Assert.Equal(userData, decodedUserData.CachedBytes);
+        Assert.Equal((uint)userData.Length, decodedUserData.TotalLength);
+    }
+
+    /// <summary>Cross-checks against the real native decoder (not just this port's own reader) that
+    /// writing user data doesn't corrupt <c>hSize</c>/post-header accounting in a way only this
+    /// port's own (possibly self-consistently-wrong) reader would tolerate - the real C++ parser
+    /// must still open and decode the file correctly.</summary>
+    [Fact]
+    public void TryEncode_WithUserData_NativeOracleStillOpensAndDecodesIt()
+    {
+        byte[] userData = "a real third-party PGF consumer wouldn't care about this port's internals"u8.ToArray();
+        (byte[] bgra, int width, int height) = TestBitmaps.Gradient(48, 48);
+
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 0, out byte[]? pgfBytes, userData: userData));
+
+        bool decoded = NativePgfOracle.TryDecode(pgfBytes!, out byte[]? decodedBgra, out int decodedWidth, out int decodedHeight);
+
+        Assert.True(decoded);
+        Assert.Equal(width, decodedWidth);
+        Assert.Equal(height, decodedHeight);
+        Assert.Equal(bgra, decodedBgra);
+    }
+
+    [Fact]
+    public void ProgressiveDecoder_TryOpen_UserDataWrittenByRealEncoder_ExposesItCorrectly()
+    {
+        byte[] userData = "progressive + real encoder-written user data"u8.ToArray();
+        (byte[] bgra, int width, int height) = TestBitmaps.Gradient(64, 64);
+
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 0, out byte[]? pgfBytes, userData: userData));
+
+        PgfProgressiveDecoder? progressive = PgfProgressiveDecoder.TryOpen(pgfBytes!);
+
+        Assert.NotNull(progressive);
+        Assert.Equal(userData, progressive.UserData.CachedBytes);
+        Assert.Equal((uint)userData.Length, progressive.UserData.TotalLength);
     }
 }

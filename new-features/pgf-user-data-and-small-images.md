@@ -265,3 +265,22 @@ decoded through both `PgfImageDecoder.TryDecode` and `PgfProgressiveDecoder`, pr
 user data both come back correctly together) plus one confirming the simpler `TryDecode` overload
 still compiles and behaves unchanged. Full regression: `PictTag.PgfCodec.Tests` 1043 → 1058 (15 new,
 0 failed), `PictTag.Data.Tests` 15/15 unchanged (facade untouched by this stage).
+
+**Stage 2 (user data — encode side) — done.** `PgfHeaderIO.Write` gained an optional
+`ReadOnlySpan<byte> userData = default` parameter, folded into `hSize` alongside the existing color
+table and written right after it (`PGFPostHeader ::= [ColorTable] [UserData]`, matching `Read`'s own
+order). `PgfImageEncoder.TryEncode`/`TryEncodeMode` both gained the same optional parameter as their
+new trailing argument (no `out`-vs-optional conflict here, unlike Stage 1's decoder overload, since
+`userData` is an input) - every existing call site keeps compiling unchanged.
+
+New tests (11, appended to `PgfUserDataTests.cs`): byte-exact round trip across a range of payload
+sizes (0/1/37/256 bytes) through the real `PgfImageEncoder` → `PgfImageDecoder` pipeline; no-user-data
+still decodes as `PgfUserData.None`-equivalent; user data survives every lossy quality level
+byte-exact (plain bytes, no quantization concept, unlike pixel data - confirmed directly rather than
+assumed, per this stage's own test rig note); `TryEncodeMode`'s indexed-color path round-trips color
+table and user data together; `PgfProgressiveDecoder.TryOpen` correctly exposes user data written by
+the real encoder (not just the Stage 1 hand-spliced case). One test cross-checks against the **real
+native decoder** (`NativePgfOracle.TryDecode`) that a C#-encoded file with user data still opens and
+decodes correctly there too - proof the `hSize`/post-header accounting is right by the format's own
+real parser, not just self-consistent within this port's own reader. Full regression:
+`PictTag.PgfCodec.Tests` 1058 → 1069 (11 new, 0 failed).

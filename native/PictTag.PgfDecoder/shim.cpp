@@ -550,6 +550,43 @@ PICTTAG_EXPORT bool pgf_encode_bitmap_legacy_alloc(
     }
 }
 
+// Generic sibling of pgf_encode_bitmap_legacy_alloc for the all-mode pre-Version5 verification
+// matrix. ImportBitmap remains the native implementation for source-mode conversion; only the
+// unavailable historical interleaved entropy write is supplied by LegacyBitmapTestImage. The
+// resulting fixture is decoded through pgf_debug_decode_raw/GetBitmap, never the separately unsafe
+// repeated-call pgf_debug_decode_channel path.
+PICTTAG_EXPORT bool pgf_encode_legacy_interleaved_raw_alloc(
+    const uint8_t* source, uint32_t width, uint32_t height, uint8_t quality, uint8_t mode, uint8_t bpp, uint8_t channels,
+    const uint8_t* colorTable, uint32_t colorTableLen, uint8_t** outData, size_t* outLen)
+{
+    if (source == nullptr || width < 10 || height < 10 || outData == nullptr || outLen == nullptr ||
+        channels == 0 || channels > MaxChannels || bpp == 0) return false;
+    *outData = nullptr; *outLen = 0;
+    size_t pitch = (static_cast<uint64_t>(width) * bpp + 7) / 8;
+    size_t bufferCapacity = pitch * height * 2 + 65536;
+    uint8_t* rawBuffer = new uint8_t[bufferCapacity];
+    try {
+        PGFHeader header;
+        header.width = width; header.height = height; header.nLevels = 0; header.quality = quality;
+        header.bpp = bpp; header.channels = channels; header.mode = mode; header.usedBitsPerChannel = 0;
+        LegacyBitmapTestImage img;
+        img.ConfigureEncoder(false);
+        img.SetHeader(header);
+        if (mode == ImageModeIndexedColor && colorTable != nullptr && colorTableLen == ColorTableSize) {
+            img.SetColorTable(0, ColorTableLen, reinterpret_cast<const RGBQUAD*>(colorTable));
+        }
+        img.ClearVersionFlags(true);
+        int channelMap[] = { 0, 1, 2, 3, 4, 5, 6, 7 };
+        img.ImportBitmap(static_cast<int>(pitch), const_cast<uint8_t*>(source), bpp, channelMap);
+        CPGFMemoryStream stream(rawBuffer, bufferCapacity);
+        img.WriteLegacyInterleaved(&stream);
+        size_t written = static_cast<size_t>(stream.GetPos());
+        uint8_t* result = new uint8_t[written];
+        memcpy(result, stream.GetBuffer(), written);
+        delete[] rawBuffer; *outData = result; *outLen = written; return true;
+    } catch (...) { delete[] rawBuffer; return false; }
+}
+
 // pgf-roi-support.md Stage 5: identical to pgf_encode_bgra_alloc except for one line -
 // img.SetHeader(header, PGFROI) instead of img.SetHeader(header) - enabling the real, tile-structured
 // ROI encoding scheme (CPGFImage::ROIisSupported() becomes true, so CPGFImage::WriteHeader/WriteLevel's

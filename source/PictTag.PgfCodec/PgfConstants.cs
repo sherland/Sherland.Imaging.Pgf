@@ -43,8 +43,8 @@ internal static class PgfConstants
     /// <summary>Side length of a coefficient block in an LL or HH subband - Partition's tiling unit.</summary>
     public const int LinBlockSize = 8;
 
-    /// <summary>Side length of a coefficient block in an HL or LH subband - DecodeInterleaved's
-    /// tiling unit (DecodeInterleaved itself is not ported - see PgfMacroBlock's doc comment).</summary>
+    /// <summary>Side length of a coefficient block in an HL or LH subband when decoding the legacy
+    /// pre-Version5 interleaved entropy layout.</summary>
     public const int InterBlockSize = 4;
 
     /// <summary>Bit-length of the run-length block-size field within the bitplane coding scheme

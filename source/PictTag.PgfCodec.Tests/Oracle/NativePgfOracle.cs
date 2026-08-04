@@ -51,6 +51,12 @@ internal static partial class NativePgfOracle
 
     [LibraryImport(LibraryName)]
     [return: MarshalAs(UnmanagedType.U1)]
+    private static partial bool pgf_encode_legacy_interleaved_raw_alloc(
+        nint source, uint width, uint height, byte quality, byte mode, byte bpp, byte channels,
+        nint colorTable, uint colorTableLen, out nint outData, out nuint outLen);
+
+    [LibraryImport(LibraryName)]
+    [return: MarshalAs(UnmanagedType.U1)]
     private static partial bool pgf_debug_decode_channel(
         nint data, nuint dataLen, int level, int channel,
         nint outBuffer, nuint outBufferLen, out uint outWidth, out uint outHeight);
@@ -482,6 +488,45 @@ internal static partial class NativePgfOracle
         finally
         {
             pgf_free_encoded(dataPtr);
+        }
+    }
+
+    /// <summary>Creates a synthetic pre-Version5 fixture for any supported non-Bitmap mode using
+    /// the native shim's real import, color-conversion, wavelet, and macroblock machinery. Only the
+    /// historical HL/LH interleaved write order is supplied by the test-only shim. Validate the
+    /// result with <see cref="TryDecodeRaw"/>/<c>GetBitmap</c>; do not use the repeated-call-unsafe
+    /// <see cref="TryDebugDecodeChannel"/> in an automated matrix.</summary>
+    public static unsafe bool TryEncodeLegacyInterleavedMode(
+        ReadOnlySpan<byte> source, int width, int height, byte quality, byte mode, byte bpp, byte channels,
+        ReadOnlySpan<byte> colorTable, out byte[]? pgfBytes)
+    {
+        pgfBytes = null;
+        fixed (byte* sourcePtr = source)
+        fixed (byte* colorTablePtr = colorTable)
+        {
+            bool encoded = pgf_encode_legacy_interleaved_raw_alloc(
+                (nint)sourcePtr, (uint)width, (uint)height, quality, mode, bpp, channels,
+                (nint)colorTablePtr, (uint)colorTable.Length, out nint dataPtr, out nuint dataLen);
+            if (!encoded)
+            {
+                return false;
+            }
+
+            try
+            {
+                byte[] result = new byte[dataLen];
+                fixed (byte* resultPtr = result)
+                {
+                    Buffer.MemoryCopy((void*)dataPtr, resultPtr, dataLen, dataLen);
+                }
+
+                pgfBytes = result;
+                return true;
+            }
+            finally
+            {
+                pgf_free_encoded(dataPtr);
+            }
         }
     }
 

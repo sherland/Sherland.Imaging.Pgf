@@ -188,7 +188,14 @@ Exit criteria: public documentation matches shipped APIs and all benchmark evide
 
 ## Progress log
 
-- Stage 1 — pending.
+**Stage 1 — done.** Added `PgfAllocationBaselineTests` to establish the deliberately qualitative,
+warmed convenience-path baseline: both decode and encode still allocate after warm-up while
+preserving lossless decode pixels and producing native-decodable output. The first draft compared a
+quality-8 lossy decode with its original source; that was a wrong test expectation, not a codec
+defect, and the exact-pixel assertion now correctly uses quality 0. Expanded all three
+BenchmarkDotNet matrices from only a gradient to deterministic gradient and checkerboard fixtures
+via `FixtureKind`, so future comparisons do not silently optimize only smooth imagery. Focused
+tests: 2/2 green. Full suite: 1378/1378 green (1376 existing + 2 new, zero regressions).
 - Stage 2 — pending.
 - Stage 3 — pending.
 - Stage 4 — pending.

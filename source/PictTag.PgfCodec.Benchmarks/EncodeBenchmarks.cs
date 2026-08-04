@@ -16,10 +16,13 @@ public class EncodeBenchmarks
     [Params((byte)0, (byte)8, (byte)15)]
     public byte Quality { get; set; }
 
+    [ParamsAllValues]
+    public FixtureKind Fixture { get; set; }
+
     private byte[] bgra = null!;
 
     [GlobalSetup]
-    public void Setup() => bgra = Fixtures.Gradient(Size, Size);
+    public void Setup() => bgra = Fixtures.Create(Fixture, Size, Size);
 
     [Benchmark(Baseline = true)]
     public int NativeEncode()

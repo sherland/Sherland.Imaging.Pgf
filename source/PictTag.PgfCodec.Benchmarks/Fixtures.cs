@@ -6,6 +6,13 @@ namespace PictTag.PgfCodec.Benchmarks;
 /// range without needing a real digiKam library on hand.</summary>
 internal static class Fixtures
 {
+    public static byte[] Create(FixtureKind kind, int width, int height) => kind switch
+    {
+        FixtureKind.Gradient => Gradient(width, height),
+        FixtureKind.Checkerboard => Checkerboard(width, height),
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
+    };
+
     public static byte[] Gradient(int width, int height)
     {
         byte[] bgra = new byte[width * height * 4];
@@ -23,4 +30,28 @@ internal static class Fixtures
 
         return bgra;
     }
+
+    private static byte[] Checkerboard(int width, int height)
+    {
+        byte[] bgra = new byte[width * height * 4];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int i = ((y * width) + x) * 4;
+                byte value = ((x / 4) + (y / 4)) % 2 == 0 ? (byte)255 : (byte)0;
+                bgra[i] = bgra[i + 1] = bgra[i + 2] = value;
+                bgra[i + 3] = 255;
+            }
+        }
+
+        return bgra;
+    }
+}
+
+/// <summary>Deterministic thumbnail-content classes used by the allocation/throughput matrix.</summary>
+public enum FixtureKind
+{
+    Gradient,
+    Checkerboard,
 }

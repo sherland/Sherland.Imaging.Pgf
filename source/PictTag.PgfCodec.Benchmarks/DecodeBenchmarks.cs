@@ -18,13 +18,16 @@ public class DecodeBenchmarks
     [Params((byte)0, (byte)8, (byte)15)]
     public byte Quality { get; set; }
 
+    [ParamsAllValues]
+    public FixtureKind Fixture { get; set; }
+
     private byte[] pgfBytes = null!;
     private int bufferSize;
 
     [GlobalSetup]
     public void Setup()
     {
-        byte[] bgra = Fixtures.Gradient(Size, Size);
+        byte[] bgra = Fixtures.Create(Fixture, Size, Size);
         if (!NativePgf.TryEncode(bgra, Size, Size, Quality, out byte[]? bytes))
         {
             throw new InvalidOperationException("Native encode failed during benchmark setup.");

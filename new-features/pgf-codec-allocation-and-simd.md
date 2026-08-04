@@ -196,7 +196,13 @@ defect, and the exact-pixel assertion now correctly uses quality 0. Expanded all
 BenchmarkDotNet matrices from only a gradient to deterministic gradient and checkerboard fixtures
 via `FixtureKind`, so future comparisons do not silently optimize only smooth imagery. Focused
 tests: 2/2 green. Full suite: 1378/1378 green (1376 existing + 2 new, zero regressions).
-- Stage 2 — pending.
+**Stage 2 — done.** Added internal `PgfWorkspace` as the explicit, single-threaded owner of
+`int`/`uint`/`bool`/`byte` pool rents. Its API returns `Memory<T>` sliced to the requested logical
+length, never a raw over-rented array, and disposal is idempotent while rejecting new rents. The
+intentional clearing decision is now code-level documentation: image coefficients are not secret,
+and clearing multi-megabyte work buffers would defeat this feature; consumers must overwrite every
+logical element they read. Focused ownership/logical-length tests: 2/2 green. Browser/WASM build:
+green. Full suite: 1380/1380 green (1378 existing + 2 new, zero regressions).
 - Stage 3 — pending.
 - Stage 4 — pending.
 - Stage 5 — pending.

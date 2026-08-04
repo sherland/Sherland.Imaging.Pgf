@@ -27,6 +27,7 @@
 // across multiple separate P/Invoke calls between pgf_open and pgf_close.
 
 #include "PGFimage.h"
+#include "Encoder.h"
 #include <cstring>
 
 // __declspec(dllexport) is an MSVC/Windows-DLL-specific extension for the desktop DLL build.
@@ -84,6 +85,124 @@ struct PgfDecoderHandle
 };
 
 extern "C" {
+
+// Test-only writer for genuine pre-Version5 Bitmap fixtures. libpgf's public encoder has emitted
+// Version5's tiled HL/LH layout for every obtainable release, so merely clearing Version5 after a
+// normal Write() would produce bytes that no decoder can legitimately read. This small derived
+// helper instead uses WriteHeader's real transform/header setup, then writes HL/LH in the exact
+// paired InterBlockSize order CDecoder::DecodeInterleaved consumes (Decoder.cpp:343-454).
+class LegacyBitmapTestImage final : public CPGFImage
+{
+public:
+    void ClearVersionFlags(bool clearVersion5)
+    {
+        m_preHeader.version &= ~Version7;
+        if (clearVersion5)
+        {
+            m_preHeader.version &= ~Version5;
+        }
+    }
+
+    void WriteLegacyInterleaved(CPGFStream* stream)
+    {
+        ASSERT(stream);
+        ASSERT(m_header.nLevels > 0);
+
+        // Does the real CPGFImage setup work: transforms channels and creates CEncoder while
+        // writing the genuine PGF preheader/header. ClearVersionFlags must run before this call.
+        WriteHeader(stream);
+        m_encoder->WriteLevelLength(m_levelLength);
+
+        for (m_currentLevel = m_header.nLevels; m_currentLevel > 0; )
+        {
+            for (int c = 0; c < m_header.channels; c++)
+            {
+                CWaveletTransform* wt = m_wtChannel[c];
+                if (m_currentLevel == m_header.nLevels)
+                {
+                    wt->GetSubband(m_currentLevel, LL)->ExtractTile(*m_encoder);
+                }
+
+                WriteInterleavedHlLh(wt, m_currentLevel);
+                wt->GetSubband(m_currentLevel, HH)->ExtractTile(*m_encoder);
+            }
+
+            m_encoder->SetEncodedLevel(--m_currentLevel);
+        }
+
+        m_encoder->Flush();
+        m_encoder->UpdateLevelLength();
+        delete m_encoder;
+        m_encoder = nullptr;
+    }
+
+private:
+    void WriteInterleavedHlLh(CWaveletTransform* wt, int level)
+    {
+        CSubband* hl = wt->GetSubband(level, HL);
+        CSubband* lh = wt->GetSubband(level, LH);
+        const div_t lhH = div(lh->GetHeight(), InterBlockSize);
+        const div_t hlW = div(hl->GetWidth(), InterBlockSize);
+        const int hlws = hl->GetWidth() - InterBlockSize;
+        const int hlwr = hl->GetWidth() - hlW.rem;
+        const int lhws = lh->GetWidth() - InterBlockSize;
+        const int lhwr = lh->GetWidth() - hlW.rem;
+        int hlBase = 0, lhBase = 0, hlBase2, lhBase2, hlPos, lhPos;
+
+        // Inverse of CDecoder::DecodeInterleaved's four rectangular walks. Keep this intentionally
+        // structural rather than clever: the fixture writer exists only to feed that native decoder
+        // and the managed port with valid historical byte layout.
+        for (int i = 0; i < lhH.quot; i++) {
+            hlBase2 = hlBase; lhBase2 = lhBase;
+            for (int j = 0; j < hlW.quot; j++) {
+                hlPos = hlBase2; lhPos = lhBase2;
+                for (int y = 0; y < InterBlockSize; y++) {
+                    for (int x = 0; x < InterBlockSize; x++) {
+                        m_encoder->WriteValue(hl, hlPos++);
+                        m_encoder->WriteValue(lh, lhPos++);
+                    }
+                    hlPos += hlws; lhPos += lhws;
+                }
+                hlBase2 += InterBlockSize; lhBase2 += InterBlockSize;
+            }
+            hlPos = hlBase2; lhPos = lhBase2;
+            for (int y = 0; y < InterBlockSize; y++) {
+                for (int x = 0; x < hlW.rem; x++) {
+                    m_encoder->WriteValue(hl, hlPos++);
+                    m_encoder->WriteValue(lh, lhPos++);
+                }
+                if (lh->GetWidth() > hl->GetWidth()) m_encoder->WriteValue(lh, lhPos);
+                hlPos += hlwr; lhPos += lhwr;
+                hlBase += hl->GetWidth(); lhBase += lh->GetWidth();
+            }
+        }
+        hlBase2 = hlBase; lhBase2 = lhBase;
+        for (int j = 0; j < hlW.quot; j++) {
+            hlPos = hlBase2; lhPos = lhBase2;
+            for (int y = 0; y < lhH.rem; y++) {
+                for (int x = 0; x < InterBlockSize; x++) {
+                    m_encoder->WriteValue(hl, hlPos++);
+                    m_encoder->WriteValue(lh, lhPos++);
+                }
+                hlPos += hlws; lhPos += lhws;
+            }
+            hlBase2 += InterBlockSize; lhBase2 += InterBlockSize;
+        }
+        hlPos = hlBase2; lhPos = lhBase2;
+        for (int y = 0; y < lhH.rem; y++) {
+            for (int x = 0; x < hlW.rem; x++) {
+                m_encoder->WriteValue(hl, hlPos++);
+                m_encoder->WriteValue(lh, lhPos++);
+            }
+            if (lh->GetWidth() > hl->GetWidth()) m_encoder->WriteValue(lh, lhPos);
+            hlPos += hlwr; lhPos += lhwr;
+            hlBase += hl->GetWidth();
+        }
+        if (hl->GetHeight() > lh->GetHeight()) {
+            for (int j = 0; j < hl->GetWidth(); j++) m_encoder->WriteValue(hl, hlBase + j);
+        }
+    }
+};
 
 PICTTAG_EXPORT bool pgf_get_dimensions(
     const uint8_t* data, size_t dataLen, uint32_t* outWidth, uint32_t* outHeight)
@@ -360,6 +479,75 @@ PICTTAG_EXPORT bool pgf_encode_bgra_alloc(
 PICTTAG_EXPORT void pgf_free_encoded(uint8_t* data)
 {
     delete[] data;
+}
+
+// Produces a valid historical Bitmap file for the codec's test suite. clearVersion5 selects the
+// rare pre-Version5/pre-Version7 color-conversion stride; unlike a header-byte patch, it also uses
+// the matching interleaved entropy layout through LegacyBitmapTestImage above.
+PICTTAG_EXPORT bool pgf_encode_bitmap_legacy_alloc(
+    const uint8_t* packedBits, uint32_t width, uint32_t height, bool clearVersion5,
+    uint8_t** outData, size_t* outLen)
+{
+    if (packedBits == nullptr || width < 10 || height < 10 || outData == nullptr || outLen == nullptr)
+    {
+        return false;
+    }
+
+    *outData = nullptr;
+    *outLen = 0;
+    const size_t rowBytes = (static_cast<size_t>(width) + 7) / 8;
+    const size_t bufferCapacity = static_cast<size_t>(width) * height * 8 + 65536;
+    uint8_t* rawBuffer = new uint8_t[bufferCapacity];
+
+    try
+    {
+        PGFHeader header;
+        header.width = width;
+        header.height = height;
+        header.nLevels = 0;
+        header.quality = 0;
+        header.bpp = 1;
+        header.channels = 1;
+        header.mode = ImageModeBitmap;
+        header.usedBitsPerChannel = 1;
+
+        LegacyBitmapTestImage img;
+        img.ConfigureEncoder(false);
+        img.SetHeader(header);
+        img.ClearVersionFlags(clearVersion5);
+
+        // Historical RgbToYuv's real layout (libpgf 6.14.12 PGFimage.cpp:1340-1374): each
+        // row begins with packed-byte DataT values minus YUVoffset8, then pads to pixel width.
+        DataT* channel = new DataT[static_cast<size_t>(width) * height];
+        for (uint32_t y = 0; y < height; y++) {
+            DataT* row = channel + static_cast<size_t>(y) * width;
+            for (size_t x = 0; x < rowBytes; x++) row[x] = static_cast<DataT>(packedBits[y * rowBytes + x]) - 128;
+            for (uint32_t x = static_cast<uint32_t>(rowBytes); x < width; x++) row[x] = 128;
+        }
+        img.SetChannel(channel);
+
+        CPGFMemoryStream stream(rawBuffer, bufferCapacity);
+        if (clearVersion5) {
+            img.WriteLegacyInterleaved(&stream);
+        } else {
+            // Version5's real tiled entropy layout is still available through the public writer;
+            // only Version7 has been cleared so native GetBitmap takes its historical packed path.
+            img.Write(&stream);
+        }
+
+        size_t written = static_cast<size_t>(stream.GetPos());
+        uint8_t* result = new uint8_t[written];
+        memcpy(result, stream.GetBuffer(), written);
+        delete[] rawBuffer;
+        *outData = result;
+        *outLen = written;
+        return true;
+    }
+    catch (...)
+    {
+        delete[] rawBuffer;
+        return false;
+    }
 }
 
 // pgf-roi-support.md Stage 5: identical to pgf_encode_bgra_alloc except for one line -

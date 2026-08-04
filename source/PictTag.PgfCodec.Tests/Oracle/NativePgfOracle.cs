@@ -45,6 +45,12 @@ internal static partial class NativePgfOracle
 
     [LibraryImport(LibraryName)]
     [return: MarshalAs(UnmanagedType.U1)]
+    private static partial bool pgf_encode_bitmap_legacy_alloc(
+        nint packedBits, uint width, uint height, [MarshalAs(UnmanagedType.U1)] bool clearVersion5,
+        out nint outData, out nuint outLen);
+
+    [LibraryImport(LibraryName)]
+    [return: MarshalAs(UnmanagedType.U1)]
     private static partial bool pgf_debug_decode_channel(
         nint data, nuint dataLen, int level, int channel,
         nint outBuffer, nuint outBufferLen, out uint outWidth, out uint outHeight);
@@ -414,6 +420,47 @@ internal static partial class NativePgfOracle
             encoded = pgf_encode_raw_alloc(
                 (nint)sourcePtr, (uint)width, (uint)height, quality, mode, bpp, channels,
                 (nint)colorTablePtr, (uint)colorTable.Length, out dataPtr, out dataLen);
+        }
+
+        if (!encoded)
+        {
+            return false;
+        }
+
+        try
+        {
+            byte[] result = new byte[dataLen];
+            fixed (byte* resultPtr = result)
+            {
+                Buffer.MemoryCopy((void*)dataPtr, resultPtr, dataLen, dataLen);
+            }
+
+            pgfBytes = result;
+            return true;
+        }
+        finally
+        {
+            pgf_free_encoded(dataPtr);
+        }
+    }
+
+    /// <summary>Creates a valid pre-Version7 Bitmap fixture using the native test-only writer in
+    /// <c>shim.cpp</c>. When <paramref name="clearVersion5"/> is true it additionally emits the
+    /// pre-Version5 interleaved entropy layout; this is deliberately not a header-only mutation,
+    /// because <c>CPGFImage::Read</c> dispatches HL/LH entropy decoding on that same flag. The
+    /// helper therefore lets the legacy Bitmap PRD verify the rare <c>yw=w2</c> stride with the
+    /// independent native decoder rather than a self-consistent malformed payload.</summary>
+    public static unsafe bool TryEncodeLegacyBitmap(
+        ReadOnlySpan<byte> packedBits, int width, int height, bool clearVersion5, out byte[]? pgfBytes)
+    {
+        pgfBytes = null;
+        nint dataPtr;
+        nuint dataLen;
+        bool encoded;
+        fixed (byte* sourcePtr = packedBits)
+        {
+            encoded = pgf_encode_bitmap_legacy_alloc(
+                (nint)sourcePtr, (uint)width, (uint)height, clearVersion5, out dataPtr, out dataLen);
         }
 
         if (!encoded)

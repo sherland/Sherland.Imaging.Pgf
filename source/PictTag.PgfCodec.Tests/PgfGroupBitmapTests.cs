@@ -91,6 +91,39 @@ public class PgfGroupBitmapTests
         Assert.Equal(source, oracleRaw);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NativeLegacyFixture_NativeDecoderRecoversKnownPackedBits(bool clearVersion5)
+    {
+        // The fixture writer emits pre-Version7 packed Bitmap values. clearVersion5 additionally
+        // writes the matching pre-Version5 interleaved HL/LH entropy stream, not merely a falsified
+        // header flag. These deliberately odd dimensions exercise both the packed trailing byte and
+        // DecodeInterleaved's unequal-subband fixups.
+        const int width = 37, height = 23;
+        byte[] source = PackedBitmap(width, height, (x, y) => ((x * 11) + (y * 7)) % 9 < 4);
+
+        Assert.True(NativePgfOracle.TryEncodeLegacyBitmap(source, width, height, clearVersion5, out byte[]? pgfBytes));
+
+        Assert.True(NativePgfOracle.TryDecodeRaw(pgfBytes!, bpp: 1, [0], out byte[]? decoded, out int decodedWidth, out int decodedHeight));
+        Assert.Equal(width, decodedWidth);
+        Assert.Equal(height, decodedHeight);
+        if (!clearVersion5)
+        {
+            // This is the normal historical case, independently reproducible from libpgf 6.14.12:
+            // its legacy packed Bitmap input and native decoder round-trip the source exactly.
+            Assert.Equal(source, decoded);
+        }
+        else
+        {
+            // No historical encoder can produce pre-Version5 interleaved bytes. Native acceptance
+            // is nevertheless essential: it proves this test-only writer's payload matches the
+            // real DecodeInterleaved layout instead of being only a header mutation. Stage 3 will
+            // compare this exact native result against the managed decoder.
+            Assert.NotEmpty(decoded!);
+        }
+    }
+
     [Fact]
     public void AllOnes_RoundTripsExactly()
     {

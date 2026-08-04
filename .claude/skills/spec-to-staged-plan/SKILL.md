@@ -124,15 +124,22 @@ principle" design decisions (e.g. a selection heuristic that needs an explicit t
 before it's actually implementable), and gaps against the actual current scale/usage of the
 feature being changed. Fold real findings back into the plan before presenting it.
 
-## 6. Present, expect pushback, iterate
+## 6. Save, present, expect pushback, iterate
 
-Present the plan (e.g. via this environment's plan-mode flow: a Context section explaining the
+Before presenting the plan, save it as a new, descriptively named Markdown PRD under
+`new-features/`. Follow the repository's existing staged-PRD conventions: include the context and
+verified grounding, an explicit reconciliation of unverified-spec claims with the real codebase,
+one independently testable/committable stage per section, verification criteria, and a Progress log
+initially marking every stage as pending. Do not overwrite an existing PRD unless the user asked to
+revise that specific file.
+
+Then present the saved plan (e.g. via this environment's plan-mode flow: a Context section explaining the
 *why*, then the stage list, then a verification section) and treat pushback as a normal part of
-the loop, not a failure of the plan. The user will often supply a concrete real-world scenario the
+the loop, not a failure of the plan. Link the saved `new-features/` file in the handoff. The user will often supply a concrete real-world scenario the
 design didn't cover (e.g. "what happens when the user scrolls fast through the whole list, not
 just scrolls-then-stops") — this is exactly the kind of gap that's cheap to fix at plan time and
 expensive to fix after the code exists. Revise the affected stage(s) precisely (don't rewrite the
-whole plan), re-explain what changed and why in the plan file itself, and re-present.
+whole plan), re-explain what changed and why in the saved plan file itself, and re-present.
 
 ## The loop, end to end
 
@@ -146,5 +153,6 @@ whole plan), re-explain what changed and why in the plan file itself, and re-pre
    stage.
 6. Pressure-test the draft with a planning subagent fed your verified facts, not asked to
    re-derive them.
-7. Present via the plan-mode flow; when the user pushes back with a scenario you missed, fix that
-   specific stage and re-present rather than starting over.
+7. Save the verified plan under `new-features/`, then present it via the plan-mode flow; when the
+   user pushes back with a scenario you missed, fix that specific stage in the saved PRD and
+   re-present rather than starting over.

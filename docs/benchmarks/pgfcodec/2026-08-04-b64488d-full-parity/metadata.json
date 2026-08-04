@@ -1,0 +1,19 @@
+{
+  "runName": "2026-08-04-b64488d-full-parity",
+  "revision": "b64488d38cfa0f763d6a5ed3ff55f66459085bcc",
+  "purpose": "Full-parity codec benchmark run after all completed feature work.",
+  "archivedAtUtc": "2026-08-04T16:55:26.7418439Z",
+  "benchmarkCommand": "dotnet run -c Release --project source/PictTag.PgfCodec.Benchmarks -- --job short --filter \"*\" --artifacts <directory>",
+  "sourceArtifactDirectory": "C:\\tmp\\pgfcodec-benchmark-20260804",
+  "reports": [
+    "PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report-github.md",
+    "PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report.csv",
+    "PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report.html",
+    "PictTag.PgfCodec.Benchmarks.EncodeBenchmarks-report-github.md",
+    "PictTag.PgfCodec.Benchmarks.EncodeBenchmarks-report.csv",
+    "PictTag.PgfCodec.Benchmarks.EncodeBenchmarks-report.html",
+    "PictTag.PgfCodec.Benchmarks.ProgressiveDecodeBenchmarks-report-github.md",
+    "PictTag.PgfCodec.Benchmarks.ProgressiveDecodeBenchmarks-report.csv",
+    "PictTag.PgfCodec.Benchmarks.ProgressiveDecodeBenchmarks-report.html"
+  ]
+}

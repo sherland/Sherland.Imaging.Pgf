@@ -34,6 +34,37 @@ not permanent decisions.
   test/benchmark infrastructure now — `PictTag.PgfCodec.Tests`/`.Benchmarks`' correctness oracle, not
   a production dependency of either host. See [`CLAUDE.md`](../CLAUDE.md)'s Prerequisites section.
 
+## Performance benchmarks
+
+`PictTag.PgfCodec.Benchmarks` is a BenchmarkDotNet console application that compares the managed
+codec with the native oracle. It measures single-shot decode and encode at 128/256/512px and quality
+0/8/15, plus complete coarsest-to-finest progressive decode at 256/512px and quality 0/8. It also has
+an output-size sweep for every quality value.
+
+Build `native/PictTag.PgfDecoder/build/PictTagPgfDecoder.dll` first, as described in
+[`TESTING.md`](TESTING.md). Always pass an explicit `--artifacts` directory outside the repository:
+BenchmarkDotNet runs the benchmarks from an isolated generated build directory and cleans that
+directory at completion. Without `--artifacts`, the console summary is still valid, but the Markdown,
+CSV, HTML, and detailed log files are removed with that temporary build.
+
+```powershell
+$artifacts = "C:/tmp/pgfcodec-benchmark-$(Get-Date -Format yyyyMMdd-HHmmss)"
+dotnet run -c Release --project source/PictTag.PgfCodec.Benchmarks -- `
+  --job short --filter "*" --artifacts $artifacts
+dotnet run -c Release --project source/PictTag.PgfCodec.Benchmarks -- --sizes
+```
+
+The report files are under `$artifacts/results/`. `short` is BenchmarkDotNet's command-line name for
+the three-iteration `ShortRun` job shown in its reports. Do not use `--job ShortRun`: it is not a
+valid CLI job name. The full 44-case short matrix takes about five minutes on the development
+workstation. **Every comparison run must be preserved in Git**: commit its full normalized matrix,
+revision, environment, and the comparison against the prior baseline to the versioned benchmark
+record. Do not rely on a console transcript, ignored `BenchmarkDotNet.Artifacts`, or a temporary
+artifact directory as the performance record. The existing historical and current results are both
+checked in under [`benchmarks/pgfcodec/`](benchmarks/pgfcodec/); archive a new immutable run folder
+with [`Archive-PgfCodecBenchmark.ps1`](../Archive-PgfCodecBenchmark.ps1) for the next comparison.
+Name each folder `yyyy-MM-dd-shortsha-description`; never call an immutable historical run `current`.
+
 ## Supported
 
 - **Every image mode the format defines** — RGBA/32bpp (4 channels — B, G, R, A, the one format

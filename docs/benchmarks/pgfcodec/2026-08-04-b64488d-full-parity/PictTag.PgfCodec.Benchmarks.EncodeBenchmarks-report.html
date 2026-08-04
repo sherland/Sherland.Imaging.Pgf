@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>PictTag.PgfCodec.Benchmarks.EncodeBenchmarks-20260804-182413</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8875)
+Unknown processor
+.NET SDK 10.0.302
+  [Host]   : .NET 10.0.10 (10.0.1026.32716), X64 RyuJIT AVX2
+  ShortRun : .NET 10.0.10 (10.0.1026.32716), X64 RyuJIT AVX2
+</code></pre>
+<pre><code>Job=ShortRun  IterationCount=3  LaunchCount=1  
+WarmupCount=3  
+</code></pre>
+
+<table>
+<thead><tr><th>Method </th><th>Size</th><th>Quality</th><th>Mean </th><th>Error</th><th>StdDev</th><th>Ratio</th><th>RatioSD</th><th>Gen0</th><th>Gen1</th><th>Gen2</th><th>Allocated</th><th>Alloc Ratio</th>
+</tr>
+</thead><tbody><tr><td>NativeEncode</td><td>128</td><td>0</td><td>522.6 &mu;s</td><td>241.09 &mu;s</td><td>13.22 &mu;s</td><td>1.00</td><td>0.03</td><td>-</td><td>-</td><td>-</td><td>7152 B</td><td>1.00</td>
+</tr><tr><td>ManagedEncode</td><td>128</td><td>0</td><td>836.7 &mu;s</td><td>370.54 &mu;s</td><td>20.31 &mu;s</td><td>1.60</td><td>0.05</td><td>45.8984</td><td>34.1797</td><td>-</td><td>771360 B</td><td>107.85</td>
+</tr><tr><td>NativeEncode</td><td>128</td><td>8</td><td>255.8 &mu;s</td><td>49.57 &mu;s</td><td>2.72 &mu;s</td><td>1.00</td><td>0.01</td><td>-</td><td>-</td><td>-</td><td>1016 B</td><td>1.00</td>
+</tr><tr><td>ManagedEncode</td><td>128</td><td>8</td><td>380.3 &mu;s</td><td>41.39 &mu;s</td><td>2.27 &mu;s</td><td>1.49</td><td>0.02</td><td>36.6211</td><td>27.8320</td><td>-</td><td>618496 B</td><td>608.76</td>
+</tr><tr><td>NativeEncode</td><td>128</td><td>15</td><td>200.9 &mu;s</td><td>167.05 &mu;s</td><td>9.16 &mu;s</td><td>1.00</td><td>0.06</td><td>-</td><td>-</td><td>-</td><td>80 B</td><td>1.00</td>
+</tr><tr><td>ManagedEncode</td><td>128</td><td>15</td><td>258.2 &mu;s</td><td>87.82 &mu;s</td><td>4.81 &mu;s</td><td>1.29</td><td>0.05</td><td>36.6211</td><td>25.3906</td><td>-</td><td>614560 B</td><td>7,682.00</td>
+</tr><tr><td>NativeEncode</td><td>256</td><td>0</td><td>1,573.8 &mu;s</td><td>866.24 &mu;s</td><td>47.48 &mu;s</td><td>1.00</td><td>0.04</td><td>-</td><td>-</td><td>-</td><td>15681 B</td><td>1.00</td>
+</tr><tr><td>ManagedEncode</td><td>256</td><td>0</td><td>2,512.5 &mu;s</td><td>2,013.53 &mu;s</td><td>110.37 &mu;s</td><td>1.60</td><td>0.07</td><td>332.0313</td><td>332.0313</td><td>332.0313</td><td>2634696 B</td><td>168.02</td>
+</tr><tr><td>NativeEncode</td><td>256</td><td>8</td><td>805.8 &mu;s</td><td>103.88 &mu;s</td><td>5.69 &mu;s</td><td>1.00</td><td>0.01</td><td>-</td><td>-</td><td>-</td><td>1305 B</td><td>1.00</td>
+</tr><tr><td>ManagedEncode</td><td>256</td><td>8</td><td>1,465.9 &mu;s</td><td>188.36 &mu;s</td><td>10.32 &mu;s</td><td>1.82</td><td>0.02</td><td>332.0313</td><td>332.0313</td><td>332.0313</td><td>2014048 B</td><td>1,543.33</td>
+</tr><tr><td>NativeEncode</td><td>256</td><td>15</td><td>756.8 &mu;s</td><td>63.39 &mu;s</td><td>3.47 &mu;s</td><td>1.00</td><td>0.01</td><td>-</td><td>-</td><td>-</td><td>136 B</td><td>1.00</td>
+</tr><tr><td>ManagedEncode</td><td>256</td><td>15</td><td>1,201.1 &mu;s</td><td>426.33 &mu;s</td><td>23.37 &mu;s</td><td>1.59</td><td>0.03</td><td>332.0313</td><td>332.0313</td><td>332.0313</td><td>2009168 B</td><td>14,773.29</td>
+</tr><tr><td>NativeEncode</td><td>512</td><td>0</td><td>6,514.7 &mu;s</td><td>1,341.09 &mu;s</td><td>73.51 &mu;s</td><td>1.00</td><td>0.01</td><td>-</td><td>-</td><td>-</td><td>60977 B</td><td>1.00</td>
+</tr><tr><td>ManagedEncode</td><td>512</td><td>0</td><td>10,429.2 &mu;s</td><td>4,483.65 &mu;s</td><td>245.76 &mu;s</td><td>1.60</td><td>0.04</td><td>703.1250</td><td>671.8750</td><td>609.3750</td><td>10141176 B</td><td>166.31</td>
+</tr><tr><td>NativeEncode</td><td>512</td><td>8</td><td>3,770.8 &mu;s</td><td>907.44 &mu;s</td><td>49.74 &mu;s</td><td>1.00</td><td>0.02</td><td>-</td><td>-</td><td>-</td><td>1747 B</td><td>1.00</td>
+</tr><tr><td>ManagedEncode</td><td>512</td><td>8</td><td>5,085.3 &mu;s</td><td>3,164.43 &mu;s</td><td>173.45 &mu;s</td><td>1.35</td><td>0.04</td><td>1062.5000</td><td>1031.2500</td><td>976.5625</td><td>7587693 B</td><td>4,343.27</td>
+</tr><tr><td>NativeEncode</td><td>512</td><td>15</td><td>3,631.8 &mu;s</td><td>716.44 &mu;s</td><td>39.27 &mu;s</td><td>1.00</td><td>0.01</td><td>-</td><td>-</td><td>-</td><td>345 B</td><td>1.00</td>
+</tr><tr><td>ManagedEncode</td><td>512</td><td>15</td><td>4,475.0 &mu;s</td><td>685.41 &mu;s</td><td>37.57 &mu;s</td><td>1.23</td><td>0.01</td><td>1062.5000</td><td>1046.8750</td><td>976.5625</td><td>7582434 B</td><td>21,978.07</td>
+</tr></tbody></table>
+</body>
+</html>

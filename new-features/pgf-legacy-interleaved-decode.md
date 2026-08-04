@@ -1,7 +1,7 @@
 # PGF codec: legacy pre-Version5 interleaved decode — PRD
 
-**Status: in progress — implementation landed incidentally by `pgf-bitmap-legacy-packed.md`; this
-PRD now owns the required all-mode verification matrix.** Originally closed a gap documented in [`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md)'s
+**Status: done — implementation landed incidentally by `pgf-bitmap-legacy-packed.md`; this PRD
+completed the required all-mode safe-oracle verification matrix.** Originally closed a gap documented in [`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md)'s
 "Not yet ported — real gaps against full C++ parity" list ("Legacy pre-Version5 entropy coding"). See
 [`pgf-legacy-native-oracle-sourcing.md`](pgf-legacy-native-oracle-sourcing.md) for a real investigation
 into whether a historical native oracle is obtainable for this gap specifically (short answer: no,
@@ -185,8 +185,8 @@ build, ever — see Non-goals.
 
 ## Acceptance criteria / Definition of Done
 
-- A genuine pre-Version5 file no longer silently misdecodes — either fails closed (if only Stage 1
-  ships) or decodes correctly (once Stage 2+ ships).
+- A genuine pre-Version5 file no longer silently misdecodes; it dispatches to the verified
+  interleaved decoder.
 - The ported `DecodeInterleaved` reconstructs pixel-identical output to the modern decode path for
   the same underlying image content, across the size-mismatch edge cases specifically. The synthetic
   fixture is accepted by both native `CPGFImage::Read`/`GetBitmap` and the managed decoder.
@@ -206,11 +206,12 @@ build, ever — see Non-goals.
   [`pgf-legacy-native-oracle-sourcing.md`](pgf-legacy-native-oracle-sourcing.md): no pre-Version5
   source is obtainable anywhere (SourceForge files/git/SVN, Debian's archive, and digiKam's complete
   2004-onward git history — whose own *first-ever* libpgf import in 2009 already postdates Version5's
-  introduction — were all checked). Self-consistency-only verification isn't just the current best
-  option, it's confirmed to be the only one; that doc's own "Finding A" also notes a free, low-cost
-  extra: the 2009 vendored snapshot's commented-out `EncodeInterleaved` body is a second,
-  independently-dated description of the interleaving order worth cross-reading against while
-  implementing Goal 2/3, even though it can't be compiled as a real oracle.
+  introduction — were all checked). A synthetic writer checked by both current native and managed
+  decoders is therefore the strongest executable setup available, but still cannot establish
+  historical-byte provenance. That doc's own "Finding A" also supplied a useful structural check:
+  the 2009 vendored snapshot's commented-out `EncodeInterleaved` body is a second,
+  independently-dated description of the interleaving order, even though it cannot be compiled as a
+  real historical encoder oracle.
 
 ## Progress log
 
@@ -218,10 +219,10 @@ build, ever — see Non-goals.
 pre-Version5 Bitmap fixture to exercise its `yw=w2` stride. The investigation proved that clearing
 Version5 alone invalidates a tiled payload, so it added a test-only native reverse-`DecodeInterleaved`
 writer, then ported `CDecoder::DecodeInterleaved` into `PgfDecoderCore` and dispatched it for every
-pre-Version5 session. Native-versus-managed decode is currently proven through legacy Bitmap fixtures,
-including odd dimensions and a 2049x1027 case; this PRD remains partially open only because its own
-broader multi-mode fixture matrix has not been separately run. See that PRD's Stage 1-3 entries and
-commit `a18e1a9` for the complete implementation record.
+pre-Version5 session. At that point native-versus-managed decode was proven only through legacy
+Bitmap fixtures, including odd dimensions and a 2049x1027 case, so this PRD remained partially open
+until its broader multi-mode fixture matrix ran. See that PRD's Stage 1-3 entries and commit
+`a18e1a9` for the complete implementation record.
 
 **Stage 1: Reconciled the incidental implementation.** User-directed follow-up promotes the missing
 all-mode verification from a note into this PRD's remaining scope. The original fail-closed and
@@ -251,3 +252,11 @@ source bytes, exercising large multi-macroblock data without committing a fixtur
 verification: `dotnet test source/PictTag.PgfCodec.Tests -- --filter-class
 "*.PgfLegacyInterleavedAllModeTests"` — **16/16 passed** (15 mode cases plus the large case). Full
 regression: `dotnet test source/PictTag.PgfCodec.Tests` — **1376/1376 passed**.
+
+**Stage 4: Documentation.** Reconciled the PRD's original pre-implementation assumptions with the
+as-built native synthetic writer and dual-decoder rig, including the precise 12/15 false-failure root
+cause and why the tempting dimension-fallback-only fix would have been unsafe. Updated
+`docs/PGF-CODEC.md` to record all-mode legacy support, the even/odd/large coverage, the deliberate
+`GetBitmap` oracle choice, the unavailable historical-encoder limitation, and the current
+**1376/1376 passing** suite. Removed the stale `PgfConstants.InterBlockSize` claim that
+`DecodeInterleaved` was not ported. All acceptance criteria are satisfied.

@@ -45,6 +45,17 @@ not permanent decisions.
   mode dispatch) — every real consumer of a decoded bitmap wants pixels it can render, not a
   mode-specific raw buffer. `PgfModeInfo` is the canonical per-mode (bpp, channels,
   downsample-eligibility) table.
+- **Legacy pre-Version5 interleaved entropy decode across every supported mode** — the managed
+  `PgfDecoderCore.DecodeInterleaved` port and `PgfDecodeSession` version dispatch are exercised by a
+  test-only native writer across all 15 non-Bitmap modes at ordinary even and odd dimensions, plus a
+  2049x1027 multi-level RGBA case; legacy Bitmap has its own packed-era matrix. Each synthetic
+  pre-Version5 fixture is compared with its modern native sibling twice: mode-native bytes through
+  the real C++ `CPGFImage::Read`/`GetBitmap`, and normalized BGRA through the managed decoder. The
+  automated rig deliberately does not call `pgf_debug_decode_channel`, whose repeated
+  `GetChannel()`/`memcpy` use has a documented native access-violation risk. No obtainable historical
+  encoder can produce an independently-authored pre-Version5 fixture, so this is a real dual-decoder
+  cross-check of a synthetic writer, not historical-byte provenance. See
+  [`new-features/pgf-legacy-interleaved-decode.md`](../new-features/pgf-legacy-interleaved-decode.md).
 - **Decode**: single-shot (`PgfImageDecoder.TryDecode`) and progressive, level-by-level
   (`PgfProgressiveDecoder.TryOpen`/`TryDecodeLevel`/`TryGetLevelSize`).
 - **Encode**: single-shot, every quality value `0..MaxQuality` (`31` in this build —
@@ -53,7 +64,7 @@ not permanent decisions.
   production-relevant shape; `TryEncodeMode` (every other mode) exists as test infrastructure to
   produce real fixtures to decode-test against, not a second production path.
 - Proven byte-exact against the real native decoder/encoder across a wide fixture/dimension/quality
-  matrix, every mode, both directions (`PictTag.PgfCodec.Tests`, 1349 tests) — see
+  matrix, every mode, both directions (`PictTag.PgfCodec.Tests`, 1376 tests) — see
   `managed-pgf-codec.md`'s Stage 7-9 progress log entries for the original RGBA-only verification and
   `pgf-all-image-modes.md`'s own Progress log for the per-mode extension.
 - **Header metadata: user data, and the `nLevels=0` "raw/uncoded" small-image path** — arbitrary
@@ -176,8 +187,11 @@ technical gap to close here.
 
 Every gap this codebase's own *completed* staged PRDs (`pgf-cancellation-and-progress.md`,
 `pgf-all-image-modes.md`, `pgf-user-data-and-small-images.md`, `pgf-roi-support.md`,
-`pgf-real-level-lengths.md`, `pgf-bitmap-legacy-packed.md`) originally tracked is closed — see each
-one's own Progress log for the full record. `pgf-legacy-native-oracle-sourcing.md` is a completed
+`pgf-real-level-lengths.md`, `pgf-bitmap-legacy-packed.md`,
+`pgf-legacy-interleaved-decode.md`) originally tracked is closed — see each one's own Progress log
+for the full record. The legacy native-writer/dual-decoder proof and historical-oracle limitation
+are documented above.
+`pgf-legacy-native-oracle-sourcing.md` is a completed
 *investigation* (not an implementation PRD itself) that grounded the legacy work — exactly which
 historical `libpgf` source versions are actually obtainable today, and what each can and can't prove
 — so their own Testability sections stop relying on assumption.

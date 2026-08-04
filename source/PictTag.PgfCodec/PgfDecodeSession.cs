@@ -28,7 +28,7 @@ internal sealed class PgfDecodeSession
         PgfWaveletTransform[] channels, PgfDecoderCore decoder, int quant, bool downsample,
         int fullWidth, int fullHeight, int chromaWidth, byte levels, byte mode, byte[]? colorTable,
         PgfUserData userData, (int[] Data, int Width, int Height)[]? rawChannelData, bool roiSupported,
-        uint[] levelLengths)
+        bool version5, bool version7, uint[] levelLengths)
     {
         Channels = channels;
         Decoder = decoder;
@@ -43,6 +43,8 @@ internal sealed class PgfDecodeSession
         UserData = userData;
         RawChannelData = rawChannelData;
         RoiSupported = roiSupported;
+        Version5 = version5;
+        Version7 = version7;
         LevelLengths = levelLengths;
     }
 
@@ -53,6 +55,19 @@ internal sealed class PgfDecodeSession
     /// that explicitly asked for ROI decoding on a file that can't do it should get a clear "no", not
     /// a surprising full decode.</summary>
     public bool RoiSupported { get; }
+
+    /// <summary>Whether the file's own preheader declares Version5. This is deliberately exposed
+    /// alongside <see cref="Version7"/> rather than inferred from the major-version field: native
+    /// <c>CPGFImage::Read</c> branches on this bit for the HL/LH entropy layout, and legacy Bitmap
+    /// conversion also needs it to distinguish the pre-Version5 <c>yw=w2</c> row stride from the
+    /// Version5/6 <c>yw=w</c> form (pgf-bitmap-legacy-packed.md Stage 2).</summary>
+    public bool Version5 { get; }
+
+    /// <summary>Whether the file's own preheader declares Version7, the native Bitmap representation
+    /// boundary. Its absence selects the historical packed-byte color-conversion path; it says
+    /// nothing by itself about whether Version5's tiled entropy layout applies, hence the separate
+    /// <see cref="Version5"/> property (pgf-bitmap-legacy-packed.md Stage 2).</summary>
+    public bool Version7 { get; }
 
     /// <summary>The mode's channels' wavelet pyramids, in the header's own channel order (e.g. Y, U,
     /// V, A for RGBA; a single channel for GrayScale/IndexedColor). <see cref="Channels"/>[1..] are
@@ -119,6 +134,8 @@ internal sealed class PgfDecodeSession
                 PgfHeaderIO.Read(reader, userDataPolicy, userDataPrefixSize);
 
             bool roiSupported = (preHeader.VersionFlags & PgfVersionFlags.PGFROI) == PgfVersionFlags.PGFROI;
+            bool version5 = (preHeader.VersionFlags & PgfVersionFlags.Version5) == PgfVersionFlags.Version5;
+            bool version7 = (preHeader.VersionFlags & PgfVersionFlags.Version7) == PgfVersionFlags.Version7;
 
             if (!PgfImageDecoder.IsModeSupported(header.Mode) ||
                 !PgfModeInfo.TryGetBppAndChannels(header.Mode, out byte expectedBpp, out byte expectedChannels) ||
@@ -182,7 +199,7 @@ internal sealed class PgfDecodeSession
 
                 return new PgfDecodeSession(
                     [], new PgfDecoderCore(reader), quant, downsample, fullWidth, fullHeight, chromaWidth, header.NLevels,
-                    header.Mode, colorTable, userData, rawChannelData, roiSupported, levelLengths);
+                    header.Mode, colorTable, userData, rawChannelData, roiSupported, version5, version7, levelLengths);
             }
 
             PgfWaveletTransform[] channels = new PgfWaveletTransform[header.Channels];
@@ -196,7 +213,7 @@ internal sealed class PgfDecodeSession
 
             return new PgfDecodeSession(
                 channels, decoder, quant, downsample, fullWidth, fullHeight, chromaWidth, header.NLevels, header.Mode, colorTable,
-                userData, rawChannelData: null, roiSupported, levelLengths);
+                userData, rawChannelData: null, roiSupported, version5, version7, levelLengths);
         }
         catch (PgfFormatException)
         {

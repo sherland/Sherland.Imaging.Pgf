@@ -124,6 +124,21 @@ public class PgfGroupBitmapTests
         }
     }
 
+    [Theory]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, false)]
+    public void DecodeSession_ExposesLegacyBitmapVersionFlags(bool clearVersion5, bool expectedVersion5, bool expectedVersion7)
+    {
+        const int width = 37, height = 23;
+        byte[] source = PackedBitmap(width, height, (x, y) => ((x * 5) + (y * 3)) % 7 < 3);
+        Assert.True(NativePgfOracle.TryEncodeLegacyBitmap(source, width, height, clearVersion5, out byte[]? pgfBytes));
+
+        PgfDecodeSession? session = PgfDecodeSession.TryOpen(pgfBytes!);
+        Assert.NotNull(session);
+        Assert.Equal(expectedVersion5, session!.Version5);
+        Assert.Equal(expectedVersion7, session.Version7);
+    }
+
     [Fact]
     public void AllOnes_RoundTripsExactly()
     {

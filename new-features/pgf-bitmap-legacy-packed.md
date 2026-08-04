@@ -236,3 +236,10 @@ validated by native-versus-managed decode in Stage 3. Resolves the first Open Qu
 are covered because the uncommon one now costs one deterministic generated case, not a committed
 large binary fixture. Focused Bitmap suite: 12/12. Full suite: 1351/1351 (1349 existing + 2 new,
 zero regressions).
+
+**Stage 2: Decode-session version flags.** `PgfDecodeSession` now retains separate `Version5` and
+`Version7` booleans from the parsed preheader, alongside its existing ROI flag. Tests open both
+native-generated legacy forms and prove the values are not inferred from each other: Version5/6
+packed Bitmap is `Version5=true, Version7=false`; the synthetic pre-Version5 fixture is false for
+both. This is zero behavior change until Stage 3 consumes the flags. Focused Bitmap suite: 14/14.
+Full suite: 1353/1353 (1351 existing + 2 new, zero regressions).

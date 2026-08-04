@@ -1,0 +1,196 @@
+# PGF codec: reusable workspaces, allocation reduction, and measured SIMD — PRD
+
+**Status: not started.**
+
+## Context
+
+`PictTag.PgfCodec` is a dependency-free managed PGF codec used by both the Desktop/server stack and
+the Browser/WASM UI, and is intended to become a standalone NuGet package. Its public decode APIs
+already rent the transient BGRA callback buffer, but its larger coefficient, subband, macroblock,
+and encoder buffers are ordinary GC allocations.
+
+The checked-in .NET 10 AVX2 BenchmarkDotNet baseline at
+`docs/benchmarks/pgfcodec/2026-08-04-b64488d-full-parity/` makes the cost concrete: at 256px/quality
+8, managed single-shot decode is 940.6 us and allocates 1,216,264 B; all-level progressive decode
+is 989.5 us and allocates 1,216,265 B; encode is 1,465.9 us and allocates 2,014,048 B. At 512px/Q8,
+managed decode allocates 4,429,871 B and encode 7,587,693 B. The managed codec remains about
+1.5-1.8x native latency on that machine.
+
+This reopens an intentionally deferred decision in `managed-pgf-codec.md`: pooling was not adopted
+because `ArrayPool<T>` can over-rent and some low-level code treated array capacity as logical data
+length. That constraint is real. Pooling before fixing it could corrupt a valid bitstream. The same
+PRD deferred SIMD because the thumbnail latency then measured as acceptable; the new allocation
+baseline justifies a fresh, evidence-led evaluation, but does not make SIMD a presumed win.
+
+## Goals
+
+1. Provide an opt-in, reusable `PgfWorkspace : IDisposable` (or an equivalently explicit resource
+   owner) that can make codec working memory allocation-free after warm-up for supported steady-state
+   decode and encode shapes.
+2. Preserve all existing APIs and their ownership semantics. A caller choosing an owned `byte[]`
+   result may still allocate that result; “allocation-free” never means that convenience result is
+   magically allocation-free.
+3. Add opt-in caller-owned output APIs so callers can avoid a final encode-array allocation/copy and
+   use a supplied destination safely.
+4. Reduce obvious independent encoder allocations, including the downsampled chroma range slices.
+5. Evaluate SIMD only where profiling demonstrates a material benefit, with byte-exact scalar
+   fallbacks on Desktop, ARM, and Browser/WASM.
+
+## Non-goals
+
+- Changing the existing callback's transient BGRA lifetime. It is returned to the pool immediately
+  after the callback today; exposing it as a persistent result would create use-after-return bugs.
+- Claiming zero allocations for first invocation (JIT, static initialization, pool population),
+  arbitrary image dimensions, or callers that request owned arrays.
+- Vectorizing entropy coding speculatively. Its control-flow- and bitstream-heavy loops are not an
+  initial SIMD candidate.
+- Adding unsafe target-specific code with no managed scalar fallback, or breaking Browser/WASM.
+- Parallel/OpenMP-style macroblock processing; it remains deliberately disabled in the native oracle
+  and is a distinct concurrency design problem.
+
+## Verified current state
+
+- `PgfImageDecoder.TryDecode` and `PgfProgressiveDecoder.TryDecodeLevel` rent only their output
+  BGRA buffers (`PgfImageDecoder.cs`, `PgfProgressiveDecoder.cs`).
+- `PgfDecodeSession` creates wavelet transforms; `PgfSubband.AllocMemory` creates `int[]` buffers,
+  and `FreeMemory` merely drops references (`PgfDecodeSession.cs`, `PgfWaveletTransform.cs`,
+  `PgfSubband.cs`). Decoder and encoder macroblocks also own fixed allocated scratch arrays.
+- `PgfImageEncoder.TryEncodeMode` allocates one full-resolution `int[]` per channel and creates
+  additional chroma arrays via `channelBuffers[c][..chromaSize]`. `PgfByteWriter` uses a growing
+  `MemoryStream`, followed by `WrittenSpan.ToArray()` for the current owned-array contract.
+- The codec and benchmark projects target `net10.0`, allow unsafe code, and contain no present
+  `Vector<T>` or hardware-intrinsic implementation. The native oracle has no explicit SIMD either.
+- `PgfColorConversion` has independent per-pixel loops; wavelet vertical lifting has independent
+  horizontal lanes. Wavelet row lifting has loop-carried neighbor dependencies, so a naive vector
+  loop is not correct. Entropy loops are branch-heavy.
+- Existing `PictTag.PgfCodec.Tests` include native-oracle full matrices plus focused color and
+  wavelet tests. `PictTag.PgfCodec.Benchmarks` already has `MemoryDiagnoser` for single-shot decode,
+  encode, and full progressive decode. No allocation-budget test exists.
+
+## Proposed architecture
+
+`PgfWorkspace` owns rented codec work buffers and is explicitly non-thread-safe. It grows to meet
+the largest requested shape and returns all arrays in `Dispose`, including exception paths. It does
+not silently attach pooled state to the existing non-disposable `PgfProgressiveDecoder`; that type's
+caller-controlled lifetime requires either a workspace supplied per operation or a separate,
+explicitly disposable session API.
+
+Every pooled buffer must carry a logical length independent of its physical array capacity. The
+logical-length audit is a gate before any `ArrayPool<T>` migration. It includes `BitStream`, entropy
+buffer consumers, subband/macroblock operations, and any `Span` created from a rented array.
+
+Output ownership is separate from workspace ownership. Preserve current callback APIs. Add an opt-in
+encode destination contract only after its behavior is specified: exact bytes written, buffer-too-
+small result, failure/partial-write behavior, and whether a streaming writer can replace a fixed
+destination when encoded size is not knowable beforehand.
+
+## Test rig and benchmark rules
+
+- Extend existing native-oracle decode/encode matrices and focused `PgfWaveletTransformTests` /
+  `PgfColorConversionTests`; output must remain byte-exact for every scalar, pooled, and SIMD path.
+- Add focused allocation tests using `GC.GetAllocatedBytesForCurrentThread`, warmed first and scoped
+  to an explicit operation/runtime. They prove the workspace contract, not a universal GC promise.
+- Run `dotnet build source/PictTag.UI.Browser` and relevant browser coverage when public workspace
+  or SIMD APIs change.
+- For every performance stage, run the existing BenchmarkDotNet matrix and archive it with
+  `Archive-PgfCodecBenchmark.ps1` into a new immutable versioned directory as required by
+  `docs/benchmarks/pgfcodec/README.md`. Report environment-specific numbers; do not generalize one
+  machine's throughput to all runtimes.
+
+## Stage sequence
+
+### Stage 1 — Performance contract, attribution, and baseline tests
+
+Document operation-specific allocation targets: existing convenience decode/encode, workspace decode
+with transient caller output, and caller-owned encode output. Extend benchmarks with a committed
+fixture/mode complement to the synthetic gradient matrix where useful, and add warmed allocation
+contract tests. Record the allocation contributors separately (output, coefficient planes,
+subbands, macroblocks, tuple bookkeeping, writer growth/final copy).
+
+Exit criteria: the current baseline is reproducible and every later stage has a precise comparison
+target; no production codec behavior changes.
+
+### Stage 2 — Logical-length safety and workspace ownership spike
+
+Audit each buffer-consuming path that can receive an oversized rent. Replace capacity-derived
+semantics with explicit logical counts before pooling. Design and test `PgfWorkspace` ownership:
+non-concurrent use, growth/reuse across image sizes, post-dispose behavior, exception cleanup, and
+the deliberate pool-clearing policy for image coefficients. Confirm the design builds and runs under
+the Browser/WASM target without relying on unsupported intrinsics, pinning, or stream behavior.
+
+Exit criteria: targeted over-rented-buffer tests pass, the workspace has no hidden retention path,
+and Browser/WASM validation passes. No large work buffer is pooled yet.
+
+### Stage 3 — Decoder workspace migration
+
+Migrate decoder transform/subband and macroblock scratch storage to workspace-owned rents, including
+the single-shot and progressive call paths. Do not make the existing non-disposable progressive
+decoder implicitly own pooled memory; introduce an explicit disposable/session shape if the chosen
+API needs retained state. Ensure all success, false-return, cancellation, and exception paths return
+rents exactly once.
+
+Exit criteria: oracle and focused transform/color suites stay byte-exact; warmed workspace decode
+meets its declared allocation contract; existing public APIs preserve behavior.
+
+### Stage 4 — Encoder buffer and output pipeline improvements
+
+First remove downsampled chroma range-copy allocations while preserving channel ownership and
+wavelet lifetime. Then migrate safe encoder work buffers to the workspace. Finally add the opt-in
+caller-owned output destination or writer API with exact byte-count and failure semantics, retaining
+the current `out byte[]` method unchanged. Measure each sub-step separately rather than bundling
+them into one unverifiable performance claim.
+
+Exit criteria: encoding remains native-oracle/self-round-trip correct; each sub-step has a benchmark
+comparison; the caller-owned-output path avoids final owned-output allocation by contract.
+
+### Stage 5 — Profile-gated SIMD experiments
+
+Profile after pooling, because removed GC pressure may change the hotspot ranking. Experiment first
+with BGRA/YUVA color conversion, then independently with the vertical-lifting horizontal lanes.
+Each experiment must retain a scalar tail and fallback; guard intrinsic use by supported hardware and
+validate the fallback under Browser/WASM. Reject any experiment that does not meet a predeclared,
+meaningful improvement threshold on its measured target or that risks rounding, clamping, overflow,
+or bit-exactness changes.
+
+Exit criteria per accepted SIMD path: byte-exact full/focused test matrix, scalar fallback coverage,
+Browser/WASM verification, and an archived benchmark showing the measured benefit. A rejected
+experiment is documented and removed rather than retained as complexity without payoff.
+
+### Stage 6 — Documentation and final performance record
+
+Update `docs/PGF-CODEC.md` with the exact opt-in allocation contract, ownership/lifetime rules,
+supported SIMD acceleration and fallbacks, and any intentionally retained allocations. Archive the
+final BenchmarkDotNet comparison and update this PRD's Progress log with actual test counts and
+findings.
+
+Exit criteria: public documentation matches shipped APIs and all benchmark evidence is versioned.
+
+## Acceptance criteria / Definition of Done
+
+- Existing APIs remain source- and behavior-compatible.
+- The workspace contract is explicit, testable, and does not leak pooled buffers through a
+  non-disposable API.
+- Logical length is never inferred from an over-rented array's capacity in codec data paths.
+- The chosen workspace operations meet their documented warmed allocation contract without changing
+  decoded pixels or encoded PGF bytes.
+- Every retained SIMD path is byte-exact, has a scalar fallback, and has archived measured evidence.
+- Desktop and Browser/WASM builds/tests relevant to the changed APIs pass.
+
+## Open questions
+
+- Whether encode's destination contract is best expressed as `TryEncode(Span<byte>, out int
+  bytesWritten)` plus sizing support, an `IBufferWriter<byte>` path, or both. Stage 4 must decide
+  from real header-patching/output-size constraints rather than assume a fixed destination suffices.
+- Whether a reusable progressive decoder session should become disposable or accept a workspace per
+  decode operation. Stage 3 must choose the smallest API that makes pooled-memory lifetime explicit.
+- The SIMD improvement threshold and target matrix. Stage 5 sets these from Stage 4 profiles rather
+  than inventing one now.
+
+## Progress log
+
+- Stage 1 — pending.
+- Stage 2 — pending.
+- Stage 3 — pending.
+- Stage 4 — pending.
+- Stage 5 — pending.
+- Stage 6 — pending.

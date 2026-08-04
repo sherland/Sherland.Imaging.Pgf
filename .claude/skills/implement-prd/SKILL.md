@@ -169,9 +169,6 @@ change instead of one large diff at the end.
 
 - **Never add a Claude/Anthropic co-author line** — this repo's `CLAUDE.md` states this explicitly
   and it applies to every commit here, no exceptions.
-- Commit subject: short, references the PRD and stage (`Stage N: <what that stage did>`, matching
-  this repo's own `git log` style for these PRDs). Body: what changed and why, not a restatement of
-  the diff.
 - Stage the exact files that stage touched (new + modified) explicitly rather than `git add -A`, and
   review `git status`/`git diff --stat` before committing.
 - Each stage's commit includes that stage's own Progress log entry (section 2, step 7) alongside its
@@ -183,6 +180,50 @@ change instead of one large diff at the end.
   rule for everything outside `/implement-prd` — still confirm before committing unrelated work, and
   never force-push, amend a previous stage's commit, or touch history that predates this skill's own
   run.
+
+### Commit message wording
+
+Past PRD runs (`pgf-all-image-modes.md`, `pgf-user-data-and-small-images.md`, `pgf-roi-support.md`,
+`pgf-real-level-lengths.md`) settled into a specific, deliberate shape — reproduce it, not just
+"a short subject and a body":
+
+**Subject line** — a noun phrase, not an imperative sentence: `Stage N: <what that stage built>`
+(e.g. `Stage 6: full ROI round-trip matrix + compression-ratio finding`). When two stages land in
+one commit because one's exit test genuinely can't be proven without the other, use
+`Stages N-M: <what both built>` and explain the coupling in the body's first sentence — don't do
+this as a shortcut to skip separate commits, only when the dependency is real (see `Stages 2-3` in
+`pgf-real-level-lengths.md`'s history). The Documentation stage's subject is
+`Stage N (Documentation): <prd-filename>.md done, all N stages shipped` — keep the `Stage N` prefix
+so it still sorts and reads as part of the same numbered sequence in `git log`, not a separate kind
+of commit.
+
+**Body** — dense, technical prose paragraphs (not a restatement of the diff, not a bulleted
+changelog — reserve bullets for a commit that genuinely bundles several separate items, like adding
+multiple sibling PRDs at once). Open with a present-tense, third-person verb describing what the
+commit *does* — "Ports…", "Adds…", "Resolves…", "Flips…", "Covers…", "Confirms…" — not imperative
+mood ("Port…", "Add…"). Within that prose, include whichever of these actually apply to the stage:
+
+- **Ground the claim in a concrete source of truth**, named specifically enough to check: an exact
+  native-reference citation when porting (`direct port of CEncoder::UpdateLevelLength
+  (Encoder.cpp:202-234)`), the specific existing method/API being mirrored, or the exact PRD section
+  being satisfied — whatever the stage's correctness actually rests on. Vague claims like "matches
+  the reference" without naming what was checked are under the bar here.
+- **Flag real findings explicitly, in words that say what kind of finding it was** — a genuine bug
+  found and fixed ("Found (and fixed) a wrong test expectation along the way, not a port defect: …"),
+  a real finding worth recording ("Real finding: …"), or a scope decision with its reason ("Scope
+  decision: the reverse leg … is not exercised because …"). Don't bury a bug fix inside a plain
+  description of the change as if it were expected behavior.
+- **Resolve any PRD "Open Question" this stage answers, by name**: `Resolves this PRD's second Open
+  Question empirically: <the actual decision + the reason>` — the reasoning goes in the commit body
+  itself, not just a pointer to "see Progress log."
+- **Close with a real, exact test-count line**, in this shape:
+  `Full suite: A/A (B existing + C new, zero regressions).` (or the honest variant if something
+  failed and was fixed within the stage). Always real numbers pulled from the actual test run just
+  performed, never estimated or carried over from a previous stage.
+
+The throughline across all of this: every sentence should carry information — a decision, a finding,
+a reason, a number — not describe what a diff already shows. If a sentence could be deleted without
+losing anything a reader couldn't get from `git diff`, it doesn't belong in the body.
 
 ## 6. Final report to the user
 

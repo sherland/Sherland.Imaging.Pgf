@@ -1,7 +1,7 @@
 # PGF codec: legacy pre-Version5 interleaved decode — PRD
 
-**Status: partially implemented incidentally by `pgf-bitmap-legacy-packed.md`; broad non-Bitmap
-coverage remains to be staged.** Originally closed a gap documented in [`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md)'s
+**Status: in progress — implementation landed incidentally by `pgf-bitmap-legacy-packed.md`; this
+PRD now owns the required all-mode verification matrix.** Originally closed a gap documented in [`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md)'s
 "Not yet ported — real gaps against full C++ parity" list ("Legacy pre-Version5 entropy coding"). See
 [`pgf-legacy-native-oracle-sourcing.md`](pgf-legacy-native-oracle-sourcing.md) for a real investigation
 into whether a historical native oracle is obtainable for this gap specifically (short answer: no,
@@ -172,20 +172,27 @@ build, ever — see Non-goals.
   differ in width/height at some level (odd/prime dimensions, matching this test rig's own established
   `TestBitmaps.EdgeCaseDimensions` convention) — exercises the two documented trailing-fixup branches
   directly, not just the common equal-size case.
+- **All supported image modes at the entropy boundary**: a generic native pre-Version5 writer uses
+  real `CPGFImage::ImportBitmap`/color/wavelet preparation and only replaces the absent interleaved
+  output step. For every mode and channel, compare native `pgf_debug_decode_channel` level-0
+  coefficients against the managed `PgfDecodeSession` result. This isolates generic entropy
+  correctness from the already-covered per-mode BGRA conversions, and includes a deterministic large
+  RGBA case without committing multi-megabyte files.
 
 ## Stage sequence
 
-1. **Fail-closed `Version5` check** (Goal 1) — small, independently valuable, ships regardless of the
-   rest. Exit test: rejecting a cleared-`Version5`-flag header; full regression suite stays green.
-2. **Port `DecodeInterleaved`** (Goal 2) onto `PgfDecoderCore`, wired into `PgfDecodeSession`'s
-   dispatch. Not yet independently testable beyond compiling and not regressing the modern path (no
-   fixture exists yet).
-3. **Test-only fixture generator** (Goal 3) — the interleaved-format encoder invented for this PRD.
-4. **Self-consistency round-trip matrix**: the Test rig's own cases, including the size-mismatch
-   edge cases, run and green.
-5. **Documentation**: `docs/PGF-CODEC.md`'s "Not yet ported" list updated (move this item, honestly
-   describing the self-consistency-only verification — don't imply native cross-checking that doesn't
-   exist here); this PRD's own Progress log filled in.
+1. **Reconcile the incidental implementation** — record that `PgfDecoderCore.DecodeInterleaved`, its
+   Version5 dispatch, and a Bitmap-only synthetic fixture generator already shipped while closing the
+   Bitmap PRD. Replace the outdated self-consistency plan with native fixture writing plus native
+   channel-level decode comparison.
+2. **Generic native pre-Version5 fixture writer** — generalize the test-only writer to every supported
+   image mode, retaining real native import/color/wavelet setup and replacing only the absent
+   interleaved entropy output step. Exit test: native decoder opens and channel-decodes each fixture.
+3. **All-mode channel-level matrix** — compare every native-decoded level-0 channel against the
+   managed `PgfDecodeSession` result, across ordinary and odd dimensions plus a large multi-level
+   RGBA image. Exit test: matrix green and modern suites unchanged.
+4. **Documentation** — mark this PRD done, reconcile `docs/PGF-CODEC.md` and this PRD's Progress log,
+   and remove stale claims that pre-Version5 decoding is only Bitmap-proven.
 
 ## Acceptance criteria / Definition of Done
 
@@ -227,3 +234,10 @@ pre-Version5 session. Native-versus-managed decode is currently proven through l
 including odd dimensions and a 2049x1027 case; this PRD remains partially open only because its own
 broader multi-mode fixture matrix has not been separately run. See that PRD's Stage 1-3 entries and
 commit `a18e1a9` for the complete implementation record.
+
+**Stage 1: Reconciled the incidental implementation.** User-directed follow-up promotes the missing
+all-mode verification from a note into this PRD's remaining scope. The original fail-closed and
+C#-only-generator stages are superseded: the decoder already handles Version5 dispatch and native
+fixture writing can validate a real C++ decoder before comparing the managed coefficient arrays.
+The revised stages deliberately test at the channel/entropy boundary so every mode is covered without
+duplicating the established mode-specific BGRA test suite.

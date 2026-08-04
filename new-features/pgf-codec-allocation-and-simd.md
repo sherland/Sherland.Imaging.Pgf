@@ -145,10 +145,18 @@ warmed workspace path's allocation test assert its actual contract.
 Exit criteria: repeated supported decode operations using the explicit reusable path meet the
 documented warmed allocation budget, and disposal returns all rents exactly once.
 
-### Stage 4 — Encoder buffer and output pipeline improvements
+### Stage 4a — Eliminate downsampled chroma copies
 
-First remove downsampled chroma range-copy allocations while preserving channel ownership and
-wavelet lifetime. Then migrate safe encoder work buffers to the workspace. Finally add the opt-in
+Remove downsampled chroma range-copy allocations while preserving channel ownership and wavelet
+lifetime. The transform's declared dimensions, not a backing array's capacity, are its logical
+extent.
+
+Exit criteria: encoding remains native-oracle/self-round-trip correct and no downsampled chroma
+prefix is copied solely to produce a shorter array.
+
+### Stage 4b — Encoder workspace and output pipeline
+
+Migrate safe encoder work buffers to the workspace. Then add the opt-in
 caller-owned output destination or writer API with exact byte-count and failure semantics, retaining
 the current `out byte[]` method unchanged. Measure each sub-step separately rather than bundling
 them into one unverifiable performance claim.
@@ -226,6 +234,10 @@ arrays. The PRD therefore splits the original Stage 3: new Stage 3b will add a r
 session/lease rather than falsely claim that the convenience API is allocation-free. Focused tests:
 3/3 green. Full suite: 1381/1381 green (1380 existing + 1 new, zero regressions).
 - Stage 3b — pending.
-- Stage 4 — pending.
+**Stage 4a — done.** Removed `channelBuffers[c][..chromaSize]`: downsampling already compacts
+chroma into the source plane prefix, and `PgfWaveletTransform` uses its supplied dimensions for all
+logical reads and writes. This removes one allocation/copy for every downsampled chroma channel
+without changing emitted bytes. Focused encoder tests: 18/18 green. Full suite: 1381/1381 green.
+- Stage 4b — pending.
 - Stage 5 — pending.
 - Stage 6 — pending.

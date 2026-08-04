@@ -186,8 +186,12 @@ internal static class PgfImageEncoder
         channels[0] = new PgfWaveletTransform(width, height, header.NLevels, channelBuffers[0]);
         for (int c = 1; c < channelCount; c++)
         {
-            int[] buffer = downsample ? channelBuffers[c][..chromaSize] : channelBuffers[c];
-            channels[c] = new PgfWaveletTransform(chromaWidth, chromaHeight, header.NLevels, buffer);
+            // Downsample compacted the chroma samples into the prefix of the already-owned full
+            // channel plane. The transform's declared width/height bound every read/write, so a
+            // range slice here would only allocate and copy that same prefix before the first
+            // transform. Keep the original backing plane instead (pgf-codec-allocation-and-simd.md
+            // Stage 4a); PgfWaveletTransform never infers its logical extent from array capacity.
+            channels[c] = new PgfWaveletTransform(chromaWidth, chromaHeight, header.NLevels, channelBuffers[c]);
         }
 
         if (roi)

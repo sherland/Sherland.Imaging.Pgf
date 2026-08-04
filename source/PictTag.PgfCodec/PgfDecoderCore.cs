@@ -185,10 +185,9 @@ internal sealed class PgfDecoderCore
     /// <c>m_data[pos] = v</c> (Subband.h:102), so nothing subband-specific is needed at this layer -
     /// see managed-pgf-codec.md's Stage 5 notes.
     ///
-    /// <c>DecodeInterleaved</c> (the pre-Version5 HL/LH decode path) is deliberately not ported:
-    /// this port's encoder always sets <see cref="PgfVersionFlags.Version5"/>, and so does every
-    /// modern real PGF file, so <c>CPGFImage::Read</c>'s <c>else</c> branch calling it is dead code
-    /// for this port's real-world scope.</summary>
+    /// The pre-Version5 HL/LH path uses <see cref="DecodeInterleaved"/> instead; unlike this
+    /// method's independent <see cref="PgfConstants.LinBlockSize"/> bands, it consumes a paired
+    /// <see cref="PgfConstants.InterBlockSize"/> traversal from one shared macroblock stream.</summary>
     public void Partition(Span<int> band, int quantParam, int width, int height, int startPos, int pitch)
     {
         int wq = Math.DivRem(width, PgfConstants.LinBlockSize, out int wr);
@@ -268,4 +267,103 @@ internal sealed class PgfDecoderCore
             finalPos += wRest;
         }
     }
+
+    /// <summary>Direct port of <c>CDecoder::DecodeInterleaved</c> (Decoder.cpp:343-454), the
+    /// pre-Version5 HL/LH entropy layout. Native pairs each 4x4 HL block with the corresponding LH
+    /// block in one coefficient stream, then handles the genuinely possible one-row/one-column
+    /// subband size mismatch explicitly. This is intentionally not reduced to calls to
+    /// <see cref="Partition"/>: doing so would consume all HL values before LH and silently desync
+    /// the historical bitstream (pgf-bitmap-legacy-packed.md Stage 3).</summary>
+    public void DecodeInterleaved(PgfSubband hlBand, PgfSubband lhBand, int level, int quantParam)
+    {
+        if (!hlBand.AllocMemory() || !lhBand.AllocMemory())
+        {
+            throw new PgfFormatException("Failed to allocate legacy interleaved subband memory.");
+        }
+
+        Span<int> hl = hlBand.GetBuffer();
+        Span<int> lh = lhBand.GetBuffer();
+        int lhHq = Math.DivRem(lhBand.Height, PgfConstants.InterBlockSize, out int lhHr);
+        int hlWq = Math.DivRem(hlBand.Width, PgfConstants.InterBlockSize, out int hlWr);
+        int hlws = hlBand.Width - PgfConstants.InterBlockSize;
+        int hlwr = hlBand.Width - hlWr;
+        int lhws = lhBand.Width - PgfConstants.InterBlockSize;
+        int lhwr = lhBand.Width - hlWr;
+        int hlBase = 0, lhBase = 0;
+
+        quantParam -= level;
+        if (quantParam < 0) quantParam = 0;
+
+        for (int i = 0; i < lhHq; i++)
+        {
+            int hlBase2 = hlBase, lhBase2 = lhBase;
+            for (int j = 0; j < hlWq; j++)
+            {
+                int hlPos = hlBase2, lhPos = lhBase2;
+                for (int y = 0; y < PgfConstants.InterBlockSize; y++)
+                {
+                    for (int x = 0; x < PgfConstants.InterBlockSize; x++)
+                    {
+                        DequantizeValue(hl, hlPos++, quantParam);
+                        DequantizeValue(lh, lhPos++, quantParam);
+                    }
+                    hlPos += hlws;
+                    lhPos += lhws;
+                }
+                hlBase2 += PgfConstants.InterBlockSize;
+                lhBase2 += PgfConstants.InterBlockSize;
+            }
+            int restHlPos = hlBase2, restLhPos = lhBase2;
+            for (int y = 0; y < PgfConstants.InterBlockSize; y++)
+            {
+                for (int x = 0; x < hlWr; x++)
+                {
+                    DequantizeValue(hl, restHlPos++, quantParam);
+                    DequantizeValue(lh, restLhPos++, quantParam);
+                }
+                if (lhBand.Width > hlBand.Width) DequantizeValue(lh, restLhPos, quantParam);
+                restHlPos += hlwr;
+                restLhPos += lhwr;
+                hlBase += hlBand.Width;
+                lhBase += lhBand.Width;
+            }
+        }
+
+        int remainderHlBase = hlBase, remainderLhBase = lhBase;
+        for (int j = 0; j < hlWq; j++)
+        {
+            int hlPos = remainderHlBase, lhPos = remainderLhBase;
+            for (int y = 0; y < lhHr; y++)
+            {
+                for (int x = 0; x < PgfConstants.InterBlockSize; x++)
+                {
+                    DequantizeValue(hl, hlPos++, quantParam);
+                    DequantizeValue(lh, lhPos++, quantParam);
+                }
+                hlPos += hlws;
+                lhPos += lhws;
+            }
+            remainderHlBase += PgfConstants.InterBlockSize;
+            remainderLhBase += PgfConstants.InterBlockSize;
+        }
+        int finalHlPos = remainderHlBase, finalLhPos = remainderLhBase;
+        for (int y = 0; y < lhHr; y++)
+        {
+            for (int x = 0; x < hlWr; x++)
+            {
+                DequantizeValue(hl, finalHlPos++, quantParam);
+                DequantizeValue(lh, finalLhPos++, quantParam);
+            }
+            if (lhBand.Width > hlBand.Width) DequantizeValue(lh, finalLhPos, quantParam);
+            finalHlPos += hlwr;
+            finalLhPos += lhwr;
+            hlBase += hlBand.Width;
+        }
+
+        if (hlBand.Height > lhBand.Height)
+        {
+            for (int j = 0; j < hlBand.Width; j++) DequantizeValue(hl, hlBase + j, quantParam);
+        }
+    }
+
 }

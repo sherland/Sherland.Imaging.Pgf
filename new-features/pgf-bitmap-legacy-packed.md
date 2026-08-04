@@ -243,3 +243,15 @@ native-generated legacy forms and prove the values are not inferred from each ot
 packed Bitmap is `Version5=true, Version7=false`; the synthetic pre-Version5 fixture is false for
 both. This is zero behavior change until Stage 3 consumes the flags. Focused Bitmap suite: 14/14.
 Full suite: 1353/1353 (1351 existing + 2 new, zero regressions).
+
+**Stage 3: Legacy packed Bitmap decode.** Added a separate pre-Version7 packed-byte BGRA conversion
+that restores each stored byte with `+128`, then expands its MSB-first bits; it uses `width` stride
+for Version5/6 and `w2` for pre-Version5. The synthetic pre-Version5 fixture made a hidden
+dependency explicit: decoding that case also requires a direct `CDecoder::DecodeInterleaved`
+(Decoder.cpp:343-454) port, now selected by `PgfDecodeSession` before color conversion. This is a
+genuine scope expansion approved during implementation, not a header-flag workaround. Native and
+managed decoders agree across odd small/medium dimensions and a 2049x1027 fixture with an 8.4 MiB
+BGRA result; generated data keeps that coverage deterministic without committing opaque large
+binaries. Resolves the second Open Question: conversion stays a separate method because its input
+is packed bytes with a version-dependent stride, unlike Version7's one-value-per-pixel input.
+Focused Bitmap suite: 21/21. Full suite: 1360/1360 (1353 existing + 7 new, zero regressions).

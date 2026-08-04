@@ -290,8 +290,17 @@ internal sealed class PgfDecodeSession
                     wt.GetSubband(level, PgfSubbandOrientation.Ll).PlaceTile(Decoder, Quant);
                 }
 
-                wt.GetSubband(level, PgfSubbandOrientation.Hl).PlaceTile(Decoder, Quant);
-                wt.GetSubband(level, PgfSubbandOrientation.Lh).PlaceTile(Decoder, Quant);
+                if (Version5)
+                {
+                    wt.GetSubband(level, PgfSubbandOrientation.Hl).PlaceTile(Decoder, Quant);
+                    wt.GetSubband(level, PgfSubbandOrientation.Lh).PlaceTile(Decoder, Quant);
+                }
+                else
+                {
+                    Decoder.DecodeInterleaved(
+                        wt.GetSubband(level, PgfSubbandOrientation.Hl),
+                        wt.GetSubband(level, PgfSubbandOrientation.Lh), level, Quant);
+                }
                 wt.GetSubband(level, PgfSubbandOrientation.Hh).PlaceTile(Decoder, Quant);
             }
 

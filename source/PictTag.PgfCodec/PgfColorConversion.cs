@@ -753,6 +753,36 @@ internal static class PgfColorConversion
         }
     }
 
+    /// <summary>Direct port of <c>CPGFImage::GetBitmap</c>'s pre-Version7 Bitmap branch
+    /// (PGFimage.cpp:1866-1883). Unlike <see cref="DecodeYToBitmapBgra"/>'s Version7 values, each
+    /// reconstructed channel element is already one MSB-first packed output byte, stored offset by
+    /// <see cref="YuvOffset8"/>. Version5/6 keeps a pixel-width channel stride; pre-Version5 uses
+    /// the packed-byte stride and is paired with <c>DecodeInterleaved</c> at entropy decode time.
+    /// Kept separate from the modern method because the two inputs have incompatible meanings even
+    /// though both ultimately produce the same BGRA pixels (pgf-bitmap-legacy-packed.md Stage 3).</summary>
+    public static void DecodeLegacyPackedBitmapToBgra(
+        ReadOnlySpan<int> y, int width, int height, bool version5, Span<byte> bgra)
+    {
+        int rowBytes = (width + 7) / 8;
+        int channelStride = version5 ? width : rowBytes;
+        int pixel = 0;
+
+        for (int row = 0; row < height; row++)
+        {
+            int yOffset = row * channelStride;
+            for (int x = 0; x < width; x++)
+            {
+                byte packed = Clamp8(y[yOffset + (x >> 3)] + YuvOffset8);
+                byte value = (packed & (0x80 >> (x & 7))) != 0 ? (byte)255 : (byte)0;
+                bgra[pixel] = value;
+                bgra[pixel + 1] = value;
+                bgra[pixel + 2] = value;
+                bgra[pixel + 3] = 255;
+                pixel += 4;
+            }
+        }
+    }
+
     // ---- Group H (pgf-all-image-modes.md): RGB12/RGB16 - genuinely bespoke packed sub-byte/
     // sub-word formats, never downsample-eligible (ASSERT(!m_downsample) in both GetBitmap cases,
     // PGFimage.cpp:2445,2488 - confirmed, matching PgfModeInfo.SupportsDownsample). Neither mode's

@@ -43,6 +43,25 @@ public class PgfGroupBitmapTests
         return ((packed[byteIndex] >> bitIndex) & 1) != 0;
     }
 
+    private static void AssertBgraMatchesPackedBits(ReadOnlySpan<byte> bgra, ReadOnlySpan<byte> packed, int width, int height)
+    {
+        int rowBytes = (width + 7) / 8;
+        int pixel = 0;
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                byte packedByte = packed[(y * rowBytes) + (x / 8)];
+                byte expected = (packedByte & (0x80 >> (x % 8))) != 0 ? (byte)255 : (byte)0;
+                Assert.Equal(expected, bgra[pixel]);
+                Assert.Equal(expected, bgra[pixel + 1]);
+                Assert.Equal(expected, bgra[pixel + 2]);
+                Assert.Equal(255, bgra[pixel + 3]);
+                pixel += 4;
+            }
+        }
+    }
+
     [Fact]
     public void ManagedEncodeThenManagedDecode_RoundTripsExactlyAtQuality0()
     {
@@ -137,6 +156,38 @@ public class PgfGroupBitmapTests
         Assert.NotNull(session);
         Assert.Equal(expectedVersion5, session!.Version5);
         Assert.Equal(expectedVersion7, session.Version7);
+    }
+
+    [Theory]
+    [InlineData(37, 23, false)]
+    [InlineData(37, 23, true)]
+    [InlineData(101, 73, false)]
+    [InlineData(101, 73, true)]
+    [InlineData(257, 131, false)]
+    [InlineData(257, 131, true)]
+    public void NativeLegacyFixture_ManagedDecodeMatchesNativeDecoder(int width, int height, bool clearVersion5)
+    {
+        byte[] source = PackedBitmap(width, height, (x, y) => ((x * 17) + (y * 29) + (x * y)) % 13 < 6);
+        Assert.True(NativePgfOracle.TryEncodeLegacyBitmap(source, width, height, clearVersion5, out byte[]? pgfBytes));
+        Assert.True(NativePgfOracle.TryDecodeRaw(pgfBytes!, bpp: 1, [0], out byte[]? nativePacked, out _, out _));
+
+        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, _, _) => bgra.ToArray(), out byte[]? managedBgra));
+        AssertBgraMatchesPackedBits(managedBgra!, nativePacked!, width, height);
+    }
+
+    [Fact]
+    public void NativeLegacyFixture_LargeMultiLevelManagedDecodeMatchesNativeDecoder()
+    {
+        // 2049 x 1027 yields an 8.4 MiB rendered BGRA result and exercises numerous macroblocks,
+        // levels, non-aligned packed rows, and the legacy interleaved fixups without committing any
+        // opaque megabyte-scale fixture binary.
+        const int width = 2049, height = 1027;
+        byte[] source = PackedBitmap(width, height, (x, y) => ((x * 1103515245L + y * 12345) & 0x10000) != 0);
+        Assert.True(NativePgfOracle.TryEncodeLegacyBitmap(source, width, height, clearVersion5: true, out byte[]? pgfBytes));
+        Assert.True(NativePgfOracle.TryDecodeRaw(pgfBytes!, bpp: 1, [0], out byte[]? nativePacked, out _, out _));
+
+        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, _, _) => bgra.ToArray(), out byte[]? managedBgra));
+        AssertBgraMatchesPackedBits(managedBgra!, nativePacked!, width, height);
     }
 
     [Fact]

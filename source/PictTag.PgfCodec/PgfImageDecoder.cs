@@ -129,7 +129,15 @@ public static class PgfImageDecoder
                 PgfColorConversion.DecodeYuvOffset31ToGray(channelData[0].Data, width, height, bgra);
                 break;
             case PgfConstants.ImageModeBitmap:
-                PgfColorConversion.DecodeYToBitmapBgra(channelData[0].Data, width, height, bgra);
+                if (session.Version7)
+                {
+                    PgfColorConversion.DecodeYToBitmapBgra(channelData[0].Data, width, height, bgra);
+                }
+                else
+                {
+                    PgfColorConversion.DecodeLegacyPackedBitmapToBgra(
+                        channelData[0].Data, width, height, session.Version5, bgra);
+                }
                 break;
             case PgfConstants.ImageModeRGB12:
                 PgfColorConversion.DecodeYuvToRgb12Bgra(channelData[0].Data, channelData[1].Data, channelData[2].Data, width, height, bgra);

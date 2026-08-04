@@ -1,6 +1,7 @@
 # PGF codec: legacy pre-Version5 interleaved decode — PRD
 
-**Status: not started.** Closes a gap documented in [`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md)'s
+**Status: partially implemented incidentally by `pgf-bitmap-legacy-packed.md`; broad non-Bitmap
+coverage remains to be staged.** Originally closed a gap documented in [`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md)'s
 "Not yet ported — real gaps against full C++ parity" list ("Legacy pre-Version5 entropy coding"). See
 [`pgf-legacy-native-oracle-sourcing.md`](pgf-legacy-native-oracle-sourcing.md) for a real investigation
 into whether a historical native oracle is obtainable for this gap specifically (short answer: no,
@@ -218,6 +219,11 @@ build, ever — see Non-goals.
 
 ## Progress log
 
-_(Empty — fill in as each stage above is actually implemented and tested, following
-`pgf-roi-support.md`'s own progress-log convention: what was built, what was found, what broke and
-how it was fixed, real test counts.)_
+**Incidental implementation while shipping `pgf-bitmap-legacy-packed.md`.** That PRD needed a valid
+pre-Version5 Bitmap fixture to exercise its `yw=w2` stride. The investigation proved that clearing
+Version5 alone invalidates a tiled payload, so it added a test-only native reverse-`DecodeInterleaved`
+writer, then ported `CDecoder::DecodeInterleaved` into `PgfDecoderCore` and dispatched it for every
+pre-Version5 session. Native-versus-managed decode is currently proven through legacy Bitmap fixtures,
+including odd dimensions and a 2049x1027 case; this PRD remains partially open only because its own
+broader multi-mode fixture matrix has not been separately run. See that PRD's Stage 1-3 entries and
+commit `a18e1a9` for the complete implementation record.

@@ -1,6 +1,6 @@
 # PGF codec: Bitmap's legacy pre-Version7 packed sub-variant — PRD
 
-**Status: not started.** Closes a gap documented in [`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md)'s
+**Status: done, all 4 stages shipped.** Closes a gap documented in [`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md)'s
 "Not yet ported — real gaps against full C++ parity" list ("Bitmap's legacy pre-Version7 packed
 sub-variant"). **Before starting Goal 2 below**, read
 [`pgf-legacy-native-oracle-sourcing.md`](pgf-legacy-native-oracle-sourcing.md)'s "Finding B": a real,
@@ -255,3 +255,10 @@ BGRA result; generated data keeps that coverage deterministic without committing
 binaries. Resolves the second Open Question: conversion stays a separate method because its input
 is packed bytes with a version-dependent stride, unlike Version7's one-value-per-pixel input.
 Focused Bitmap suite: 21/21. Full suite: 1360/1360 (1353 existing + 7 new, zero regressions).
+
+**Stage 4 (Documentation): complete.** Updated `docs/PGF-CODEC.md`'s mode support and remaining-gap
+sections: Bitmap now records all three real eras, and the completed interleaved decode is no longer
+listed as missing. Corrected `PgfColorConversion`'s Group G comment to the same three-way reality.
+The PRD's original two-stride test premise is also corrected in its architecture/test-rig sections:
+pre-Version5 requires a matching interleaved payload, not a cleared flag on tiled bytes. Full suite:
+1360/1360 (1353 existing + 7 new, zero regressions).

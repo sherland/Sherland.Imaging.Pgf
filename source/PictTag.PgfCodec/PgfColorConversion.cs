@@ -680,23 +680,13 @@ internal static class PgfColorConversion
         }
     }
 
-    // ---- Group G (pgf-all-image-modes.md): Bitmap (1bpp) - the structural odd one out. Only the
-    // "new unpacked version since version 7" sub-variant is ported: RgbToYuv's own Bitmap case
-    // (PGFimage.cpp:1398-1444) has the pre-Version7 packed-input alternative permanently disabled
-    // (commented out in the real source, not just unreachable at runtime) - this port's encoder
-    // always sets Version7 (PgfConstants.EncoderVersionFlags), matching every real file this port's
-    // own encoder can ever produce. The pre-Version7 GetBitmap decode branch is real, reachable code
-    // in the native source (gated on the *file's own* version flag, not a compile-time constant like
-    // the encode side) - but it stores channel data at a genuinely different width (one DataT per
-    // *byte*, not per *pixel* - PGFimage.cpp:1866-1883's yw=w2 rebinding), which would require
-    // PgfDecodeSession's channel-allocation logic to special-case Bitmap's file version, for a code
-    // path no file in this codebase's own test corpus or any real digiKam thumbnail could ever
-    // exercise (predates Version5, over a decade before real PGF thumbnails existed) - deliberately
-    // not ported, matching this PRD's own "don't guess at untested bit-packing logic... document as
-    // an explicitly-unverified/best-effort port" guidance for exactly this situation. Internally, one
-    // DataT per *pixel* (values 0 or 1, no YuvOffset8 centering - matching the real source's own
-    // choice not to offset Bitmap data) - the packed-byte representation only ever exists at the
-    // encode input / decode output boundary.
+    // ---- Group G (pgf-all-image-modes.md): Bitmap (1bpp), structurally unusual because its
+    // pre-Version7 decode path stores one YUV-offset packed byte per channel element rather than
+    // Version7's one 0/1 element per pixel. The native three-way split is now complete:
+    // Version7+ uses DecodeYToBitmapBgra; Version5/6-without-Version7 uses packed values at pixel
+    // stride; pre-Version5 additionally uses interleaved HL/LH entropy and packed-byte stride. The
+    // production encoder remains intentionally modern-only because its native legacy-input branch is
+    // permanently disabled; legacy support is decode-only (pgf-bitmap-legacy-packed.md Stage 3).
 
     /// <summary>Direct port of <c>RgbToYuv</c>'s <c>ImageModeBitmap</c> case, the only active branch
     /// (PGFimage.cpp:1409-1425): unpacks <paramref name="packedBits"/> (MSB-first, <c>(width+7)/8</c>

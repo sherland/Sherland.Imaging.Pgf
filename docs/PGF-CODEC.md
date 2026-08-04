@@ -39,9 +39,8 @@ not permanent decisions.
 - **Every image mode the format defines** — RGBA/32bpp (4 channels — B, G, R, A, the one format
   real digiKam thumbnails and this app's own encoder actually use) plus GrayScale, IndexedColor
   (paletted, with a real color table), HSLColor, HSBColor, LabColor/Lab48, RGBColor, Gray16, RGB48,
-  CMYKColor, CMYK64, Gray32, Bitmap (1bpp, modern/Version7 packing only — see
-  [`new-features/pgf-all-image-modes.md`](../new-features/pgf-all-image-modes.md)'s own Progress log
-  for why the legacy pre-Version7 sub-variant was deliberately left unported), RGB12, and RGB16.
+  CMYKColor, CMYK64, Gray32, Bitmap (1bpp, all three real packing/entropy eras: Version7+ unpacked,
+  Version5/6 packed, and pre-Version5 packed + interleaved), RGB12, and RGB16.
   Decode always normalizes to BGRA32 regardless of source mode (`PgfImageDecoder.ConvertToBgra`'s
   mode dispatch) — every real consumer of a decoded bitmap wants pixels it can render, not a
   mode-specific raw buffer. `PgfModeInfo` is the canonical per-mode (bpp, channels,
@@ -153,30 +152,6 @@ narrow usage (digiKam's thumbnail shape). Publishing as a general-purpose NuGet 
 justification; treat these as the real backlog, roughly in order of how likely a general consumer is
 to actually hit them:
 
-- **Legacy pre-Version5 entropy coding** (`DecodeInterleaved`, the older HL/LH interleaved decode
-  scheme) — real, reachable native decode-side code (the non-`Version5` `else` branch of
-  `CPGFImage::Read`, `PgfDecoderCore.cs:188-189`'s own doc comment cites the exact spot) for genuinely
-  older PGF files; this port's decoder only implements the modern Version5+ tile-based scheme. A
-  general library claiming PGF decode support would be expected to open files from before this scheme
-  existed. Decode-only (the reference encoder has never had a counterpart, at any point in its
-  history) and, uniquely among this list, without an obtainable independent native oracle to
-  cross-check against — confirmed by real investigation, not assumption, see
-  [`new-features/pgf-legacy-native-oracle-sourcing.md`](../new-features/pgf-legacy-native-oracle-sourcing.md)
-  — see [`new-features/pgf-legacy-interleaved-decode.md`](../new-features/pgf-legacy-interleaved-decode.md)
-  for the full grounding and why.
-- **Bitmap's legacy pre-Version7 packed sub-variant** — the modern ("new unpacked since Version7")
-  sub-variant is fully supported; the older packed format is real, reachable decode-side code in the
-  native source, storing channel data at a different width entirely (one `DataT` per *byte*, not per
-  *pixel*). Decode-only. See [`new-features/pgf-bitmap-legacy-packed.md`](../new-features/pgf-bitmap-legacy-packed.md)
-  for the full grounding — including a correction to this doc's own earlier framing: the real version
-  split is three-way (pre-Version5 / Version5-6-without-Version7 / Version7+), not the two-way split
-  this bullet used to imply, and `PgfDecodeSession`'s channel *allocation* turned out not to need any
-  change at all (both sub-variants size channel 0 identically); the real fix is entirely in
-  `PgfColorConversion`'s reading semantics. A real historical `libpgf 6.14.12` build (predating
-  `Version7` entirely) is a stronger, lower-effort independent oracle for this one than shimming the
-  current vendored source — see
-  [`new-features/pgf-legacy-native-oracle-sourcing.md`](../new-features/pgf-legacy-native-oracle-sourcing.md)'s
-  "Finding B".
 - **Big-endian hosts** (`PGF_USE_BIG_ENDIAN`) — not handled; this port assumes a little-endian host
   throughout (`PgfDecoderCore.cs:128-131`). Every real deployment target *this app* runs on is
   little-endian, but a general NuGet consumer's target isn't this app's to assume. Lowest-priority
@@ -190,11 +165,10 @@ to actually hit them:
 
 ## If a real need for any of these shows up
 
-Large-image ROI and real per-level byte lengths were this section's own previously-flagged candidates
-for "gets more likely to matter under the NuGet framing" — both are done now (see the Supported
-section above and `pgf-roi-support.md`/`pgf-real-level-lengths.md`'s own Progress logs). The three
-remaining items in "Not yet ported" above each still have their own staged implementation PRD (linked
-above), grounded the same way those two were — none started yet. Publishing as a NuGet also raises a
+Large-image ROI, real per-level byte lengths, and legacy Bitmap/interleaved decoding are now done
+(see the Supported section above and `pgf-roi-support.md`/`pgf-real-level-lengths.md`/
+`pgf-bitmap-legacy-packed.md`'s Progress logs). Only big-endian hosts remain in "Not yet ported."
+Publishing as a NuGet also raises a
 real, separate question this list doesn't cover: this port is a close derivative of digiKam's
 vendored `libpgf`, LGPL-2.1+ — external distribution likely needs the license text/attribution
 bundled and a real compliance check, which is a legal question for someone else to own, not a
@@ -202,9 +176,8 @@ technical gap to close here.
 
 Every gap this codebase's own *completed* staged PRDs (`pgf-cancellation-and-progress.md`,
 `pgf-all-image-modes.md`, `pgf-user-data-and-small-images.md`, `pgf-roi-support.md`,
-`pgf-real-level-lengths.md`) originally tracked is closed — see each one's own Progress log for the
-full record. The three remaining "Not yet ported" items above each have a staged PRD now (linked
-above) but haven't started implementation yet. `pgf-legacy-native-oracle-sourcing.md` is a completed
-*investigation* (not an implementation PRD itself) that grounds two of those three — exactly which
+`pgf-real-level-lengths.md`, `pgf-bitmap-legacy-packed.md`) originally tracked is closed — see each
+one's own Progress log for the full record. `pgf-legacy-native-oracle-sourcing.md` is a completed
+*investigation* (not an implementation PRD itself) that grounded the legacy work — exactly which
 historical `libpgf` source versions are actually obtainable today, and what each can and can't prove
 — so their own Testability sections stop relying on assumption.

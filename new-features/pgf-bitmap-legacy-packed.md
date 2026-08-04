@@ -2,7 +2,12 @@
 
 **Status: not started.** Closes a gap documented in [`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md)'s
 "Not yet ported — real gaps against full C++ parity" list ("Bitmap's legacy pre-Version7 packed
-sub-variant").
+sub-variant"). **Before starting Goal 2 below**, read
+[`pgf-legacy-native-oracle-sourcing.md`](pgf-legacy-native-oracle-sourcing.md)'s "Finding B": a real,
+unmodified historical release (`libpgf 6.14.12`) has a live, uncommented legacy-packed Bitmap encoder
+and is confirmed to build cleanly against this repo's existing MSVC/CMake toolchain — a strictly
+stronger and lower-effort oracle than the native-shim plan originally proposed here. That doc's
+Reproduction steps have the exact commands to re-obtain and build it.
 
 ## Context
 
@@ -103,12 +108,18 @@ simpler two-way split the existing C# doc comment currently (inaccurately) descr
    when it's also absent, per the three-way correction), applying the bias/clamp, then unpacking bits
    to BGRA — wired into `PgfImageDecoder`'s Bitmap dispatch once `PgfDecodeSession` exposes the
    file's own `Version7`/`Version5` flags (currently discarded after `roiSupported` is computed).
-2. **A test-only native fixture generator** (a small `CPGFImage`-derived class local to `shim.cpp`,
-   exposing just enough protected access to clear `Version7`) combined with directly writing
-   legacy-packed channel data via the already-public `SetChannel`, producing genuine legacy-format
-   bytes to decode-test the new C# path against — this PRD's real independent oracle, unlike
-   `pgf-legacy-interleaved-decode.md`'s self-consistency-only situation (this one gets a real native
-   cross-check, just a costlier one to build).
+2. **A test-only native fixture generator using a real historical build of `libpgf 6.14.12`**
+   (revised from this PRD's original plan of shimming the *current* vendored source — see
+   [`pgf-legacy-native-oracle-sourcing.md`](pgf-legacy-native-oracle-sourcing.md)'s "Finding B": `6.14.12`
+   predates `Version7` entirely and its real, unmodified `RgbToYuv`/`ImageModeBitmap` encode path is
+   live code, not dead code needing a shim to resurrect — confirmed buildable against this repo's
+   existing MSVC/CMake toolchain with zero source changes). Producing genuine legacy-format bytes this
+   way is this PRD's real independent oracle, unlike `pgf-legacy-interleaved-decode.md`'s
+   self-consistency-only situation (this one gets a real native cross-check, and — with this revision —
+   one from an actual historical binary rather than a hacked-open modern one). The rarer `yw = w2`
+   stride sub-case (pre-Version5-*and*-pre-Version7) still needs a small shim on top of this real
+   `6.14.12` build (clearing `Version5`, mirroring the original plan's `ClearVersion7` idea) since
+   `6.14.12` itself still always sets `Version5`; the common `yw = w` case needs no shim at all.
 3. **Correct the existing, overstated framing** in `PgfColorConversion.cs`'s "Group G" comment and
    `docs/PGF-CODEC.md`'s own gap description (the two-way-vs-three-way version split, and the
    channel-allocation claim that turned out not to apply) as part of shipping this PRD, not left

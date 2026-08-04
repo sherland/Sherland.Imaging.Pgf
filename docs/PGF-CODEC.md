@@ -160,7 +160,9 @@ to actually hit them:
   general library claiming PGF decode support would be expected to open files from before this scheme
   existed. Decode-only (the reference encoder has never had a counterpart, at any point in its
   history) and, uniquely among this list, without an obtainable independent native oracle to
-  cross-check against — see [`new-features/pgf-legacy-interleaved-decode.md`](../new-features/pgf-legacy-interleaved-decode.md)
+  cross-check against — confirmed by real investigation, not assumption, see
+  [`new-features/pgf-legacy-native-oracle-sourcing.md`](../new-features/pgf-legacy-native-oracle-sourcing.md)
+  — see [`new-features/pgf-legacy-interleaved-decode.md`](../new-features/pgf-legacy-interleaved-decode.md)
   for the full grounding and why.
 - **Bitmap's legacy pre-Version7 packed sub-variant** — the modern ("new unpacked since Version7")
   sub-variant is fully supported; the older packed format is real, reachable decode-side code in the
@@ -170,7 +172,11 @@ to actually hit them:
   split is three-way (pre-Version5 / Version5-6-without-Version7 / Version7+), not the two-way split
   this bullet used to imply, and `PgfDecodeSession`'s channel *allocation* turned out not to need any
   change at all (both sub-variants size channel 0 identically); the real fix is entirely in
-  `PgfColorConversion`'s reading semantics.
+  `PgfColorConversion`'s reading semantics. A real historical `libpgf 6.14.12` build (predating
+  `Version7` entirely) is a stronger, lower-effort independent oracle for this one than shimming the
+  current vendored source — see
+  [`new-features/pgf-legacy-native-oracle-sourcing.md`](../new-features/pgf-legacy-native-oracle-sourcing.md)'s
+  "Finding B".
 - **Big-endian hosts** (`PGF_USE_BIG_ENDIAN`) — not handled; this port assumes a little-endian host
   throughout (`PgfDecoderCore.cs:128-131`). Every real deployment target *this app* runs on is
   little-endian, but a general NuGet consumer's target isn't this app's to assume. Lowest-priority
@@ -198,4 +204,7 @@ Every gap this codebase's own *completed* staged PRDs (`pgf-cancellation-and-pro
 `pgf-all-image-modes.md`, `pgf-user-data-and-small-images.md`, `pgf-roi-support.md`,
 `pgf-real-level-lengths.md`) originally tracked is closed — see each one's own Progress log for the
 full record. The three remaining "Not yet ported" items above each have a staged PRD now (linked
-above) but haven't started implementation yet.
+above) but haven't started implementation yet. `pgf-legacy-native-oracle-sourcing.md` is a completed
+*investigation* (not an implementation PRD itself) that grounds two of those three — exactly which
+historical `libpgf` source versions are actually obtainable today, and what each can and can't prove
+— so their own Testability sections stop relying on assumption.

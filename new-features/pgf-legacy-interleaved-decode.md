@@ -1,7 +1,11 @@
 # PGF codec: legacy pre-Version5 interleaved decode — PRD
 
 **Status: not started.** Closes a gap documented in [`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md)'s
-"Not yet ported — real gaps against full C++ parity" list ("Legacy pre-Version5 entropy coding").
+"Not yet ported — real gaps against full C++ parity" list ("Legacy pre-Version5 entropy coding"). See
+[`pgf-legacy-native-oracle-sourcing.md`](pgf-legacy-native-oracle-sourcing.md) for a real investigation
+into whether a historical native oracle is obtainable for this gap specifically (short answer: no,
+confirmed by exhausting every plausible source) — this PRD's self-consistency-only verification
+approach below is written with that already confirmed, not as an open question anymore.
 
 ## Context
 
@@ -200,11 +204,17 @@ build, ever — see Non-goals.
   production" framing) or entirely inside `PictTag.PgfCodec.Tests` — resolve once Stage 3 shows how
   much of `PgfEncoderCore`'s existing machinery (bitplane encoding, macroblock writing) it can
   actually reuse vs. needing its own parallel copy.
-- **Whether it's worth trying to obtain or build a real historical `libpgf` reference build** (an old
+- ~~Whether it's worth trying to obtain or build a real historical `libpgf` reference build (an old
   pre-2006 pre-Version5 release) purely to generate one real, independently-authored legacy fixture
-  for extra confidence, given this PRD's own honest admission that self-consistency alone is a weaker
-  guarantee — a real cost/benefit call to make once Stage 2/3's own implementation risk is better
-  understood, not a blocker to starting.
+  for extra confidence~~ — **answered**, see
+  [`pgf-legacy-native-oracle-sourcing.md`](pgf-legacy-native-oracle-sourcing.md): no pre-Version5
+  source is obtainable anywhere (SourceForge files/git/SVN, Debian's archive, and digiKam's complete
+  2004-onward git history — whose own *first-ever* libpgf import in 2009 already postdates Version5's
+  introduction — were all checked). Self-consistency-only verification isn't just the current best
+  option, it's confirmed to be the only one; that doc's own "Finding A" also notes a free, low-cost
+  extra: the 2009 vendored snapshot's commented-out `EncodeInterleaved` body is a second,
+  independently-dated description of the interleaving order worth cross-reading against while
+  implementing Goal 2/3, even though it can't be compiled as a real oracle.
 
 ## Progress log
 

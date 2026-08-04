@@ -121,16 +121,29 @@ the Browser/WASM target without relying on unsupported intrinsics, pinning, or s
 Exit criteria: targeted over-rented-buffer tests pass, the workspace has no hidden retention path,
 and Browser/WASM validation passes. No large work buffer is pooled yet.
 
-### Stage 3 — Decoder workspace migration
+### Stage 3a — Workspace-backed decoder storage
 
 Migrate decoder transform/subband and macroblock scratch storage to workspace-owned rents, including
-the single-shot and progressive call paths. Do not make the existing non-disposable progressive
-decoder implicitly own pooled memory; introduce an explicit disposable/session shape if the chosen
-API needs retained state. Ensure all success, false-return, cancellation, and exception paths return
-rents exactly once.
+the single-shot and progressive call paths. Add only caller-owned workspace parameters; do not make
+the existing non-disposable progressive decoder implicitly own pooled memory. Ensure all success,
+false-return, cancellation, and exception paths return rents exactly once when the caller disposes
+its workspace.
 
-Exit criteria: oracle and focused transform/color suites stay byte-exact; warmed workspace decode
-meets its declared allocation contract; existing public APIs preserve behavior.
+Exit criteria: oracle and focused transform/color suites stay byte-exact; existing public APIs
+preserve behavior; workspace-backed paths hold no GC-owned coefficient/subband/macroblock arrays.
+
+### Stage 3b — Reusable decoder-session allocation contract
+
+**Inserted after Stage 3a's implementation finding.** `PgfWorkspace` correctly owns pooled backing
+arrays, but creating a fresh `PgfDecodeSession`/wavelet object graph per single-shot call still
+allocates small managed objects and rents new arrays. Add the smallest explicit reusable decode
+session/lease API that lets one workspace reuse its transform graph across same-or-smaller shapes,
+without changing the existing stateless convenience API or letting an undisposed progressive decoder
+hold opaque pooled memory. Define resize and cancellation/failure reset behavior, then make the
+warmed workspace path's allocation test assert its actual contract.
+
+Exit criteria: repeated supported decode operations using the explicit reusable path meet the
+documented warmed allocation budget, and disposal returns all rents exactly once.
 
 ### Stage 4 — Encoder buffer and output pipeline improvements
 
@@ -196,14 +209,23 @@ defect, and the exact-pixel assertion now correctly uses quality 0. Expanded all
 BenchmarkDotNet matrices from only a gradient to deterministic gradient and checkerboard fixtures
 via `FixtureKind`, so future comparisons do not silently optimize only smooth imagery. Focused
 tests: 2/2 green. Full suite: 1378/1378 green (1376 existing + 2 new, zero regressions).
-**Stage 2 — done.** Added internal `PgfWorkspace` as the explicit, single-threaded owner of
+**Stage 2 — done.** Added `PgfWorkspace` as the explicit, single-threaded owner of
 `int`/`uint`/`bool`/`byte` pool rents. Its API returns `Memory<T>` sliced to the requested logical
 length, never a raw over-rented array, and disposal is idempotent while rejecting new rents. The
 intentional clearing decision is now code-level documentation: image coefficients are not secret,
 and clearing multi-megabyte work buffers would defeat this feature; consumers must overwrite every
 logical element they read. Focused ownership/logical-length tests: 2/2 green. Browser/WASM build:
 green. Full suite: 1380/1380 green (1378 existing + 2 new, zero regressions).
-- Stage 3 — pending.
+**Stage 3a — done.** Wired an optional caller-owned workspace through both single-shot and
+progressive decode opening, then migrated normal wavelet subband buffers and decoder macroblock
+coefficient/code/significance buffers to it. The existing APIs retain their allocation behavior when
+no workspace is supplied; a caller opts in with `using var workspace` and therefore controls pool
+lifetime explicitly. Real finding: this is not yet a literal warmed zero-allocation decode path,
+because each stateless decode still constructs a session/wavelet object graph and rents fresh backing
+arrays. The PRD therefore splits the original Stage 3: new Stage 3b will add a reusable explicit
+session/lease rather than falsely claim that the convenience API is allocation-free. Focused tests:
+3/3 green. Full suite: 1381/1381 green (1380 existing + 1 new, zero regressions).
+- Stage 3b — pending.
 - Stage 4 — pending.
 - Stage 5 — pending.
 - Stage 6 — pending.

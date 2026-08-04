@@ -15,7 +15,7 @@ namespace PictTag.PgfCodec;
 /// multi-megabyte buffers would erase the allocation-reduction benefit. Callers must overwrite all
 /// logical data they consume.
 /// </summary>
-internal sealed class PgfWorkspace : IDisposable
+public sealed class PgfWorkspace : IDisposable
 {
     private readonly List<int[]> int32Rents = [];
     private readonly List<uint[]> uint32Rents = [];
@@ -23,13 +23,25 @@ internal sealed class PgfWorkspace : IDisposable
     private readonly List<byte[]> byteRents = [];
     private bool disposed;
 
-    public Memory<int> RentInt32(int length) => Rent(ArrayPool<int>.Shared, int32Rents, length);
+    /// <summary>Rents a logical <paramref name="length"/>-element coefficient span.</summary>
+    public Memory<int> RentInt32(int length) => RentInt32Backing(length).AsMemory(0, length);
 
-    public Memory<uint> RentUInt32(int length) => Rent(ArrayPool<uint>.Shared, uint32Rents, length);
+    /// <summary>Rents a logical <paramref name="length"/>-element code-word span.</summary>
+    public Memory<uint> RentUInt32(int length) => RentUInt32Backing(length).AsMemory(0, length);
 
-    public Memory<bool> RentBoolean(int length) => Rent(ArrayPool<bool>.Shared, booleanRents, length);
+    /// <summary>Rents a logical <paramref name="length"/>-element flag span.</summary>
+    public Memory<bool> RentBoolean(int length) => RentBooleanBacking(length).AsMemory(0, length);
 
-    public Memory<byte> RentByte(int length) => Rent(ArrayPool<byte>.Shared, byteRents, length);
+    /// <summary>Rents a logical <paramref name="length"/>-byte span.</summary>
+    public Memory<byte> RentByte(int length) => RentByteBacking(length).AsMemory(0, length);
+
+    internal int[] RentInt32Backing(int length) => RentBacking(ArrayPool<int>.Shared, int32Rents, length);
+
+    internal uint[] RentUInt32Backing(int length) => RentBacking(ArrayPool<uint>.Shared, uint32Rents, length);
+
+    internal bool[] RentBooleanBacking(int length) => RentBacking(ArrayPool<bool>.Shared, booleanRents, length);
+
+    internal byte[] RentByteBacking(int length) => RentBacking(ArrayPool<byte>.Shared, byteRents, length);
 
     public void Dispose()
     {
@@ -45,14 +57,14 @@ internal sealed class PgfWorkspace : IDisposable
         Return(ArrayPool<byte>.Shared, byteRents);
     }
 
-    private Memory<T> Rent<T>(ArrayPool<T> pool, List<T[]> rents, int length)
+    private T[] RentBacking<T>(ArrayPool<T> pool, List<T[]> rents, int length)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(length);
 
         T[] rented = pool.Rent(length);
         rents.Add(rented);
-        return rented.AsMemory(0, length);
+        return rented;
     }
 
     private static void Return<T>(ArrayPool<T> pool, List<T[]> rents)

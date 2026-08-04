@@ -65,9 +65,10 @@ public sealed class PgfProgressiveDecoder
     public PgfUserData UserData => session.UserData;
 
     public static PgfProgressiveDecoder? TryOpen(
-        ReadOnlyMemory<byte> pgfData, PgfUserDataPolicy userDataPolicy = PgfUserDataPolicy.CacheAll, uint userDataPrefixSize = 0)
+        ReadOnlyMemory<byte> pgfData, PgfUserDataPolicy userDataPolicy = PgfUserDataPolicy.CacheAll, uint userDataPrefixSize = 0,
+        PgfWorkspace? workspace = null)
     {
-        PgfDecodeSession? session = PgfDecodeSession.TryOpen(pgfData, userDataPolicy, userDataPrefixSize);
+        PgfDecodeSession? session = PgfDecodeSession.TryOpen(pgfData, userDataPolicy, userDataPrefixSize, workspace);
         return session is null ? null : new PgfProgressiveDecoder(session);
     }
 

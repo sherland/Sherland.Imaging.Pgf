@@ -12,7 +12,7 @@ namespace PictTag.PgfCodec;
 internal sealed class PgfDecoderCore
 {
     private readonly PgfMemoryReader reader;
-    private readonly PgfMacroBlock currentBlock = new();
+    private readonly PgfMacroBlock currentBlock;
 
     /// <summary>Mirrors <c>CDecoder::m_macroBlocksAvailable</c> for the single-macroblock case: 0 or
     /// 1 - the block has either not been decoded yet (0) or has been decoded and may still have
@@ -27,9 +27,10 @@ internal sealed class PgfDecoderCore
     /// PRD.</summary>
     private bool roi;
 
-    public PgfDecoderCore(PgfMemoryReader reader)
+    public PgfDecoderCore(PgfMemoryReader reader, PgfWorkspace? workspace = null)
     {
         this.reader = reader;
+        currentBlock = new PgfMacroBlock(workspace);
     }
 
     /// <summary>Direct port of <c>CDecoder::SetROI</c> (Decoder.h:192) - enables ROI-aware macroblock

@@ -125,7 +125,8 @@ internal sealed class PgfDecodeSession
     public uint[] LevelLengths { get; }
 
     public static PgfDecodeSession? TryOpen(
-        ReadOnlyMemory<byte> pgfData, PgfUserDataPolicy userDataPolicy = PgfUserDataPolicy.CacheAll, uint userDataPrefixSize = 0)
+        ReadOnlyMemory<byte> pgfData, PgfUserDataPolicy userDataPolicy = PgfUserDataPolicy.CacheAll, uint userDataPrefixSize = 0,
+        PgfWorkspace? workspace = null)
     {
         try
         {
@@ -198,18 +199,18 @@ internal sealed class PgfDecodeSession
                 }
 
                 return new PgfDecodeSession(
-                    [], new PgfDecoderCore(reader), quant, downsample, fullWidth, fullHeight, chromaWidth, header.NLevels,
+                    [], new PgfDecoderCore(reader, workspace), quant, downsample, fullWidth, fullHeight, chromaWidth, header.NLevels,
                     header.Mode, colorTable, userData, rawChannelData, roiSupported, version5, version7, levelLengths);
             }
 
             PgfWaveletTransform[] channels = new PgfWaveletTransform[header.Channels];
-            channels[0] = new PgfWaveletTransform(fullWidth, fullHeight, header.NLevels);
+            channels[0] = new PgfWaveletTransform(fullWidth, fullHeight, header.NLevels, workspace: workspace);
             for (int c = 1; c < header.Channels; c++)
             {
-                channels[c] = new PgfWaveletTransform(chromaWidth, chromaHeight, header.NLevels);
+                channels[c] = new PgfWaveletTransform(chromaWidth, chromaHeight, header.NLevels, workspace: workspace);
             }
 
-            PgfDecoderCore decoder = new(reader);
+            PgfDecoderCore decoder = new(reader, workspace);
 
             return new PgfDecodeSession(
                 channels, decoder, quant, downsample, fullWidth, fullHeight, chromaWidth, header.NLevels, header.Mode, colorTable,

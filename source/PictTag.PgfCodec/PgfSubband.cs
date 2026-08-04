@@ -25,6 +25,7 @@ namespace PictTag.PgfCodec;
 /// </summary>
 internal sealed class PgfSubband
 {
+    private readonly PgfWorkspace? workspace;
     public int Width { get; private set; }
 
     public int Height { get; private set; }
@@ -36,6 +37,8 @@ internal sealed class PgfSubband
     private int size;
     private int[]? data;
     private int dataPos;
+
+    public PgfSubband(PgfWorkspace? workspace = null) => this.workspace = workspace;
 
     /// <summary>Mirrors <c>CSubband::m_nTiles</c> - number of tiles in one dimension in this
     /// subband, set by <see cref="SetNTiles"/> before <see cref="TilePosition"/>/<see cref="TileIndex"/>
@@ -264,7 +267,8 @@ internal sealed class PgfSubband
             return true;
         }
 
-        data = new int[BufferWidth * AlignedRoi.Height];
+        int logicalLength = BufferWidth * AlignedRoi.Height;
+        data = workspace is null ? new int[logicalLength] : workspace.RentInt32Backing(logicalLength);
         return true;
     }
 

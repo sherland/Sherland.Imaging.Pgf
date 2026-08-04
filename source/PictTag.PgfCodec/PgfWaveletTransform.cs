@@ -38,7 +38,7 @@ internal sealed class PgfWaveletTransform
     /// through it).</summary>
     private PgfRoi[]? indices;
 
-    public PgfWaveletTransform(int width, int height, int levels, int[]? data = null)
+    public PgfWaveletTransform(int width, int height, int levels, int[]? data = null, PgfWorkspace? workspace = null)
     {
         levelCount = levels + 1;
         subbands = new PgfSubband[levelCount][];
@@ -48,10 +48,10 @@ internal sealed class PgfWaveletTransform
         {
             subbands[level] =
             [
-                new PgfSubband(),
-                new PgfSubband(),
-                new PgfSubband(),
-                new PgfSubband(),
+                new PgfSubband(workspace),
+                new PgfSubband(workspace),
+                new PgfSubband(workspace),
+                new PgfSubband(workspace),
             ];
 
             subbands[level][(int)PgfSubbandOrientation.Ll].Initialize(loWidth, loHeight, level, PgfSubbandOrientation.Ll);

@@ -24,10 +24,10 @@ internal sealed class PgfMacroBlock
     /// <summary>Decoded output coefficients, index <c>[0, BufferSize)</c>. <c>DataT</c> in the
     /// original - <see cref="int"/> in this build (real <c>__PGF32SUPPORT__</c> build, see
     /// <see cref="PgfConstants"/>'s doc comment).</summary>
-    public readonly int[] Value = new int[PgfConstants.BufferSize];
+    public readonly int[] Value;
 
     /// <summary>Encoded input bitstream, one macroblock's worth, in 32-bit words.</summary>
-    public readonly uint[] CodeBuffer = new uint[PgfConstants.BufferSize];
+    public readonly uint[] CodeBuffer;
 
     /// <summary>Current read position into <see cref="Value"/> for <c>DequantizeValue</c>
     /// consumption (<see cref="PgfDecoderCore"/>).</summary>
@@ -58,7 +58,14 @@ internal sealed class PgfMacroBlock
     /// bitplane - it accumulates across the whole <see cref="BitplaneDecode"/> call), with a
     /// sentinel at <c>[BufferSizeInUse]</c> enabling the original's search-with-sentinel pattern
     /// without per-iteration bounds checks.</summary>
-    private readonly bool[] sigFlagVector = new bool[PgfConstants.BufferSize + 1];
+    private readonly bool[] sigFlagVector;
+
+    public PgfMacroBlock(PgfWorkspace? workspace = null)
+    {
+        Value = workspace is null ? new int[PgfConstants.BufferSize] : workspace.RentInt32Backing(PgfConstants.BufferSize);
+        CodeBuffer = workspace is null ? new uint[PgfConstants.BufferSize] : workspace.RentUInt32Backing(PgfConstants.BufferSize);
+        sigFlagVector = workspace is null ? new bool[PgfConstants.BufferSize + 1] : workspace.RentBooleanBacking(PgfConstants.BufferSize + 1);
+    }
 
     /// <summary>Direct port of <c>CMacroBlock::BitplaneDecode</c> (Decoder.cpp:660). Decodes
     /// <see cref="CodeBuffer"/> into <see cref="Value"/>, bitplane by bitplane from the most to the

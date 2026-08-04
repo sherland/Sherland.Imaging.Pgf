@@ -152,8 +152,8 @@ public static class PgfImageDecoder
 
     public static bool TryDecode<TResult>(
         ReadOnlyMemory<byte> pgfData, PgfDecodedCallback<TResult> onDecoded, out TResult? result,
-        IProgress<double>? progress = null, CancellationToken cancellationToken = default) =>
-        TryDecode(pgfData, onDecoded, out result, out _, progress: progress, cancellationToken: cancellationToken);
+        IProgress<double>? progress = null, CancellationToken cancellationToken = default, PgfWorkspace? workspace = null) =>
+        TryDecode(pgfData, onDecoded, out result, out _, progress: progress, cancellationToken: cancellationToken, workspace: workspace);
 
     /// <summary>pgf-user-data-and-small-images.md Goal 1/2: same decode as the simpler overload above,
     /// plus the file's post-header user data. A separate overload rather than widening that
@@ -166,12 +166,12 @@ public static class PgfImageDecoder
     public static bool TryDecode<TResult>(
         ReadOnlyMemory<byte> pgfData, PgfDecodedCallback<TResult> onDecoded, out TResult? result, out PgfUserData userData,
         PgfUserDataPolicy userDataPolicy = PgfUserDataPolicy.CacheAll, uint userDataPrefixSize = 0,
-        IProgress<double>? progress = null, CancellationToken cancellationToken = default)
+        IProgress<double>? progress = null, CancellationToken cancellationToken = default, PgfWorkspace? workspace = null)
     {
         result = default;
         userData = PgfUserData.None;
 
-        PgfDecodeSession? session = PgfDecodeSession.TryOpen(pgfData, userDataPolicy, userDataPrefixSize);
+        PgfDecodeSession? session = PgfDecodeSession.TryOpen(pgfData, userDataPolicy, userDataPrefixSize, workspace);
         if (session is null)
         {
             return false;

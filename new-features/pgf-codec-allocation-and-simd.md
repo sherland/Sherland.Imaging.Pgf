@@ -147,7 +147,7 @@ disposal returns all rents exactly once.
 
 **Inserted after Stage 3b's implementation finding.** Resetting a workspace reuses large backing
 arrays but still constructs the managed session/wavelet object graph. Add the smallest explicit
-reusable session/lease API that caches that graph across same-or-smaller shapes, then set a warmed
+reusable session/lease API that caches that graph for the same immutable payload, then set a warmed
 allocation budget that includes only the caller-selected output ownership. Define cancellation and
 failure reset behavior before implementation.
 
@@ -249,7 +249,18 @@ workspace-backed decoder/session internals, so it cannot silently race an in-fli
 Focused tests: 5/5 green (including exact-array identity and two sequential lossless decodes). Full
 suite: 1383/1383 green (1381 existing + 2 new, zero regressions). The remaining managed session
 object graph is a separate Stage 3c concern.
-- Stage 3c — pending.
+**Stage 3c — done.** Added the opt-in, disposable `PgfReusableDecoder` for repeated full decodes
+of one immutable PGF payload. It retains the parsed session graph, macroblock state, result
+descriptors, and workspace while rewinding the stream/subbands between calls. Real finding: the
+workspace needs a retention boundary—without it, reset made the live macroblock buffers available
+as wavelet scratch and corrupted the next decode. `PgfWorkspaceMark` now preserves session-owned
+arrays while recycling only per-pass storage; partial macroblock wire reads also explicitly restore
+their original zero-padding semantics. Cancellation and failed work mark the reusable session dirty
+before entering the decode loop, so the next call always starts from the stream beginning. The
+measured contract is zero codec-owned allocations after one decode-and-recycle warm-up; the callback
+still deliberately owns any result allocation it requests. Focused tests: 8/8 green, including
+byte-identical repeat decode, allocation measurement, and cancellation recovery. Full suite:
+1386/1386 green (1383 existing + 3 new, zero regressions).
 **Stage 4a — done.** Removed `channelBuffers[c][..chromaSize]`: downsampling already compacts
 chroma into the source plane prefix, and `PgfWaveletTransform` uses its supplied dimensions for all
 logical reads and writes. This removes one allocation/copy for every downsampled chroma channel

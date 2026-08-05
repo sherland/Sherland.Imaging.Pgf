@@ -69,4 +69,57 @@ public class PgfWorkspaceTests
 
         Assert.Equal(first, second);
     }
+
+    [Fact]
+    public void ReusableDecoder_RewindsAndProducesTheSameLosslessPixelsTwice()
+    {
+        (byte[] source, int width, int height) = TestBitmaps.Gradient(64, 64);
+        Assert.True(Oracle.NativePgfOracle.TryEncode(source, width, height, quality: 0, out byte[]? pgf));
+
+        using PgfReusableDecoder decoder = Assert.IsType<PgfReusableDecoder>(PgfReusableDecoder.TryOpen(pgf!));
+        Assert.True(decoder.TryDecode(static (bgra, _, _) => bgra.ToArray(), out byte[]? first));
+        Assert.True(decoder.TryDecode(static (bgra, _, _) => bgra.ToArray(), out byte[]? second));
+
+        Assert.Equal(source, first);
+        Assert.Equal(first, second);
+    }
+
+    [Fact]
+    public void ReusableDecoder_AfterWarmup_DoesNotAllocateCodecWorkingMemory()
+    {
+        (byte[] source, int width, int height) = TestBitmaps.Gradient(64, 64);
+        Assert.True(Oracle.NativePgfOracle.TryEncode(source, width, height, quality: 0, out byte[]? pgf));
+
+        using PgfReusableDecoder decoder = Assert.IsType<PgfReusableDecoder>(PgfReusableDecoder.TryOpen(pgf!));
+        PgfDecodedCallback<int> getLength = static (bgra, _, _) => bgra.Length;
+        Assert.True(decoder.TryDecode(getLength, out int warmupLength));
+        // The first rewind sizes the workspace's internal reuse lists. The steady-state contract
+        // starts after that setup cycle, not merely after the first decode.
+        Assert.True(decoder.TryDecode(getLength, out int recycledLength));
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        Assert.True(decoder.TryDecode(getLength, out int decodedLength));
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.Equal(warmupLength, recycledLength);
+        Assert.Equal(recycledLength, decodedLength);
+        Assert.Equal(0, allocated);
+    }
+
+    [Fact]
+    public void ReusableDecoder_CancellationLeavesTheNextDecodeAtTheStreamStart()
+    {
+        (byte[] source, int width, int height) = TestBitmaps.Gradient(64, 64);
+        Assert.True(Oracle.NativePgfOracle.TryEncode(source, width, height, quality: 0, out byte[]? pgf));
+
+        using PgfReusableDecoder decoder = Assert.IsType<PgfReusableDecoder>(PgfReusableDecoder.TryOpen(pgf!));
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        Assert.Throws<OperationCanceledException>(() =>
+            decoder.TryDecode(static (bgra, _, _) => bgra.Length, out _, cancellationToken: cancellation.Token));
+        Assert.True(decoder.TryDecode(static (bgra, _, _) => bgra.ToArray(), out byte[]? decoded));
+
+        Assert.Equal(source, decoded);
+    }
 }

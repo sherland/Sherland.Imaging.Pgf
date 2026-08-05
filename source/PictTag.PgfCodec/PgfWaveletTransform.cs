@@ -73,6 +73,20 @@ internal sealed class PgfWaveletTransform
 
     public PgfSubband GetSubband(int level, PgfSubbandOrientation orientation) => subbands[level][(int)orientation];
 
+    /// <summary>Resets all per-pass subband state so a reusable decode session can rewind its
+    /// bitstream and reacquire workspace backing arrays without retaining prior coefficients.</summary>
+    public void ResetForDecode()
+    {
+        indices = null;
+        foreach (PgfSubband[] level in subbands)
+        {
+            foreach (PgfSubband subband in level)
+            {
+                subband.ResetForDecode();
+            }
+        }
+    }
+
     /// <summary>Direct port of <c>CWaveletTransform::GetNofTiles</c> (WaveletTransform.h:125) -
     /// number of tiles in one dimension at <paramref name="level"/>, independent of any requested
     /// ROI (doubling every level going finer, per this PRD's "Why this needs to be grounded"

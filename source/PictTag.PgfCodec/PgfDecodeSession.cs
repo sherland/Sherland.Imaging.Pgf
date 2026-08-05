@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Buffers;
 
 namespace PictTag.PgfCodec;
 
@@ -28,7 +29,7 @@ internal sealed class PgfDecodeSession
         PgfWaveletTransform[] channels, PgfDecoderCore decoder, int quant, bool downsample,
         int fullWidth, int fullHeight, int chromaWidth, byte levels, byte mode, byte[]? colorTable,
         PgfUserData userData, (int[] Data, int Width, int Height)[]? rawChannelData, bool roiSupported,
-        bool version5, bool version7, uint[] levelLengths)
+        bool version5, bool version7, uint[] levelLengths, long dataStartPosition)
     {
         Channels = channels;
         Decoder = decoder;
@@ -42,10 +43,12 @@ internal sealed class PgfDecodeSession
         ColorTable = colorTable;
         UserData = userData;
         RawChannelData = rawChannelData;
+        DecodedChannelData = rawChannelData ?? new (int[] Data, int Width, int Height)[channels.Length];
         RoiSupported = roiSupported;
         Version5 = version5;
         Version7 = version7;
         LevelLengths = levelLengths;
+        DataStartPosition = dataStartPosition;
     }
 
     /// <summary>Mirrors <c>CPGFImage::ROIisSupported</c> (PGFimage.h:466) - whether this file's own
@@ -116,6 +119,11 @@ internal sealed class PgfDecodeSession
     /// something to decode.</summary>
     public (int[] Data, int Width, int Height)[]? RawChannelData { get; }
 
+    /// <summary>Mutable per-channel result descriptors retained by a reusable session. The pixel
+    /// arrays remain owned by the wavelet subbands/workspace; retaining these tiny descriptors
+    /// avoids a fresh tuple array at every progressive level and decode pass.</summary>
+    private (int[] Data, int Width, int Height)[] DecodedChannelData { get; }
+
     /// <summary>The file's real per-level byte-length table, in on-wire/native order (index 0 =
     /// coarsest level - <see cref="PgfEncoderCore.LevelLength"/>'s own doc comment) - already parsed
     /// correctly by <see cref="PgfHeaderIO.Read"/> regardless of whether anything ever consumes it
@@ -123,6 +131,8 @@ internal sealed class PgfDecodeSession
     /// here. <see cref="PgfProgressiveDecoder.TryGetLevelLength"/> is the public accessor built on
     /// top of this. pgf-real-level-lengths.md Stage 3/Goal 2.</summary>
     public uint[] LevelLengths { get; }
+
+    private long DataStartPosition { get; }
 
     public static PgfDecodeSession? TryOpen(
         ReadOnlyMemory<byte> pgfData, PgfUserDataPolicy userDataPolicy = PgfUserDataPolicy.CacheAll, uint userDataPrefixSize = 0,
@@ -133,6 +143,7 @@ internal sealed class PgfDecodeSession
             PgfMemoryReader reader = new(pgfData);
             (PgfPreHeader preHeader, PgfHeader header, uint[] levelLengths, byte[]? colorTable, PgfUserData userData) =
                 PgfHeaderIO.Read(reader, userDataPolicy, userDataPrefixSize);
+            long dataStartPosition = reader.Position;
 
             bool roiSupported = (preHeader.VersionFlags & PgfVersionFlags.PGFROI) == PgfVersionFlags.PGFROI;
             bool version5 = (preHeader.VersionFlags & PgfVersionFlags.Version5) == PgfVersionFlags.Version5;
@@ -200,7 +211,7 @@ internal sealed class PgfDecodeSession
 
                 return new PgfDecodeSession(
                     [], new PgfDecoderCore(reader, workspace), quant, downsample, fullWidth, fullHeight, chromaWidth, header.NLevels,
-                    header.Mode, colorTable, userData, rawChannelData, roiSupported, version5, version7, levelLengths);
+                    header.Mode, colorTable, userData, rawChannelData, roiSupported, version5, version7, levelLengths, dataStartPosition);
             }
 
             PgfWaveletTransform[] channels = new PgfWaveletTransform[header.Channels];
@@ -214,7 +225,7 @@ internal sealed class PgfDecodeSession
 
             return new PgfDecodeSession(
                 channels, decoder, quant, downsample, fullWidth, fullHeight, chromaWidth, header.NLevels, header.Mode, colorTable,
-                userData, rawChannelData: null, roiSupported, version5, version7, levelLengths);
+                userData, rawChannelData: null, roiSupported, version5, version7, levelLengths, dataStartPosition);
         }
         catch (PgfFormatException)
         {
@@ -317,6 +328,67 @@ internal sealed class PgfDecodeSession
         }
     }
 
+    /// <summary>Rewinds a normal wavelet-coded session for another complete decode of the same
+    /// input. Raw (<c>nLevels == 0</c>) sessions already own immutable parsed channel data and need
+    /// no decoder rewind.</summary>
+    public void ResetForDecode()
+    {
+        if (Levels == 0)
+        {
+            return;
+        }
+
+        foreach (PgfWaveletTransform channel in Channels)
+        {
+            channel.ResetForDecode();
+        }
+
+        Decoder.Reset(DataStartPosition);
+    }
+
+    /// <summary>Runs the normal single-shot level sweep on this already-open session. Shared by the
+    /// stateless public decoder and the reusable-session API so their cancellation/progress and
+    /// transient-BGRA ownership semantics cannot drift.</summary>
+    public bool TryDecode<TResult>(PgfDecodedCallback<TResult> onDecoded, out TResult? result,
+        IProgress<double>? progress = null, CancellationToken cancellationToken = default)
+    {
+        result = default;
+        (int[] Data, int Width, int Height)[] channelData = DecodedChannelData;
+        int levelsCompleted = 0;
+
+        for (int currentLevel = Levels; currentLevel > 0; currentLevel--)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            (int[] Data, int Width, int Height)[]? decoded = DecodeOneLevel(currentLevel);
+            if (decoded is null)
+            {
+                return false;
+            }
+
+            channelData = decoded;
+            levelsCompleted++;
+            progress?.Report(PgfProgressCurve.FractionAfter(levelsCompleted, Levels));
+        }
+
+        if (Levels == 0)
+        {
+            progress?.Report(1.0);
+        }
+
+        int bufferSize = checked(FullWidth * FullHeight * 4);
+        byte[] rented = ArrayPool<byte>.Shared.Rent(bufferSize);
+        try
+        {
+            PgfImageDecoder.ConvertToBgra(this, channelData, rented.AsSpan(0, bufferSize));
+            result = onDecoded(rented.AsSpan(0, bufferSize), FullWidth, FullHeight);
+            return true;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(rented);
+        }
+    }
+
     /// <summary>Direct port of <c>CPGFImage::SetROI</c> (PGFimage.cpp:614-631) - enables ROI decoding
     /// on <see cref="Decoder"/> and computes tile-index geometry for every channel's
     /// <see cref="PgfWaveletTransform"/>, halving <paramref name="roi"/> for chroma channels exactly
@@ -397,7 +469,7 @@ internal sealed class PgfDecodeSession
 
     private (int[] Data, int Width, int Height)[]? InverseTransformAllChannels(int level)
     {
-        (int[] Data, int Width, int Height)[] result = new (int[], int, int)[Channels.Length];
+        (int[] Data, int Width, int Height)[] result = DecodedChannelData;
         for (int c = 0; c < Channels.Length; c++)
         {
             PgfCodecError err = Channels[c].InverseTransform(level, out int w, out int h, out int[] data);

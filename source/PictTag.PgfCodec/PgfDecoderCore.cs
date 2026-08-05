@@ -33,6 +33,16 @@ internal sealed class PgfDecoderCore
         currentBlock = new PgfMacroBlock(workspace);
     }
 
+    /// <summary>Rewinds the single-macroblock decoder to the first encoded level for a new pass on
+    /// the same already-validated PGF stream.</summary>
+    public void Reset(long dataPosition)
+    {
+        reader.SetPos(SeekOrigin.Begin, dataPosition);
+        currentBlock.Reset();
+        macroBlocksAvailable = 0;
+        roi = false;
+    }
+
     /// <summary>Direct port of <c>CDecoder::SetROI</c> (Decoder.h:192) - enables ROI-aware macroblock
     /// framing (the extra header bytes, plus makes <see cref="SkipTileBuffer"/> a valid call). Must
     /// be called before the first <see cref="ReadMacroBlock"/>/<see cref="GetNextMacroBlock"/> of an
@@ -119,6 +129,11 @@ internal sealed class PgfDecoderCore
             header = new PgfRoiBlockHeader(BinaryPrimitives.ReadUInt16LittleEndian(headerBytes));
         }
 
+        // A fresh decoder gets a zero-initialized CodeBuffer, and the bitplane grammar can inspect
+        // padding words beyond this block's declared wire length. Clear before each partial read so
+        // a reusable session has the same zero-padding semantics rather than seeing the preceding
+        // macroblock's tail.
+        Array.Clear(block.CodeBuffer);
         Span<byte> codeBufferBytes = System.Runtime.InteropServices.MemoryMarshal.AsBytes(block.CodeBuffer.AsSpan());
         int byteCount = wordLen * 4;
         if (reader.Read(codeBufferBytes[..byteCount]) != byteCount)

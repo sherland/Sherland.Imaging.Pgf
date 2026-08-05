@@ -11,9 +11,10 @@ namespace PictTag.PgfCodec;
 /// Every rent is exposed as a <see cref="Memory{T}"/> sliced to its requested logical length,
 /// never as the pool's physical array. <see cref="ArrayPool{T}"/> may over-rent, so treating the
 /// backing array's length as encoded data length is forbidden by construction at this boundary.
-/// Coefficient/image data is not cleared when returned: it is not secret material and clearing
-/// multi-megabyte buffers would erase the allocation-reduction benefit. Callers must overwrite all
-/// logical data they consume.
+/// Backing arrays are returned uncleared, but the requested logical range is cleared before a
+/// retained array is handed to the codec again. That preserves the zero-initialized-array contract
+/// of the original allocation-based decoder: entropy decoding deliberately leaves some coefficient
+/// positions untouched. Pool capacity beyond the requested logical range remains uncleared.
 /// </summary>
 public sealed class PgfWorkspace : IDisposable
 {
@@ -73,10 +74,27 @@ public sealed class PgfWorkspace : IDisposable
     public void Reset()
     {
         ObjectDisposedException.ThrowIf(disposed, this);
-        Reuse(int32Rents, availableInt32);
-        Reuse(uint32Rents, availableUInt32);
-        Reuse(booleanRents, availableBoolean);
-        Reuse(byteRents, availableByte);
+        Reset(default);
+    }
+
+    /// <summary>Captures the first rent of each backing-array type that belongs to a long-lived
+    /// owner. A reusable decode session keeps its entropy macroblock arrays before this mark while
+    /// recycling only subsequently-rented wavelet working arrays between passes.</summary>
+    internal PgfWorkspaceMark MarkPersistent()
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        return new PgfWorkspaceMark(int32Rents.Count, uint32Rents.Count, booleanRents.Count, byteRents.Count);
+    }
+
+    /// <summary>Recycles only arrays rented after <paramref name="mark"/>. This keeps long-lived
+    /// decoder state from being handed out as scratch storage during its own next decode pass.</summary>
+    internal void Reset(PgfWorkspaceMark mark)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        ReuseFrom(int32Rents, availableInt32, mark.Int32Count);
+        ReuseFrom(uint32Rents, availableUInt32, mark.UInt32Count);
+        ReuseFrom(booleanRents, availableBoolean, mark.BooleanCount);
+        ReuseFrom(byteRents, availableByte, mark.ByteCount);
     }
 
     private T[] RentBacking<T>(ArrayPool<T> pool, List<T[]> rents, int length)
@@ -88,20 +106,33 @@ public sealed class PgfWorkspace : IDisposable
             : typeof(T) == typeof(uint) ? (List<T[]>)(object)availableUInt32
             : typeof(T) == typeof(bool) ? (List<T[]>)(object)availableBoolean
             : (List<T[]>)(object)availableByte;
-        int reusableIndex = available.FindIndex(array => array.Length >= length);
+        int reusableIndex = -1;
+        for (int i = 0; i < available.Count; i++)
+        {
+            if (available[i].Length >= length)
+            {
+                reusableIndex = i;
+                break;
+            }
+        }
         T[] rented = reusableIndex >= 0 ? available[reusableIndex] : pool.Rent(length);
         if (reusableIndex >= 0)
         {
             available.RemoveAt(reusableIndex);
+            Array.Clear(rented, 0, length);
         }
         rents.Add(rented);
         return rented;
     }
 
-    private static void Reuse<T>(List<T[]> rents, List<T[]> available)
+    private static void ReuseFrom<T>(List<T[]> rents, List<T[]> available, int retainedCount)
     {
-        available.AddRange(rents);
-        rents.Clear();
+        for (int i = retainedCount; i < rents.Count; i++)
+        {
+            available.Add(rents[i]);
+        }
+
+        rents.RemoveRange(retainedCount, rents.Count - retainedCount);
     }
 
     private static void Return<T>(ArrayPool<T> pool, List<T[]> rents)
@@ -114,3 +145,7 @@ public sealed class PgfWorkspace : IDisposable
         rents.Clear();
     }
 }
+
+/// <summary>Opaque per-array-type retention boundary captured by <see cref="PgfWorkspace"/> for a
+/// long-lived internal owner.</summary>
+internal readonly record struct PgfWorkspaceMark(int Int32Count, int UInt32Count, int BooleanCount, int ByteCount);

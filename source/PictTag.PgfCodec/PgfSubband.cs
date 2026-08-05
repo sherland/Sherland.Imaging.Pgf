@@ -274,6 +274,16 @@ internal sealed class PgfSubband
 
     public void FreeMemory() => data = null;
 
+    /// <summary>Releases this decode pass's view of its backing storage before the owning
+    /// <see cref="PgfWorkspace"/> recycles it for a subsequent pass.</summary>
+    public void ResetForDecode()
+    {
+        data = null;
+        dataPos = 0;
+        NTiles = 0;
+        AlignedRoi = new PgfRoi(0, 0, Width, Height);
+    }
+
     /// <summary>Direct port of <c>CSubband::SetBuffer</c> (Subband.h:148) - used only for level-0's
     /// LL subband, which shares the channel's own raw pixel array rather than owning its own
     /// allocation (<c>CWaveletTransform::InitSubbands</c>'s <c>data</c> parameter).</summary>

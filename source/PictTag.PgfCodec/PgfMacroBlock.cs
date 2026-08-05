@@ -52,6 +52,14 @@ internal sealed class PgfMacroBlock
     /// <see cref="PgfDecoderCore"/> is the only caller and the only place that ever varies this).</summary>
     public void MarkReadyToDecode(PgfRoiBlockHeader header) => Header = header;
 
+    /// <summary>Marks this reusable macroblock empty; the next coefficient request must read and
+    /// decode a fresh block from the rewound stream.</summary>
+    public void Reset()
+    {
+        Header = default;
+        ValuePos = 0;
+    }
+
     /// <summary>Significance flag vector (Malvar's paper) - true once a coefficient position has
     /// been found significant in an earlier (higher) bitplane, so later bitplanes only need to read
     /// its refinement bit, not search for new significance. Reset once per macroblock (not once per

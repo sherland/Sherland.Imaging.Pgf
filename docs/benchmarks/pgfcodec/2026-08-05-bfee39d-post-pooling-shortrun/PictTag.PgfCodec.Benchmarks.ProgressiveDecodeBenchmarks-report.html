@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>PictTag.PgfCodec.Benchmarks.ProgressiveDecodeBenchmarks-20260805-091549</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8875)
+Unknown processor
+.NET SDK 10.0.302
+  [Host]   : .NET 10.0.10 (10.0.1026.32716), X64 RyuJIT AVX2
+  ShortRun : .NET 10.0.10 (10.0.1026.32716), X64 RyuJIT AVX2
+</code></pre>
+<pre><code>Job=ShortRun  IterationCount=3  LaunchCount=1  
+WarmupCount=3  
+</code></pre>
+
+<table>
+<thead><tr><th>Method                     </th><th>Size</th><th>Quality</th><th>Fixture</th><th>Mean</th><th>Error</th><th>StdDev</th><th>Ratio</th><th>RatioSD</th><th>Gen0</th><th>Gen1</th><th>Gen2</th><th>Allocated</th><th>Alloc Ratio</th>
+</tr>
+</thead><tbody><tr><td>NativeProgressiveDecodeAllLevels</td><td>256</td><td>0</td><td>Gradient</td><td>1,268.1 &mu;s</td><td>585.8 &mu;s</td><td>32.11 &mu;s</td><td>1.00</td><td>0.03</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedProgressiveDecodeAllLevels</td><td>256</td><td>0</td><td>Gradient</td><td>2,109.0 &mu;s</td><td>607.8 &mu;s</td><td>33.32 &mu;s</td><td>1.66</td><td>0.04</td><td>332.0313</td><td>332.0313</td><td>332.0313</td><td>2580754 B</td><td>NA</td>
+</tr><tr><td>NativeProgressiveDecodeAllLevels</td><td>256</td><td>0</td><td>Checkerboard</td><td>1,678.5 &mu;s</td><td>788.5 &mu;s</td><td>43.22 &mu;s</td><td>1.00</td><td>0.03</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedProgressiveDecodeAllLevels</td><td>256</td><td>0</td><td>Checkerboard</td><td>2,526.8 &mu;s</td><td>1,137.8 &mu;s</td><td>62.37 &mu;s</td><td>1.51</td><td>0.05</td><td>332.0313</td><td>332.0313</td><td>332.0313</td><td>2580754 B</td><td>NA</td>
+</tr><tr><td>NativeProgressiveDecodeAllLevels</td><td>256</td><td>8</td><td>Gradient</td><td>634.8 &mu;s</td><td>126.3 &mu;s</td><td>6.92 &mu;s</td><td>1.00</td><td>0.01</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedProgressiveDecodeAllLevels</td><td>256</td><td>8</td><td>Gradient</td><td>953.3 &mu;s</td><td>161.5 &mu;s</td><td>8.85 &mu;s</td><td>1.50</td><td>0.02</td><td>83.0078</td><td>83.0078</td><td>83.0078</td><td>1216616 B</td><td>NA</td>
+</tr><tr><td>NativeProgressiveDecodeAllLevels</td><td>256</td><td>8</td><td>Checkerboard</td><td>743.9 &mu;s</td><td>209.4 &mu;s</td><td>11.48 &mu;s</td><td>1.00</td><td>0.02</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedProgressiveDecodeAllLevels</td><td>256</td><td>8</td><td>Checkerboard</td><td>1,145.4 &mu;s</td><td>674.3 &mu;s</td><td>36.96 &mu;s</td><td>1.54</td><td>0.05</td><td>82.0313</td><td>82.0313</td><td>82.0313</td><td>1216617 B</td><td>NA</td>
+</tr><tr><td>NativeProgressiveDecodeAllLevels</td><td>512</td><td>0</td><td>Gradient</td><td>5,516.0 &mu;s</td><td>2,100.4 &mu;s</td><td>115.13 &mu;s</td><td>1.00</td><td>0.03</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedProgressiveDecodeAllLevels</td><td>512</td><td>0</td><td>Gradient</td><td>8,122.3 &mu;s</td><td>427.7 &mu;s</td><td>23.45 &mu;s</td><td>1.47</td><td>0.03</td><td>812.5000</td><td>796.8750</td><td>734.3750</td><td>9922967 B</td><td>NA</td>
+</tr><tr><td>NativeProgressiveDecodeAllLevels</td><td>512</td><td>0</td><td>Checkerboard</td><td>7,349.6 &mu;s</td><td>3,556.1 &mu;s</td><td>194.92 &mu;s</td><td>1.00</td><td>0.03</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedProgressiveDecodeAllLevels</td><td>512</td><td>0</td><td>Checkerboard</td><td>9,614.5 &mu;s</td><td>630.3 &mu;s</td><td>34.55 &mu;s</td><td>1.31</td><td>0.03</td><td>796.8750</td><td>781.2500</td><td>718.7500</td><td>9922957 B</td><td>NA</td>
+</tr><tr><td>NativeProgressiveDecodeAllLevels</td><td>512</td><td>8</td><td>Gradient</td><td>2,665.4 &mu;s</td><td>1,387.9 &mu;s</td><td>76.07 &mu;s</td><td>1.00</td><td>0.03</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedProgressiveDecodeAllLevels</td><td>512</td><td>8</td><td>Gradient</td><td>4,051.1 &mu;s</td><td>329.1 &mu;s</td><td>18.04 &mu;s</td><td>1.52</td><td>0.04</td><td>882.8125</td><td>859.3750</td><td>796.8750</td><td>4430266 B</td><td>NA</td>
+</tr><tr><td>NativeProgressiveDecodeAllLevels</td><td>512</td><td>8</td><td>Checkerboard</td><td>3,243.6 &mu;s</td><td>972.7 &mu;s</td><td>53.32 &mu;s</td><td>1.00</td><td>0.02</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedProgressiveDecodeAllLevels</td><td>512</td><td>8</td><td>Checkerboard</td><td>5,212.7 &mu;s</td><td>9,620.2 &mu;s</td><td>527.32 &mu;s</td><td>1.61</td><td>0.14</td><td>882.8125</td><td>859.3750</td><td>796.8750</td><td>4430266 B</td><td>NA</td>
+</tr></tbody></table>
+</body>
+</html>

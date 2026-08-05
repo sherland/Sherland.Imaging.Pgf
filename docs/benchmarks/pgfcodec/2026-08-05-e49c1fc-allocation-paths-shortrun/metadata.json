@@ -1,0 +1,19 @@
+{
+  "runName": "2026-08-05-e49c1fc-allocation-paths-shortrun",
+  "revision": "e49c1fc",
+  "purpose": "Completed ShortRun matrix measuring convenience APIs and the Stage 3c/4b opt-in allocation-reuse APIs; supersedes the prior Dry run for performance conclusions.",
+  "archivedAtUtc": "2026-08-05T07:37:27.6981743Z",
+  "benchmarkCommand": "dotnet run -c Release --project source/PictTag.PgfCodec.Benchmarks -- --filter '*' --job short --artifacts C:\\tmp\\pgfcodec-allocation-paths-shortrun-artifacts",
+  "sourceArtifactDirectory": "C:\\tmp\\pgfcodec-allocation-paths-shortrun-artifacts",
+  "reports": [
+    "PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report-github.md",
+    "PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report.csv",
+    "PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report.html",
+    "PictTag.PgfCodec.Benchmarks.EncodeBenchmarks-report-github.md",
+    "PictTag.PgfCodec.Benchmarks.EncodeBenchmarks-report.csv",
+    "PictTag.PgfCodec.Benchmarks.EncodeBenchmarks-report.html",
+    "PictTag.PgfCodec.Benchmarks.ProgressiveDecodeBenchmarks-report-github.md",
+    "PictTag.PgfCodec.Benchmarks.ProgressiveDecodeBenchmarks-report.csv",
+    "PictTag.PgfCodec.Benchmarks.ProgressiveDecodeBenchmarks-report.html"
+  ]
+}

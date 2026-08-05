@@ -1,0 +1,37 @@
+```
+
+BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8875)
+Unknown processor
+.NET SDK 10.0.302
+  [Host]   : .NET 10.0.10 (10.0.1026.32716), X64 RyuJIT AVX2
+  ShortRun : .NET 10.0.10 (10.0.1026.32716), X64 RyuJIT AVX2
+
+Job=ShortRun  IterationCount=3  LaunchCount=1  
+WarmupCount=3  
+
+```
+| Method                            | Size | Quality | Fixture      | Mean       | Error      | StdDev    | Ratio | RatioSD | Gen0     | Gen1     | Gen2     | Allocated | Alloc Ratio |
+|---------------------------------- |----- |-------- |------------- |-----------:|-----------:|----------:|------:|--------:|---------:|---------:|---------:|----------:|------------:|
+| **NativeProgressiveDecodeAllLevels**  | **256**  | **0**       | **Gradient**     | **1,268.1 μs** |   **585.8 μs** |  **32.11 μs** |  **1.00** |    **0.03** |        **-** |        **-** |        **-** |         **-** |          **NA** |
+| ManagedProgressiveDecodeAllLevels | 256  | 0       | Gradient     | 2,109.0 μs |   607.8 μs |  33.32 μs |  1.66 |    0.04 | 332.0313 | 332.0313 | 332.0313 | 2580754 B |          NA |
+|                                   |      |         |              |            |            |           |       |         |          |          |          |           |             |
+| **NativeProgressiveDecodeAllLevels**  | **256**  | **0**       | **Checkerboard** | **1,678.5 μs** |   **788.5 μs** |  **43.22 μs** |  **1.00** |    **0.03** |        **-** |        **-** |        **-** |         **-** |          **NA** |
+| ManagedProgressiveDecodeAllLevels | 256  | 0       | Checkerboard | 2,526.8 μs | 1,137.8 μs |  62.37 μs |  1.51 |    0.05 | 332.0313 | 332.0313 | 332.0313 | 2580754 B |          NA |
+|                                   |      |         |              |            |            |           |       |         |          |          |          |           |             |
+| **NativeProgressiveDecodeAllLevels**  | **256**  | **8**       | **Gradient**     |   **634.8 μs** |   **126.3 μs** |   **6.92 μs** |  **1.00** |    **0.01** |        **-** |        **-** |        **-** |         **-** |          **NA** |
+| ManagedProgressiveDecodeAllLevels | 256  | 8       | Gradient     |   953.3 μs |   161.5 μs |   8.85 μs |  1.50 |    0.02 |  83.0078 |  83.0078 |  83.0078 | 1216616 B |          NA |
+|                                   |      |         |              |            |            |           |       |         |          |          |          |           |             |
+| **NativeProgressiveDecodeAllLevels**  | **256**  | **8**       | **Checkerboard** |   **743.9 μs** |   **209.4 μs** |  **11.48 μs** |  **1.00** |    **0.02** |        **-** |        **-** |        **-** |         **-** |          **NA** |
+| ManagedProgressiveDecodeAllLevels | 256  | 8       | Checkerboard | 1,145.4 μs |   674.3 μs |  36.96 μs |  1.54 |    0.05 |  82.0313 |  82.0313 |  82.0313 | 1216617 B |          NA |
+|                                   |      |         |              |            |            |           |       |         |          |          |          |           |             |
+| **NativeProgressiveDecodeAllLevels**  | **512**  | **0**       | **Gradient**     | **5,516.0 μs** | **2,100.4 μs** | **115.13 μs** |  **1.00** |    **0.03** |        **-** |        **-** |        **-** |         **-** |          **NA** |
+| ManagedProgressiveDecodeAllLevels | 512  | 0       | Gradient     | 8,122.3 μs |   427.7 μs |  23.45 μs |  1.47 |    0.03 | 812.5000 | 796.8750 | 734.3750 | 9922967 B |          NA |
+|                                   |      |         |              |            |            |           |       |         |          |          |          |           |             |
+| **NativeProgressiveDecodeAllLevels**  | **512**  | **0**       | **Checkerboard** | **7,349.6 μs** | **3,556.1 μs** | **194.92 μs** |  **1.00** |    **0.03** |        **-** |        **-** |        **-** |         **-** |          **NA** |
+| ManagedProgressiveDecodeAllLevels | 512  | 0       | Checkerboard | 9,614.5 μs |   630.3 μs |  34.55 μs |  1.31 |    0.03 | 796.8750 | 781.2500 | 718.7500 | 9922957 B |          NA |
+|                                   |      |         |              |            |            |           |       |         |          |          |          |           |             |
+| **NativeProgressiveDecodeAllLevels**  | **512**  | **8**       | **Gradient**     | **2,665.4 μs** | **1,387.9 μs** |  **76.07 μs** |  **1.00** |    **0.03** |        **-** |        **-** |        **-** |         **-** |          **NA** |
+| ManagedProgressiveDecodeAllLevels | 512  | 8       | Gradient     | 4,051.1 μs |   329.1 μs |  18.04 μs |  1.52 |    0.04 | 882.8125 | 859.3750 | 796.8750 | 4430266 B |          NA |
+|                                   |      |         |              |            |            |           |       |         |          |          |          |           |             |
+| **NativeProgressiveDecodeAllLevels**  | **512**  | **8**       | **Checkerboard** | **3,243.6 μs** |   **972.7 μs** |  **53.32 μs** |  **1.00** |    **0.02** |        **-** |        **-** |        **-** |         **-** |          **NA** |
+| ManagedProgressiveDecodeAllLevels | 512  | 8       | Checkerboard | 5,212.7 μs | 9,620.2 μs | 527.32 μs |  1.61 |    0.14 | 882.8125 | 859.3750 | 796.8750 | 4430266 B |          NA |

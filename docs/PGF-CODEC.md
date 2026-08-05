@@ -56,7 +56,7 @@ dotnet run -c Release --project source/PictTag.PgfCodec.Benchmarks -- --sizes
 
 The report files are under `$artifacts/results/`. `short` is BenchmarkDotNet's command-line name for
 the three-iteration `ShortRun` job shown in its reports. Do not use `--job ShortRun`: it is not a
-valid CLI job name. The full 44-case short matrix takes about five minutes on the development
+valid CLI job name. The expanded 132-case short matrix takes about fifteen minutes on the development
 workstation. **Every comparison run must be preserved in Git**: commit its full normalized matrix,
 revision, environment, and the comparison against the prior baseline to the versioned benchmark
 record. Do not rely on a console transcript, ignored `BenchmarkDotNet.Artifacts`, or a temporary
@@ -85,12 +85,19 @@ The internal fixture encoder accepts an optional workspace and has a caller-owne
 returns `false` without writing a partial stream. This removes the final convenience path’s owned
 `ToArray()` copy, but does not make the growing intermediate writer itself caller-owned.
 
-No SIMD implementation is shipped. The archived post-pooling Dry BenchmarkDotNet matrix is smoke
-evidence only—the runner explicitly says its samples are too short for throughput conclusions—so it
-does not meet the project’s bar for accepting an intrinsic/vector path. Scalar integer code remains
-the byte-exact implementation on Desktop and Browser/WASM. See
+The completed allocation-path ShortRun confirms the contract on this AVX2 development machine: at
+256px/quality 8/gradient, reusable decode reduced 912.5 us / 1,216,616 B to 833.5 us with no managed
+allocation reported; workspace encode with caller-owned output reduced 1,421.7 us / 1,817,880 B to
+1,195.4 us / 614,041 B; and workspace progressive decode reduced 1,015.8 us / 1,216,616 B to 941.6
+us / 6,913 B. The remaining progressive allocation is its per-operation session graph.
+
+No SIMD implementation is shipped. The prior Dry run is retained only as superseded smoke evidence;
+it cannot establish a throughput result and does not justify either accepting or rejecting SIMD.
+Scalar integer code remains the byte-exact implementation on Desktop and Browser/WASM while SIMD
+candidate profiling and experiments remain deferred. See
 [`pgf-codec-allocation-and-simd.md`](../new-features/pgf-codec-allocation-and-simd.md) and the
-[`post-pooling archive`](benchmarks/pgfcodec/2026-08-05-5927927-post-pooling-dry/) for the record.
+[`allocation-path ShortRun`](benchmarks/pgfcodec/2026-08-05-e49c1fc-allocation-paths-shortrun/) for
+the current record.
 
 ## Supported
 

@@ -1,7 +1,8 @@
 # PGF codec: reusable workspaces, allocation reduction, and measured SIMD — PRD
 
-**Status: done, all 9 implementation stages shipped.** See the Progress log for the per-stage
-evidence and commits.
+**Status: in progress — allocation and ownership stages are complete; the SIMD decision is
+explicitly deferred pending real candidate profiling and experiments.** See the Progress log for the
+per-stage evidence and the corrected performance record.
 
 ## Context
 
@@ -275,19 +276,21 @@ internal fixture infrastructure, so the new overload correctly stays internal to
 expanding the planned NuGet package surface prematurely. Focused encoder tests: 21/21 green,
 covering byte-for-byte equivalence, required-size failure semantics, and workspace equivalence.
 Full suite: 1389/1389 green (1386 existing + 3 new, zero regressions).
-**Stage 5 — done (SIMD rejected).** Ran the full 88-case post-pooling BenchmarkDotNet matrix
-(decode, encode, progressive decode; 128/256/512, three qualities, gradient/checkerboard) and
-archived its raw reports under `docs/benchmarks/pgfcodec/2026-08-05-5927927-post-pooling-dry/`.
-The bounded `Dry` job completed within the execution limit but BenchmarkDotNet explicitly reports
-that its iterations are too short for throughput conclusions. The PRD's precondition for accepting
-SIMD—a measured, meaningful benefit on its actual target—is therefore not met. No `Vector<T>` or
-intrinsic path is retained: keeping a speculative vector implementation would risk integer
-rounding/overflow parity and Browser fallback complexity without evidence. Browser/WASM build:
-green. Full codec suite remains 1389/1389 green.
-**Stage 6 — done.** Verified the Progress log against the nine stage commits (`5822261`, `aa60de0`,
-`0a645f0`, `657d6e2`, `c80bf75`, `f50e257`, `5927927`, `d127714`, and this documentation commit);
-every inserted sub-stage, allocation finding, output ownership rule, and SIMD rejection is recorded
-where it landed. Updated `docs/PGF-CODEC.md` with the opt-in workspace and reusable-session
-lifetime rules, caller-owned output failure semantics, retained intermediate writer allocation, and
-the evidence-based scalar-only SIMD decision. The benchmark index points to the immutable Stage 5
-archive. Final regression gate: 1389/1389 green (zero regressions).
+**Stage 5 — allocation performance done; SIMD deferred (correction).** The earlier bounded `Dry`
+matrix under `2026-08-05-5927927-post-pooling-dry/` was incorrectly treated as a SIMD decision. It
+is immutable historical smoke evidence only: BenchmarkDotNet explicitly says its samples are too
+short for throughput conclusions. A complete convenience-only ShortRun was then archived under
+`2026-08-05-bfee39d-post-pooling-shortrun/`; it was valid, but did not exercise the opt-in paths and
+therefore could not measure the allocation work itself. Stage 5 now adds the reusable decoder,
+workspace encoder with caller-owned output, and workspace progressive decoder to the benchmark
+matrix (`e49c1fc`) and archives the completed 132-case ShortRun under
+`2026-08-05-e49c1fc-allocation-paths-shortrun/`. At 256px/Q8/gradient it measures reusable decode
+at 833.5 us / no managed allocation reported vs. convenience 912.5 us / 1,216,616 B; workspace
+encode at 1,195.4 us / 614,041 B vs. 1,421.7 us / 1,817,880 B; and workspace progressive decode at
+941.6 us / 6,913 B vs. 1,015.8 us / 1,216,616 B. Full codec suite: 1389/1389 green. No SIMD path
+was implemented or benchmarked, so no accept/reject conclusion follows; the SIMD experiment remains
+an open part of Stage 5 rather than a completed rejection.
+**Stage 6 — documentation corrected; final record pending SIMD work.** The allocation ownership
+contract and both completed ShortRuns are documented in `docs/PGF-CODEC.md` and the benchmark index.
+The prior Dry archive is clearly marked superseded. Final documentation closure waits for the real
+SIMD candidate result rather than claiming a decision the evidence does not support.

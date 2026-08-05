@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-20260805-090732</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8875)
+Unknown processor
+.NET SDK 10.0.302
+  [Host]   : .NET 10.0.10 (10.0.1026.32716), X64 RyuJIT AVX2
+  ShortRun : .NET 10.0.10 (10.0.1026.32716), X64 RyuJIT AVX2
+</code></pre>
+<pre><code>Job=ShortRun  IterationCount=3  LaunchCount=1  
+WarmupCount=3  
+</code></pre>
+
+<table>
+<thead><tr><th>Method </th><th>Size</th><th>Quality</th><th>Fixture</th><th>Mean</th><th>Error</th><th>StdDev</th><th>Ratio</th><th>RatioSD</th><th>Gen0</th><th>Gen1</th><th>Gen2</th><th>Allocated</th><th>Alloc Ratio</th>
+</tr>
+</thead><tbody><tr><td>NativeDecode</td><td>128</td><td>0</td><td>Gradient</td><td>340.5 &mu;s</td><td>215.62 &mu;s</td><td>11.82 &mu;s</td><td>1.00</td><td>0.04</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedDecode</td><td>128</td><td>0</td><td>Gradient</td><td>527.1 &mu;s</td><td>158.15 &mu;s</td><td>8.67 &mu;s</td><td>1.55</td><td>0.05</td><td>43.9453</td><td>23.4375</td><td>-</td><td>743593 B</td><td>NA</td>
+</tr><tr><td>NativeDecode</td><td>128</td><td>0</td><td>Checkerboard</td><td>428.1 &mu;s</td><td>149.07 &mu;s</td><td>8.17 &mu;s</td><td>1.00</td><td>0.02</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedDecode</td><td>128</td><td>0</td><td>Checkerboard</td><td>620.1 &mu;s</td><td>172.49 &mu;s</td><td>9.45 &mu;s</td><td>1.45</td><td>0.03</td><td>43.9453</td><td>23.4375</td><td>-</td><td>743592 B</td><td>NA</td>
+</tr><tr><td>NativeDecode</td><td>128</td><td>8</td><td>Gradient</td><td>153.0 &mu;s</td><td>23.11 &mu;s</td><td>1.27 &mu;s</td><td>1.00</td><td>0.01</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedDecode</td><td>128</td><td>8</td><td>Gradient</td><td>229.7 &mu;s</td><td>64.51 &mu;s</td><td>3.54 &mu;s</td><td>1.50</td><td>0.02</td><td>24.4141</td><td>8.0566</td><td>-</td><td>411816 B</td><td>NA</td>
+</tr><tr><td>NativeDecode</td><td>128</td><td>8</td><td>Checkerboard</td><td>187.9 &mu;s</td><td>79.60 &mu;s</td><td>4.36 &mu;s</td><td>1.00</td><td>0.03</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedDecode</td><td>128</td><td>8</td><td>Checkerboard</td><td>284.0 &mu;s</td><td>95.02 &mu;s</td><td>5.21 &mu;s</td><td>1.51</td><td>0.04</td><td>24.4141</td><td>7.8125</td><td>-</td><td>411816 B</td><td>NA</td>
+</tr><tr><td>NativeDecode</td><td>128</td><td>15</td><td>Gradient</td><td>133.9 &mu;s</td><td>75.13 &mu;s</td><td>4.12 &mu;s</td><td>1.00</td><td>0.04</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedDecode</td><td>128</td><td>15</td><td>Gradient</td><td>216.1 &mu;s</td><td>22.51 &mu;s</td><td>1.23 &mu;s</td><td>1.61</td><td>0.04</td><td>24.4141</td><td>8.0566</td><td>-</td><td>411816 B</td><td>NA</td>
+</tr><tr><td>NativeDecode</td><td>128</td><td>15</td><td>Checkerboard</td><td>132.9 &mu;s</td><td>21.05 &mu;s</td><td>1.15 &mu;s</td><td>1.00</td><td>0.01</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedDecode</td><td>128</td><td>15</td><td>Checkerboard</td><td>211.7 &mu;s</td><td>122.54 &mu;s</td><td>6.72 &mu;s</td><td>1.59</td><td>0.05</td><td>24.4141</td><td>8.0566</td><td>-</td><td>411816 B</td><td>NA</td>
+</tr><tr><td>NativeDecode</td><td>256</td><td>0</td><td>Gradient</td><td>1,177.2 &mu;s</td><td>175.33 &mu;s</td><td>9.61 &mu;s</td><td>1.00</td><td>0.01</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedDecode</td><td>256</td><td>0</td><td>Gradient</td><td>1,983.1 &mu;s</td><td>457.69 &mu;s</td><td>25.09 &mu;s</td><td>1.68</td><td>0.02</td><td>332.0313</td><td>332.0313</td><td>332.0313</td><td>2580751 B</td><td>NA</td>
+</tr><tr><td>NativeDecode</td><td>256</td><td>0</td><td>Checkerboard</td><td>1,864.6 &mu;s</td><td>921.57 &mu;s</td><td>50.51 &mu;s</td><td>1.00</td><td>0.03</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedDecode</td><td>256</td><td>0</td><td>Checkerboard</td><td>2,384.2 &mu;s</td><td>873.81 &mu;s</td><td>47.90 &mu;s</td><td>1.28</td><td>0.04</td><td>332.0313</td><td>332.0313</td><td>332.0313</td><td>2580754 B</td><td>NA</td>
+</tr><tr><td>NativeDecode</td><td>256</td><td>8</td><td>Gradient</td><td>558.4 &mu;s</td><td>253.77 &mu;s</td><td>13.91 &mu;s</td><td>1.00</td><td>0.03</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedDecode</td><td>256</td><td>8</td><td>Gradient</td><td>892.2 &mu;s</td><td>286.88 &mu;s</td><td>15.72 &mu;s</td><td>1.60</td><td>0.04</td><td>83.0078</td><td>83.0078</td><td>83.0078</td><td>1216616 B</td><td>NA</td>
+</tr><tr><td>NativeDecode</td><td>256</td><td>8</td><td>Checkerboard</td><td>710.6 &mu;s</td><td>25.19 &mu;s</td><td>1.38 &mu;s</td><td>1.00</td><td>0.00</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedDecode</td><td>256</td><td>8</td><td>Checkerboard</td><td>1,105.1 &mu;s</td><td>170.68 &mu;s</td><td>9.36 &mu;s</td><td>1.56</td><td>0.01</td><td>82.0313</td><td>82.0313</td><td>82.0313</td><td>1216617 B</td><td>NA</td>
+</tr><tr><td>NativeDecode</td><td>256</td><td>15</td><td>Gradient</td><td>560.9 &mu;s</td><td>101.29 &mu;s</td><td>5.55 &mu;s</td><td>1.00</td><td>0.01</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedDecode</td><td>256</td><td>15</td><td>Gradient</td><td>904.7 &mu;s</td><td>170.90 &mu;s</td><td>9.37 &mu;s</td><td>1.61</td><td>0.02</td><td>83.0078</td><td>83.0078</td><td>83.0078</td><td>1216616 B</td><td>NA</td>
+</tr><tr><td>NativeDecode</td><td>256</td><td>15</td><td>Checkerboard</td><td>558.2 &mu;s</td><td>45.32 &mu;s</td><td>2.48 &mu;s</td><td>1.00</td><td>0.01</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedDecode</td><td>256</td><td>15</td><td>Checkerboard</td><td>896.8 &mu;s</td><td>384.56 &mu;s</td><td>21.08 &mu;s</td><td>1.61</td><td>0.03</td><td>83.0078</td><td>83.0078</td><td>83.0078</td><td>1216616 B</td><td>NA</td>
+</tr><tr><td>NativeDecode</td><td>512</td><td>0</td><td>Gradient</td><td>5,314.8 &mu;s</td><td>2,517.64 &mu;s</td><td>138.00 &mu;s</td><td>1.00</td><td>0.03</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedDecode</td><td>512</td><td>0</td><td>Gradient</td><td>8,159.6 &mu;s</td><td>312.08 &mu;s</td><td>17.11 &mu;s</td><td>1.54</td><td>0.03</td><td>890.6250</td><td>875.0000</td><td>812.5000</td><td>9923018 B</td><td>NA</td>
+</tr><tr><td>NativeDecode</td><td>512</td><td>0</td><td>Checkerboard</td><td>6,812.8 &mu;s</td><td>3,501.25 &mu;s</td><td>191.92 &mu;s</td><td>1.00</td><td>0.03</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedDecode</td><td>512</td><td>0</td><td>Checkerboard</td><td>9,675.5 &mu;s</td><td>2,582.77 &mu;s</td><td>141.57 &mu;s</td><td>1.42</td><td>0.04</td><td>875.0000</td><td>859.3750</td><td>796.8750</td><td>9923008 B</td><td>NA</td>
+</tr><tr><td>NativeDecode</td><td>512</td><td>8</td><td>Gradient</td><td>2,421.8 &mu;s</td><td>57.44 &mu;s</td><td>3.15 &mu;s</td><td>1.00</td><td>0.00</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedDecode</td><td>512</td><td>8</td><td>Gradient</td><td>3,717.7 &mu;s</td><td>2,243.10 &mu;s</td><td>122.95 &mu;s</td><td>1.54</td><td>0.04</td><td>886.7188</td><td>867.1875</td><td>796.8750</td><td>4430263 B</td><td>NA</td>
+</tr><tr><td>NativeDecode</td><td>512</td><td>8</td><td>Checkerboard</td><td>2,868.4 &mu;s</td><td>166.52 &mu;s</td><td>9.13 &mu;s</td><td>1.00</td><td>0.00</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedDecode</td><td>512</td><td>8</td><td>Checkerboard</td><td>4,268.4 &mu;s</td><td>146.78 &mu;s</td><td>8.05 &mu;s</td><td>1.49</td><td>0.00</td><td>882.8125</td><td>859.3750</td><td>796.8750</td><td>4430264 B</td><td>NA</td>
+</tr><tr><td>NativeDecode</td><td>512</td><td>15</td><td>Gradient</td><td>2,384.0 &mu;s</td><td>431.30 &mu;s</td><td>23.64 &mu;s</td><td>1.00</td><td>0.01</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedDecode</td><td>512</td><td>15</td><td>Gradient</td><td>3,627.9 &mu;s</td><td>1,431.65 &mu;s</td><td>78.47 &mu;s</td><td>1.52</td><td>0.03</td><td>886.7188</td><td>867.1875</td><td>796.8750</td><td>4430263 B</td><td>NA</td>
+</tr><tr><td>NativeDecode</td><td>512</td><td>15</td><td>Checkerboard</td><td>2,374.4 &mu;s</td><td>1,135.02 &mu;s</td><td>62.21 &mu;s</td><td>1.00</td><td>0.03</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedDecode</td><td>512</td><td>15</td><td>Checkerboard</td><td>3,663.0 &mu;s</td><td>236.22 &mu;s</td><td>12.95 &mu;s</td><td>1.54</td><td>0.04</td><td>886.7188</td><td>867.1875</td><td>796.8750</td><td>4430263 B</td><td>NA</td>
+</tr></tbody></table>
+</body>
+</html>

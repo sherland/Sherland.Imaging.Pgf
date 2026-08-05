@@ -1,8 +1,7 @@
 # PGF codec: reusable workspaces, allocation reduction, and measured SIMD — PRD
 
-**Status: in progress — allocation and ownership stages are complete; the SIMD decision is
-explicitly deferred pending real candidate profiling and experiments.** See the Progress log for the
-per-stage evidence and the corrected performance record.
+**Status: done.** Allocation ownership and the measured, byte-exact SIMD path are complete; see the
+Progress log for the corrected evidence.
 
 ## Context
 
@@ -276,7 +275,7 @@ internal fixture infrastructure, so the new overload correctly stays internal to
 expanding the planned NuGet package surface prematurely. Focused encoder tests: 21/21 green,
 covering byte-for-byte equivalence, required-size failure semantics, and workspace equivalence.
 Full suite: 1389/1389 green (1386 existing + 3 new, zero regressions).
-**Stage 5 — allocation performance done; SIMD deferred (correction).** The earlier bounded `Dry`
+**Stage 5 — done (corrected allocation record and accepted SIMD).** The earlier bounded `Dry`
 matrix under `2026-08-05-5927927-post-pooling-dry/` was incorrectly treated as a SIMD decision. It
 is immutable historical smoke evidence only: BenchmarkDotNet explicitly says its samples are too
 short for throughput conclusions. A complete convenience-only ShortRun was then archived under
@@ -288,9 +287,16 @@ matrix (`e49c1fc`) and archives the completed 132-case ShortRun under
 at 833.5 us / no managed allocation reported vs. convenience 912.5 us / 1,216,616 B; workspace
 encode at 1,195.4 us / 614,041 B vs. 1,421.7 us / 1,817,880 B; and workspace progressive decode at
 941.6 us / 6,913 B vs. 1,015.8 us / 1,216,616 B. Full codec suite: 1389/1389 green. No SIMD path
-was implemented or benchmarked, so no accept/reject conclusion follows; the SIMD experiment remains
-an open part of Stage 5 rather than a completed rejection.
-**Stage 6 — documentation corrected; final record pending SIMD work.** The allocation ownership
-contract and both completed ShortRuns are documented in `docs/PGF-CODEC.md` and the benchmark index.
-The prior Dry archive is clearly marked superseded. Final documentation closure waits for the real
-SIMD candidate result rather than claiming a decision the evidence does not support.
+was implemented or benchmarked at that point, so no accept/reject conclusion followed. A real
+experiment then vectorized only independent vertical-lifting columns with `Vector<int>`, preserving
+scalar tails and a forced-scalar fallback. Focused fallback parity plus the full native-oracle suite
+are byte-exact (1390/1390), and Browser/WASM builds. The completed vector-enabled run is archived
+under `2026-08-05-f7e21ef-simd-enabled-shortrun/`; the authoritative controlled 264-case ShortRun,
+which compares `ForceScalarVectors=false` and `true` in one matrix, is archived under
+`2026-08-05-6f120cf-simd-scalar-controlled-shortrun/`. At 256px/Q8/gradient it measures vector
+enabled at 795.8 us vs. forced scalar 923.0 us for convenience decode (13.8% faster), 771.2 vs.
+852.2 us for reusable decode (9.5%), and 844.4 vs. 975.6 us for progressive decode (13.4%), with
+unchanged allocations. This meets the meaningful-benefit threshold and keeps the SIMD path.
+**Stage 6 — done.** `docs/PGF-CODEC.md` and the benchmark index now distinguish the invalid Dry
+smoke run, completed allocation-path run, vector-enabled evidence, and the authoritative controlled
+SIMD comparison. Final regression gate: 1390/1390 green and Browser/WASM build green.

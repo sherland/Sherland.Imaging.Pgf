@@ -56,7 +56,7 @@ dotnet run -c Release --project source/PictTag.PgfCodec.Benchmarks -- --sizes
 
 The report files are under `$artifacts/results/`. `short` is BenchmarkDotNet's command-line name for
 the three-iteration `ShortRun` job shown in its reports. Do not use `--job ShortRun`: it is not a
-valid CLI job name. The expanded 132-case short matrix takes about fifteen minutes on the development
+valid CLI job name. The controlled scalar-versus-vector matrix has 264 cases and takes about thirty minutes on the development
 workstation. **Every comparison run must be preserved in Git**: commit its full normalized matrix,
 revision, environment, and the comparison against the prior baseline to the versioned benchmark
 record. Do not rely on a console transcript, ignored `BenchmarkDotNet.Artifacts`, or a temporary
@@ -91,13 +91,15 @@ allocation reported; workspace encode with caller-owned output reduced 1,421.7 u
 1,195.4 us / 614,041 B; and workspace progressive decode reduced 1,015.8 us / 1,216,616 B to 941.6
 us / 6,913 B. The remaining progressive allocation is its per-operation session graph.
 
-No SIMD implementation is shipped. The prior Dry run is retained only as superseded smoke evidence;
-it cannot establish a throughput result and does not justify either accepting or rejecting SIMD.
-Scalar integer code remains the byte-exact implementation on Desktop and Browser/WASM while SIMD
-candidate profiling and experiments remain deferred. See
+Vectorized vertical wavelet lifting is shipped when `Vector<int>.IsHardwareAccelerated`; it processes
+only independent columns, keeps scalar tails, and has the identical forced-scalar fallback used by
+the tests and controlled benchmark. At 256px/Q8/gradient, the same-run controlled matrix measured
+13.8% faster convenience decode and 13.4% faster full progressive decode with unchanged allocations.
+The full native-oracle suite is byte-exact for both paths and the Browser/WASM build validates the
+fallback target. The prior Dry run is retained only as superseded smoke evidence. See
 [`pgf-codec-allocation-and-simd.md`](../new-features/pgf-codec-allocation-and-simd.md) and the
-[`allocation-path ShortRun`](benchmarks/pgfcodec/2026-08-05-e49c1fc-allocation-paths-shortrun/) for
-the current record.
+[`controlled SIMD ShortRun`](benchmarks/pgfcodec/2026-08-05-6f120cf-simd-scalar-controlled-shortrun/)
+for the current record.
 
 ## Supported
 

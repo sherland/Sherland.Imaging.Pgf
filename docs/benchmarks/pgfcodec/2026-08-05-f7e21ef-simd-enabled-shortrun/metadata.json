@@ -1,0 +1,19 @@
+{
+  "runName": "2026-08-05-f7e21ef-simd-enabled-shortrun",
+  "revision": "f7e21ef",
+  "purpose": "Completed ShortRun with the vectorized vertical-lifting experiment enabled. Preserved as evidence, but not used alone for the scalar-versus-vector decision.",
+  "archivedAtUtc": "2026-08-05T07:59:53.7969764Z",
+  "benchmarkCommand": "dotnet run -c Release --project source/PictTag.PgfCodec.Benchmarks -- --filter '*' --job short --artifacts C:\\tmp\\pgfcodec-simd-shortrun-artifacts",
+  "sourceArtifactDirectory": "C:\\tmp\\pgfcodec-simd-shortrun-artifacts",
+  "reports": [
+    "PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report-github.md",
+    "PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report.csv",
+    "PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report.html",
+    "PictTag.PgfCodec.Benchmarks.EncodeBenchmarks-report-github.md",
+    "PictTag.PgfCodec.Benchmarks.EncodeBenchmarks-report.csv",
+    "PictTag.PgfCodec.Benchmarks.EncodeBenchmarks-report.html",
+    "PictTag.PgfCodec.Benchmarks.ProgressiveDecodeBenchmarks-report-github.md",
+    "PictTag.PgfCodec.Benchmarks.ProgressiveDecodeBenchmarks-report.csv",
+    "PictTag.PgfCodec.Benchmarks.ProgressiveDecodeBenchmarks-report.html"
+  ]
+}

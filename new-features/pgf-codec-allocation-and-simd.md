@@ -265,6 +265,14 @@ byte-identical repeat decode, allocation measurement, and cancellation recovery.
 chroma into the source plane prefix, and `PgfWaveletTransform` uses its supplied dimensions for all
 logical reads and writes. This removes one allocation/copy for every downsampled chroma channel
 without changing emitted bytes. Focused encoder tests: 18/18 green. Full suite: 1381/1381 green.
-- Stage 4b — pending.
+**Stage 4b — done.** Migrated encoder channel planes and every fixed entropy macroblock/scratch
+array into the optional caller-owned workspace, while retaining the allocation-based convenience
+path unchanged. Added the span-destination `TryEncodeMode` overload: it runs the same encoder core,
+reports the exact completed byte count, never partially writes an undersized destination, and skips
+only the convenience overload's final owned `ToArray()` copy. Real finding: encoding remains
+internal fixture infrastructure, so the new overload correctly stays internal too rather than
+expanding the planned NuGet package surface prematurely. Focused encoder tests: 21/21 green,
+covering byte-for-byte equivalence, required-size failure semantics, and workspace equivalence.
+Full suite: 1389/1389 green (1386 existing + 3 new, zero regressions).
 - Stage 5 — pending.
 - Stage 6 — pending.

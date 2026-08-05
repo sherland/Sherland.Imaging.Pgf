@@ -24,10 +24,10 @@ internal sealed class PgfEncodeMacroBlock
     /// <see cref="WriteValue"/>, index <c>[0, BufferSize)</c>. <c>DataT</c> in the original -
     /// <see cref="int"/> in this build (real <c>__PGF32SUPPORT__</c> build, see
     /// <see cref="PgfConstants"/>'s doc comment).</summary>
-    public readonly int[] Value = new int[PgfConstants.BufferSize];
+    public readonly int[] Value;
 
     /// <summary>Entropy-coded output bitstream, one macroblock's worth, in 32-bit words.</summary>
-    public readonly uint[] CodeBuffer = new uint[PgfConstants.BufferSize];
+    public readonly uint[] CodeBuffer;
 
     public uint ValuePos;
 
@@ -50,16 +50,29 @@ internal sealed class PgfEncodeMacroBlock
     /// bits of *output*, not count of *input* values (mirrors <c>m_codePos</c>).</summary>
     public uint CodePos;
 
-    private readonly bool[] sigFlagVector = new bool[PgfConstants.BufferSize + 1];
+    private readonly bool[] sigFlagVector;
 
     // Scratch buffers reused across bitplane iterations within one BitplaneEncode call, and across
     // calls - BufferLen = BufferSize/WordWidth = 512 words (Decoder.h's #define, shared meaning).
     // Pre-allocated instance arrays rather than re-allocated per call: Stage 10 (managed-pgf-codec.md)
     // is where allocation strategy gets a dedicated hardening pass; this stage's job is correctness.
     private const int BufferLen = PgfConstants.BufferSize / 32;
-    private readonly uint[] sigBitsScratch = new uint[BufferLen];
-    private readonly uint[] refBitsScratch = new uint[BufferLen];
-    private readonly uint[] signBitsScratch = new uint[BufferLen];
+    private readonly uint[] sigBitsScratch;
+    private readonly uint[] refBitsScratch;
+    private readonly uint[] signBitsScratch;
+
+    /// <summary>pgf-codec-allocation-and-simd.md Stage 4b: keeps the encoder's fixed entropy
+    /// buffers under the optional caller-owned workspace, matching decoder macroblock ownership.
+    /// The no-workspace path preserves the former zeroed-array behavior exactly.</summary>
+    public PgfEncodeMacroBlock(PgfWorkspace? workspace = null)
+    {
+        Value = workspace is null ? new int[PgfConstants.BufferSize] : workspace.RentInt32Backing(PgfConstants.BufferSize);
+        CodeBuffer = workspace is null ? new uint[PgfConstants.BufferSize] : workspace.RentUInt32Backing(PgfConstants.BufferSize);
+        sigFlagVector = workspace is null ? new bool[PgfConstants.BufferSize + 1] : workspace.RentBooleanBacking(PgfConstants.BufferSize + 1);
+        sigBitsScratch = workspace is null ? new uint[BufferLen] : workspace.RentUInt32Backing(BufferLen);
+        refBitsScratch = workspace is null ? new uint[BufferLen] : workspace.RentUInt32Backing(BufferLen);
+        signBitsScratch = workspace is null ? new uint[BufferLen] : workspace.RentUInt32Backing(BufferLen);
+    }
 
     public bool IsFull => ValuePos >= PgfConstants.BufferSize;
 

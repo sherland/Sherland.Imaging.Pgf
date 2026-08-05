@@ -77,6 +77,48 @@ public class PgfImageEncoderTests
         Assert.Null(pgfBytes);
     }
 
+    [Fact]
+    public void CallerOwnedDestination_ProducesTheExactConvenienceStream_WithoutAnOwnedResult()
+    {
+        (byte[] bgra, int width, int height) = TestBitmaps.Gradient(64, 64);
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 8, out byte[]? expected));
+
+        byte[] destination = new byte[expected!.Length];
+        bool encoded = PgfImageEncoder.TryEncodeMode(
+            bgra, width, height, quality: 8, PgfConstants.ImageModeRGBA, destination, out int bytesWritten);
+
+        Assert.True(encoded);
+        Assert.Equal(expected.Length, bytesWritten);
+        Assert.Equal(expected, destination);
+    }
+
+    [Fact]
+    public void CallerOwnedDestination_ReportsRequiredLength_AndDoesNotWritePartially()
+    {
+        (byte[] bgra, int width, int height) = TestBitmaps.Gradient(64, 64);
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 8, out byte[]? expected));
+
+        byte[] destination = Enumerable.Repeat((byte)0xCC, expected!.Length - 1).ToArray();
+        bool encoded = PgfImageEncoder.TryEncodeMode(
+            bgra, width, height, quality: 8, PgfConstants.ImageModeRGBA, destination, out int bytesWritten);
+
+        Assert.False(encoded);
+        Assert.Equal(expected.Length, bytesWritten);
+        Assert.All(destination, value => Assert.Equal(0xCC, value));
+    }
+
+    [Fact]
+    public void WorkspaceBackedEncode_MatchesTheConvenienceStream()
+    {
+        (byte[] bgra, int width, int height) = TestBitmaps.Gradient(64, 64);
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 8, out byte[]? expected));
+
+        using var workspace = new PgfWorkspace();
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 8, out byte[]? actual, workspace: workspace));
+
+        Assert.Equal(expected, actual);
+    }
+
     /// <summary>Tier 4's "cheap invariant worth asserting alongside pixel agreement" - swept across
     /// every quality value, not just one representative pair, since this is a compression codec and a
     /// regression here would indicate a quantization-logic bug even if pixel-agreement tests still

@@ -12,7 +12,7 @@ namespace PictTag.PgfCodec;
 internal sealed class PgfEncoderCore
 {
     private readonly PgfByteWriter writer;
-    private readonly PgfEncodeMacroBlock currentBlock = new();
+    private readonly PgfEncodeMacroBlock currentBlock;
 
     /// <summary>Mirrors <c>CEncoder::m_roi</c> - true once <see cref="SetRoi"/> has been called.
     /// Gates whether <see cref="WriteMacroBlock"/> actually writes the extra 2
@@ -35,9 +35,10 @@ internal sealed class PgfEncoderCore
     /// currently-buffered macroblock's encoded bytes started at, set by <see cref="SetBufferStartPos"/>.</summary>
     private long bufferStartPos;
 
-    public PgfEncoderCore(PgfByteWriter writer)
+    public PgfEncoderCore(PgfByteWriter writer, PgfWorkspace? workspace = null)
     {
         this.writer = writer;
+        currentBlock = new PgfEncodeMacroBlock(workspace);
     }
 
     /// <summary>The real, accumulated per-level byte lengths once encoding has finished (index 0 =

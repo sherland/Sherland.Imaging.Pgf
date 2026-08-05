@@ -40,8 +40,8 @@ internal static class PgfImageEncoder
     public static bool TryEncode(
         ReadOnlySpan<byte> bgra, int width, int height, byte quality, out byte[]? pgfBytes,
         IProgress<double>? progress = null, CancellationToken cancellationToken = default, ReadOnlySpan<byte> userData = default,
-        bool roi = false) =>
-        TryEncodeMode(bgra, width, height, quality, PgfConstants.ImageModeRGBA, out pgfBytes, colorTable: default, progress, cancellationToken, userData, roi);
+        bool roi = false, PgfWorkspace? workspace = null) =>
+        TryEncodeMode(bgra, width, height, quality, PgfConstants.ImageModeRGBA, out pgfBytes, colorTable: default, progress, cancellationToken, userData, roi, workspace);
 
     /// <summary>General form of <see cref="TryEncode"/>, for any mode <see cref="PgfImageDecoder.
     /// IsModeSupported"/> covers - test infrastructure only (Goal 2), used to produce real fixtures
@@ -62,9 +62,34 @@ internal static class PgfImageEncoder
     public static bool TryEncodeMode(
         ReadOnlySpan<byte> source, int width, int height, byte quality, byte mode, out byte[]? pgfBytes,
         ReadOnlySpan<byte> colorTable = default, IProgress<double>? progress = null, CancellationToken cancellationToken = default,
-        ReadOnlySpan<byte> userData = default, bool roi = false)
+        ReadOnlySpan<byte> userData = default, bool roi = false, PgfWorkspace? workspace = null)
+    {
+        return TryEncodeModeCore(source, width, height, quality, mode, out pgfBytes, colorTable, progress,
+            cancellationToken, userData, roi, workspace, destination: default, writeToDestination: false, out _);
+    }
+
+    /// <summary>pgf-codec-allocation-and-simd.md Stage 4b: writes the completed PGF stream into
+    /// caller-owned storage, avoiding the convenience API's final owned <c>ToArray()</c> copy.
+    /// On a too-small destination it returns <see langword="false"/>, reports the exact required
+    /// byte count, and does not copy a partial stream. All codec working buffers still follow the
+    /// optional <paramref name="workspace"/> ownership contract.</summary>
+    public static bool TryEncodeMode(
+        ReadOnlySpan<byte> source, int width, int height, byte quality, byte mode, Span<byte> destination, out int bytesWritten,
+        ReadOnlySpan<byte> colorTable = default, IProgress<double>? progress = null, CancellationToken cancellationToken = default,
+        ReadOnlySpan<byte> userData = default, bool roi = false, PgfWorkspace? workspace = null)
+    {
+        return TryEncodeModeCore(source, width, height, quality, mode, out _, colorTable, progress,
+            cancellationToken, userData, roi, workspace, destination, writeToDestination: true, out bytesWritten);
+    }
+
+    private static bool TryEncodeModeCore(
+        ReadOnlySpan<byte> source, int width, int height, byte quality, byte mode, out byte[]? pgfBytes,
+        ReadOnlySpan<byte> colorTable, IProgress<double>? progress, CancellationToken cancellationToken,
+        ReadOnlySpan<byte> userData, bool roi, PgfWorkspace? workspace, Span<byte> destination,
+        bool writeToDestination, out int bytesWritten)
     {
         pgfBytes = null;
+        bytesWritten = 0;
 
         if (!PgfModeInfo.TryGetBppAndChannels(mode, out byte bpp, out byte channelCount))
         {
@@ -89,7 +114,7 @@ internal static class PgfImageEncoder
         int[][] channelBuffers = new int[channelCount][];
         for (int c = 0; c < channelCount; c++)
         {
-            channelBuffers[c] = new int[width * height];
+            channelBuffers[c] = workspace is null ? new int[width * height] : workspace.RentInt32Backing(width * height);
         }
 
         // Mode dispatch for the source-bytes-to-YUV-offset step (PgfColorConversion's own per-group
@@ -177,8 +202,7 @@ internal static class PgfImageEncoder
             // progress across.
             progress?.Report(1.0);
 
-            pgfBytes = rawWriter.WrittenSpan.ToArray();
-            return true;
+            return FinishEncoding(rawWriter, out pgfBytes, destination, writeToDestination, out bytesWritten);
         }
 
         int chromaSize = chromaWidth * chromaHeight;
@@ -227,7 +251,7 @@ internal static class PgfImageEncoder
         PgfByteWriter writer = new();
         long levelLengthPos = PgfHeaderIO.Write(writer, header, colorTable, userData, roi);
 
-        PgfEncoderCore encoder = new(writer);
+        PgfEncoderCore encoder = new(writer, workspace);
 
         // pgf-real-level-lengths.md Stage 1: PgfHeaderIO.Write above already reserved and zero-filled
         // the level-length placeholder (its own tail zero-write loop) - the stream is positioned
@@ -349,7 +373,27 @@ internal static class PgfImageEncoder
             writer.Write(levelLengthBytes);
         }
 
-        pgfBytes = writer.WrittenSpan.ToArray();
+        return FinishEncoding(writer, out pgfBytes, destination, writeToDestination, out bytesWritten);
+    }
+
+    private static bool FinishEncoding(PgfByteWriter writer, out byte[]? pgfBytes, Span<byte> destination,
+        bool writeToDestination, out int bytesWritten)
+    {
+        ReadOnlySpan<byte> written = writer.WrittenSpan;
+        bytesWritten = written.Length;
+        if (writeToDestination)
+        {
+            pgfBytes = null;
+            if (destination.Length < written.Length)
+            {
+                return false;
+            }
+
+            written.CopyTo(destination);
+            return true;
+        }
+
+        pgfBytes = written.ToArray();
         return true;
     }
 

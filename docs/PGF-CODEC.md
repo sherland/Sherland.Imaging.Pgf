@@ -65,6 +65,33 @@ checked in under [`benchmarks/pgfcodec/`](benchmarks/pgfcodec/); archive a new i
 with [`Archive-PgfCodecBenchmark.ps1`](../Archive-PgfCodecBenchmark.ps1) for the next comparison.
 Name each folder `yyyy-MM-dd-shortsha-description`; never call an immutable historical run `current`.
 
+## Allocation and output ownership
+
+The default decode and encode APIs preserve their existing convenience ownership: decode exposes a
+transient pooled BGRA span only for its callback, while the internal fixture encoder returns an
+owned `byte[]`. Callers that perform repeated work can opt into `PgfWorkspace`, a disposable,
+single-threaded owner for codec coefficient and entropy buffers. A workspace must outlive every
+operation using it; `Reset()` invalidates completed workspace-backed operations so their buffers can
+be reused, and `Dispose()` returns all rents. It is not safe to use concurrently.
+
+For repeated decodes of the same immutable payload, `PgfReusableDecoder` retains the parsed session
+and its persistent macroblock state. After an initial decode-and-recycle warm-up it performs zero
+codec-owned managed allocations; any result allocation requested by its callback remains the
+caller’s choice. Cancellation or failure dirties the reusable session, and its next decode rewinds
+the stream before doing work.
+
+The internal fixture encoder accepts an optional workspace and has a caller-owned `Span<byte>`
+`TryEncodeMode` overload. It reports the exact required byte count; an undersized destination
+returns `false` without writing a partial stream. This removes the final convenience path’s owned
+`ToArray()` copy, but does not make the growing intermediate writer itself caller-owned.
+
+No SIMD implementation is shipped. The archived post-pooling Dry BenchmarkDotNet matrix is smoke
+evidence only—the runner explicitly says its samples are too short for throughput conclusions—so it
+does not meet the project’s bar for accepting an intrinsic/vector path. Scalar integer code remains
+the byte-exact implementation on Desktop and Browser/WASM. See
+[`pgf-codec-allocation-and-simd.md`](../new-features/pgf-codec-allocation-and-simd.md) and the
+[`post-pooling archive`](benchmarks/pgfcodec/2026-08-05-5927927-post-pooling-dry/) for the record.
+
 ## Supported
 
 - **Every image mode the format defines** — RGBA/32bpp (4 channels — B, G, R, A, the one format

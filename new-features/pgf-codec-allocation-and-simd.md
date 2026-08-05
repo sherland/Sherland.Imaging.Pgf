@@ -1,6 +1,7 @@
 # PGF codec: reusable workspaces, allocation reduction, and measured SIMD — PRD
 
-**Status: not started.**
+**Status: done, all 9 implementation stages shipped.** See the Progress log for the per-stage
+evidence and commits.
 
 ## Context
 
@@ -283,4 +284,10 @@ SIMD—a measured, meaningful benefit on its actual target—is therefore not me
 intrinsic path is retained: keeping a speculative vector implementation would risk integer
 rounding/overflow parity and Browser fallback complexity without evidence. Browser/WASM build:
 green. Full codec suite remains 1389/1389 green.
-- Stage 6 — pending.
+**Stage 6 — done.** Verified the Progress log against the nine stage commits (`5822261`, `aa60de0`,
+`0a645f0`, `657d6e2`, `c80bf75`, `f50e257`, `5927927`, `d127714`, and this documentation commit);
+every inserted sub-stage, allocation finding, output ownership rule, and SIMD rejection is recorded
+where it landed. Updated `docs/PGF-CODEC.md` with the opt-in workspace and reusable-session
+lifetime rules, caller-owned output failure semantics, retained intermediate writer allocation, and
+the evidence-based scalar-only SIMD decision. The benchmark index points to the immutable Stage 5
+archive. Final regression gate: 1389/1389 green (zero regressions).

@@ -18,12 +18,17 @@ public class ProgressiveDecodeBenchmarks
     [ParamsAllValues]
     public FixtureKind Fixture { get; set; }
 
+    /// <summary>Runs the same matrix through both the scalar fallback and vectorized lifting.</summary>
+    [Params(false, true)]
+    public bool ForceScalarVectors { get; set; }
+
     private byte[] pgfBytes = null!;
     private PgfWorkspace workspace = null!;
 
     [GlobalSetup]
     public void Setup()
     {
+        PgfWaveletTransform.ForceScalarVectorsForTesting = ForceScalarVectors;
         byte[] bgra = Fixtures.Create(Fixture, Size, Size);
         if (!NativePgf.TryEncode(bgra, Size, Size, Quality, out byte[]? bytes))
         {
@@ -109,5 +114,9 @@ public class ProgressiveDecodeBenchmarks
     }
 
     [GlobalCleanup]
-    public void Cleanup() => workspace.Dispose();
+    public void Cleanup()
+    {
+        workspace.Dispose();
+        PgfWaveletTransform.ForceScalarVectorsForTesting = false;
+    }
 }

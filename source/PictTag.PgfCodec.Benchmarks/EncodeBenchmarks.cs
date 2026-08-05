@@ -19,6 +19,10 @@ public class EncodeBenchmarks
     [ParamsAllValues]
     public FixtureKind Fixture { get; set; }
 
+    /// <summary>Runs the same matrix through both the scalar fallback and vectorized lifting.</summary>
+    [Params(false, true)]
+    public bool ForceScalarVectors { get; set; }
+
     private byte[] bgra = null!;
     private byte[] destination = null!;
     private PgfWorkspace workspace = null!;
@@ -26,6 +30,7 @@ public class EncodeBenchmarks
     [GlobalSetup]
     public void Setup()
     {
+        PgfWaveletTransform.ForceScalarVectorsForTesting = ForceScalarVectors;
         bgra = Fixtures.Create(Fixture, Size, Size);
         PgfImageEncoder.TryEncode(bgra, Size, Size, Quality, out byte[]? expected);
         destination = new byte[expected!.Length];
@@ -62,5 +67,9 @@ public class EncodeBenchmarks
     }
 
     [GlobalCleanup]
-    public void Cleanup() => workspace.Dispose();
+    public void Cleanup()
+    {
+        workspace.Dispose();
+        PgfWaveletTransform.ForceScalarVectorsForTesting = false;
+    }
 }

@@ -21,6 +21,11 @@ public class DecodeBenchmarks
     [ParamsAllValues]
     public FixtureKind Fixture { get; set; }
 
+    /// <summary>Runs the same matrix through the forced scalar fallback and the hardware-vector
+    /// path, so the SIMD decision never relies on timing from separate benchmark executions.</summary>
+    [Params(false, true)]
+    public bool ForceScalarVectors { get; set; }
+
     private byte[] pgfBytes = null!;
     private int bufferSize;
     private PgfReusableDecoder reusableDecoder = null!;
@@ -28,6 +33,7 @@ public class DecodeBenchmarks
     [GlobalSetup]
     public void Setup()
     {
+        PgfWaveletTransform.ForceScalarVectorsForTesting = ForceScalarVectors;
         byte[] bgra = Fixtures.Create(Fixture, Size, Size);
         if (!NativePgf.TryEncode(bgra, Size, Size, Quality, out byte[]? bytes))
         {
@@ -70,5 +76,9 @@ public class DecodeBenchmarks
     }
 
     [GlobalCleanup]
-    public void Cleanup() => reusableDecoder.Dispose();
+    public void Cleanup()
+    {
+        reusableDecoder.Dispose();
+        PgfWaveletTransform.ForceScalarVectorsForTesting = false;
+    }
 }

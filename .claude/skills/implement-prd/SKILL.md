@@ -131,6 +131,17 @@ Otherwise: implement, test, move to the next stage. A large PRD (many stages, se
 near-identical verification work, a long remaining todo list) is not itself a reason to stop — it's
 exactly the shape of task this skill exists for.
 
+### Long-running verification is still verification, not a stop condition
+
+When a required build, integration test, benchmark, migration, or other verification command takes
+longer than one tool-call window, let it continue to completion. Launch it as a hidden background
+process when necessary and poll its process/artifact state with short non-destructive checks; do not
+replace the required command with a reduced mode, weaker job, partial matrix, or synthetic result
+merely to fit a timeout. A command that is still consuming work or producing expected artifacts is
+not hung. Only investigate/interrupt after concrete crash evidence, no progress for a materially
+longer-than-expected interval, or an hours-scale runtime inconsistent with the task. Keep sending
+brief commentary updates while it runs, then use its actual completed result for the PRD decision.
+
 ## 4. Documentation, once every stage is green
 
 This is its own PRD stage in most of these documents ("Documentation") — treat it as mandatory, not

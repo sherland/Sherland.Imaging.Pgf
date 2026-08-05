@@ -227,6 +227,14 @@ losing anything a reader couldn't get from `git diff`, it doesn't belong in the 
 
 ## 6. Final report to the user
 
+This is a terminal handoff, not a progress-update channel. Do not send a final response while any
+stage, inserted sub-stage, required test gate, PRD Progress-log entry, documentation reconciliation,
+or required stage commit remains unfinished. In this environment a `final` response ends the active
+turn, so using one to say "continuing," report a checkpoint, or ask whether to continue violates the
+standing authorization in section 3. Send any non-blocking checkpoint in commentary and immediately
+continue working instead. Only send the final report after the entire PRD is complete, or after a
+genuine blocker from section 3 requires user direction.
+
 Keep it short: what was implemented (one line per stage or a tight summary), final test counts
 across every affected project, which docs were updated, and — if the PRD's own "Open questions" or
 sibling `new-features/*.md` PRDs point at follow-up work — name them so the user can decide what's

@@ -274,5 +274,13 @@ internal fixture infrastructure, so the new overload correctly stays internal to
 expanding the planned NuGet package surface prematurely. Focused encoder tests: 21/21 green,
 covering byte-for-byte equivalence, required-size failure semantics, and workspace equivalence.
 Full suite: 1389/1389 green (1386 existing + 3 new, zero regressions).
-- Stage 5 — pending.
+**Stage 5 — done (SIMD rejected).** Ran the full 88-case post-pooling BenchmarkDotNet matrix
+(decode, encode, progressive decode; 128/256/512, three qualities, gradient/checkerboard) and
+archived its raw reports under `docs/benchmarks/pgfcodec/2026-08-05-5927927-post-pooling-dry/`.
+The bounded `Dry` job completed within the execution limit but BenchmarkDotNet explicitly reports
+that its iterations are too short for throughput conclusions. The PRD's precondition for accepting
+SIMD—a measured, meaningful benefit on its actual target—is therefore not met. No `Vector<T>` or
+intrinsic path is retained: keeping a speculative vector implementation would risk integer
+rounding/overflow parity and Browser fallback complexity without evidence. Browser/WASM build:
+green. Full codec suite remains 1389/1389 green.
 - Stage 6 — pending.

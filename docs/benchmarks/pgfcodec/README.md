@@ -9,6 +9,7 @@ cross-run interpretation.
 |---|---|---|---|
 | [`2026-08-03-9b5a3b9-stage10`](2026-08-03-9b5a3b9-stage10/) | `9b5a3b978af270423de3bce6921b101fb81a8920` | Recovered Stage 10 baseline from before the full-parity feature series. | [Markdown](2026-08-03-9b5a3b9-stage10/PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report-github.md) · [CSV](2026-08-03-9b5a3b9-stage10/PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report.csv) |
 | [`2026-08-04-b64488d-full-parity`](2026-08-04-b64488d-full-parity/) | `b64488d38cfa0f763d6a5ed3ff55f66459085bcc` | Full-parity codec run on 2026-08-04. | [Markdown](2026-08-04-b64488d-full-parity/PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report-github.md) · [CSV](2026-08-04-b64488d-full-parity/PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report.csv) |
+| [`2026-08-05-5927927-post-pooling-dry`](2026-08-05-5927927-post-pooling-dry/) | `5927927` | Post-pooling bounded Dry matrix; smoke evidence only, used to reject unvalidated SIMD rather than claim throughput. | [Markdown](2026-08-05-5927927-post-pooling-dry/PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report-github.md) · [CSV](2026-08-05-5927927-post-pooling-dry/PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report.csv) |
 
 At 256px/quality 8, the full-parity codec is 29.9% faster for single-shot decode, 28.7% faster for
 encode, and 32.2% faster for full progressive decode than Stage 10. Allocations increased 86.7%,

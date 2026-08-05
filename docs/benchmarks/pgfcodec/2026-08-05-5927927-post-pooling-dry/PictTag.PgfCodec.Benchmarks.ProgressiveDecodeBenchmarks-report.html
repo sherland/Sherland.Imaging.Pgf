@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>PictTag.PgfCodec.Benchmarks.ProgressiveDecodeBenchmarks-20260805-085917</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8875)
+Unknown processor
+.NET SDK 10.0.302
+  [Host] : .NET 10.0.10 (10.0.1026.32716), X64 RyuJIT AVX2
+  Dry    : .NET 10.0.10 (10.0.1026.32716), X64 RyuJIT AVX2
+</code></pre>
+<pre><code>Job=Dry  IterationCount=1  LaunchCount=1  
+RunStrategy=ColdStart  UnrollFactor=1  WarmupCount=1  
+</code></pre>
+
+<table>
+<thead><tr><th>Method                     </th><th>Size</th><th>Quality</th><th>Fixture</th><th>Mean</th><th>Error</th><th>Ratio</th><th>Gen0</th><th>Gen1</th><th>Gen2</th><th>Allocated</th><th>Alloc Ratio</th>
+</tr>
+</thead><tbody><tr><td>NativeProgressiveDecodeAllLevels</td><td>256</td><td>0</td><td>Gradient</td><td>3.010 ms</td><td>NA</td><td>1.00</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedProgressiveDecodeAllLevels</td><td>256</td><td>0</td><td>Gradient</td><td>26.895 ms</td><td>NA</td><td>8.94</td><td>-</td><td>-</td><td>-</td><td>2581328 B</td><td>NA</td>
+</tr><tr><td>NativeProgressiveDecodeAllLevels</td><td>256</td><td>0</td><td>Checkerboard</td><td>3.619 ms</td><td>NA</td><td>1.00</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedProgressiveDecodeAllLevels</td><td>256</td><td>0</td><td>Checkerboard</td><td>27.914 ms</td><td>NA</td><td>7.71</td><td>-</td><td>-</td><td>-</td><td>2581328 B</td><td>NA</td>
+</tr><tr><td>NativeProgressiveDecodeAllLevels</td><td>256</td><td>8</td><td>Gradient</td><td>2.113 ms</td><td>NA</td><td>1.00</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedProgressiveDecodeAllLevels</td><td>256</td><td>8</td><td>Gradient</td><td>21.651 ms</td><td>NA</td><td>10.25</td><td>-</td><td>-</td><td>-</td><td>1217360 B</td><td>NA</td>
+</tr><tr><td>NativeProgressiveDecodeAllLevels</td><td>256</td><td>8</td><td>Checkerboard</td><td>2.224 ms</td><td>NA</td><td>1.00</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedProgressiveDecodeAllLevels</td><td>256</td><td>8</td><td>Checkerboard</td><td>22.787 ms</td><td>NA</td><td>10.25</td><td>-</td><td>-</td><td>-</td><td>1217072 B</td><td>NA</td>
+</tr><tr><td>NativeProgressiveDecodeAllLevels</td><td>512</td><td>0</td><td>Gradient</td><td>9.776 ms</td><td>NA</td><td>1.00</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedProgressiveDecodeAllLevels</td><td>512</td><td>0</td><td>Gradient</td><td>37.556 ms</td><td>NA</td><td>3.84</td><td>1000.0000</td><td>1000.0000</td><td>1000.0000</td><td>9923640 B</td><td>NA</td>
+</tr><tr><td>NativeProgressiveDecodeAllLevels</td><td>512</td><td>0</td><td>Checkerboard</td><td>9.613 ms</td><td>NA</td><td>1.00</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedProgressiveDecodeAllLevels</td><td>512</td><td>0</td><td>Checkerboard</td><td>40.957 ms</td><td>NA</td><td>4.26</td><td>1000.0000</td><td>1000.0000</td><td>1000.0000</td><td>9923928 B</td><td>NA</td>
+</tr><tr><td>NativeProgressiveDecodeAllLevels</td><td>512</td><td>8</td><td>Gradient</td><td>4.695 ms</td><td>NA</td><td>1.00</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedProgressiveDecodeAllLevels</td><td>512</td><td>8</td><td>Gradient</td><td>27.640 ms</td><td>NA</td><td>5.89</td><td>-</td><td>-</td><td>-</td><td>4430256 B</td><td>NA</td>
+</tr><tr><td>NativeProgressiveDecodeAllLevels</td><td>512</td><td>8</td><td>Checkerboard</td><td>5.782 ms</td><td>NA</td><td>1.00</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>ManagedProgressiveDecodeAllLevels</td><td>512</td><td>8</td><td>Checkerboard</td><td>30.556 ms</td><td>NA</td><td>5.28</td><td>-</td><td>-</td><td>-</td><td>4430544 B</td><td>NA</td>
+</tr></tbody></table>
+</body>
+</html>

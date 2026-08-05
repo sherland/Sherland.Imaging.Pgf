@@ -1,3 +1,5 @@
+using System.Numerics;
+
 namespace PictTag.PgfCodec;
 
 internal enum PgfCodecError
@@ -26,6 +28,9 @@ internal enum PgfCodecError
 /// </summary>
 internal sealed class PgfWaveletTransform
 {
+    /// <summary>Test hook for proving the scalar fallback against the same input as the accelerated
+    /// path. Production code always leaves this at its default value.</summary>
+    internal static bool ForceScalarVectorsForTesting { get; set; }
     private const int C1 = 1; // best value 1, per the original's own comment
     private const int C2 = 2; // best value 2
 
@@ -221,11 +226,7 @@ internal sealed class PgfWaveletTransform
             {
                 ForwardRow(src.AsSpan(row2, width));
                 ForwardRow(src.AsSpan(row3, width));
-                for (int k = 0; k < width; k++)
-                {
-                    src[row2 + k] = unchecked((int)(src[row2 + k] - ((src[row1 + k] + src[row3 + k] + C1) >> 1))); // high pass
-                    src[row1 + k] = unchecked((int)(src[row1 + k] + ((src[row0 + k] + src[row2 + k] + C2) >> 2))); // low pass
-                }
+                ForwardVerticalMiddle(src, row0, row1, row2, row3, width);
 
                 InterleavedToSubbands(destLevel, src.AsSpan(row1, width), src.AsSpan(row2, width));
                 row0 = row2; row1 = row3; row2 = row3 + width; row3 = row2 + width;
@@ -319,6 +320,39 @@ internal sealed class PgfWaveletTransform
         {
             src[i] = unchecked((int)(src[i] - src[i - 1])); // high pass
             src[i - 1] = unchecked((int)(src[i - 1] + ((src[i - 2] + src[i] + C2) >> 2))); // low pass
+        }
+    }
+
+    /// <summary>Applies one vertical forward-lifting pair. Columns are independent at this point,
+    /// so the hardware-vector path is byte-for-byte equivalent to the scalar loop; unsupported
+    /// runtimes (including Browser/WASM without SIMD) retain the scalar fallback and scalar tail.</summary>
+    private static void ForwardVerticalMiddle(int[] src, int row0, int row1, int row2, int row3, int width)
+    {
+        int k = 0;
+        if (Vector.IsHardwareAccelerated && !ForceScalarVectorsForTesting)
+        {
+            int lanes = Vector<int>.Count;
+            Vector<int> c1 = new(C1);
+            Vector<int> c2 = new(C2);
+            for (; k <= width - lanes; k += lanes)
+            {
+                Vector<int> previousLow = new(src, row0 + k);
+                Vector<int> low = new(src, row1 + k);
+                Vector<int> high = new(src, row2 + k);
+                Vector<int> nextHigh = new(src, row3 + k);
+
+                high -= (low + nextHigh + c1) >> 1;
+                low += (previousLow + high + c2) >> 2;
+
+                high.CopyTo(src, row2 + k);
+                low.CopyTo(src, row1 + k);
+            }
+        }
+
+        for (; k < width; k++)
+        {
+            src[row2 + k] = unchecked((int)(src[row2 + k] - ((src[row1 + k] + src[row3 + k] + C1) >> 1))); // high pass
+            src[row1 + k] = unchecked((int)(src[row1 + k] + ((src[row0 + k] + src[row2 + k] + C2) >> 2))); // low pass
         }
     }
 
@@ -520,11 +554,7 @@ internal sealed class PgfWaveletTransform
             for (int i = 2; i < workingHeight - 1; i += 2)
             {
                 SubbandsToInterleaved(srcLevel, destBuffer.AsSpan(row2, workingWidth), destBuffer.AsSpan(row3, workingWidth));
-                for (int k = 0; k < workingWidth; k++)
-                {
-                    destBuffer[row2 + k] = unchecked((int)(destBuffer[row2 + k] - ((destBuffer[row1 + k] + destBuffer[row3 + k] + C2) >> 2))); // even
-                    destBuffer[row1 + k] = unchecked((int)(destBuffer[row1 + k] + ((destBuffer[row0 + k] + destBuffer[row2 + k] + C1) >> 1))); // odd
-                }
+                InverseVerticalMiddle(destBuffer, row0, row1, row2, row3, workingWidth);
 
                 InverseRow(destBuffer.AsSpan(row0, workingWidth));
                 InverseRow(destBuffer.AsSpan(row1, workingWidth));
@@ -612,6 +642,39 @@ internal sealed class PgfWaveletTransform
         else
         {
             dest[i - 1] = unchecked((int)(dest[i - 1] + dest[i - 2])); // odd
+        }
+    }
+
+    /// <summary>Inverse counterpart to <see cref="ForwardVerticalMiddle"/>. Vectorization is
+    /// limited to independent column lanes and always falls through to scalar code for the tail or
+    /// for runtimes without hardware vectors.</summary>
+    private static void InverseVerticalMiddle(int[] dest, int row0, int row1, int row2, int row3, int width)
+    {
+        int k = 0;
+        if (Vector.IsHardwareAccelerated && !ForceScalarVectorsForTesting)
+        {
+            int lanes = Vector<int>.Count;
+            Vector<int> c1 = new(C1);
+            Vector<int> c2 = new(C2);
+            for (; k <= width - lanes; k += lanes)
+            {
+                Vector<int> previousEven = new(dest, row0 + k);
+                Vector<int> odd = new(dest, row1 + k);
+                Vector<int> even = new(dest, row2 + k);
+                Vector<int> nextOdd = new(dest, row3 + k);
+
+                even -= (odd + nextOdd + c2) >> 2;
+                odd += (previousEven + even + c1) >> 1;
+
+                even.CopyTo(dest, row2 + k);
+                odd.CopyTo(dest, row1 + k);
+            }
+        }
+
+        for (; k < width; k++)
+        {
+            dest[row2 + k] = unchecked((int)(dest[row2 + k] - ((dest[row1 + k] + dest[row3 + k] + C2) >> 2))); // even
+            dest[row1 + k] = unchecked((int)(dest[row1 + k] + ((dest[row0 + k] + dest[row2 + k] + C1) >> 1))); // odd
         }
     }
 

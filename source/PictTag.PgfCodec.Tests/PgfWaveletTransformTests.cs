@@ -139,4 +139,28 @@ public class PgfWaveletTransformTests
 
         Assert.Equal(original, result);
     }
+
+    /// <summary>The vertical-lifting SIMD experiment must not make the scalar fallback merely
+    /// theoretical: both paths process the identical non-trivial image and produce the same output.
+    /// The assertion also keeps odd-width scalar tails in scope.</summary>
+    [Fact]
+    public void VectorizedVerticalLifting_MatchesForcedScalarFallback()
+    {
+        int[] original = RandomPattern(width: 129, height: 97, seed: 12345);
+        try
+        {
+            PgfWaveletTransform.ForceScalarVectorsForTesting = true;
+            int[] scalar = RoundTrip(original, width: 129, height: 97, levels: 4);
+
+            PgfWaveletTransform.ForceScalarVectorsForTesting = false;
+            int[] accelerated = RoundTrip(original, width: 129, height: 97, levels: 4);
+
+            Assert.Equal(scalar, accelerated);
+            Assert.Equal(original, accelerated);
+        }
+        finally
+        {
+            PgfWaveletTransform.ForceScalarVectorsForTesting = false;
+        }
+    }
 }

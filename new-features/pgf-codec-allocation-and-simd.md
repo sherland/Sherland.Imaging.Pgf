@@ -132,18 +132,27 @@ its workspace.
 Exit criteria: oracle and focused transform/color suites stay byte-exact; existing public APIs
 preserve behavior; workspace-backed paths hold no GC-owned coefficient/subband/macroblock arrays.
 
-### Stage 3b — Reusable decoder-session allocation contract
+### Stage 3b — Reusable workspace backing buffers
 
 **Inserted after Stage 3a's implementation finding.** `PgfWorkspace` correctly owns pooled backing
-arrays, but creating a fresh `PgfDecodeSession`/wavelet object graph per single-shot call still
-allocates small managed objects and rents new arrays. Add the smallest explicit reusable decode
-session/lease API that lets one workspace reuse its transform graph across same-or-smaller shapes,
-without changing the existing stateless convenience API or letting an undisposed progressive decoder
-hold opaque pooled memory. Define resize and cancellation/failure reset behavior, then make the
-warmed workspace path's allocation test assert its actual contract.
+arrays, but a fresh decode rents another set. Add explicit `Reset` semantics that recycle completed
+operation backing buffers for a later compatible operation without changing the stateless API or
+letting an undisposed progressive decoder own opaque pooled memory. Define the invalidation rule
+and prove exact backing reuse.
+
+Exit criteria: repeated supported decode operations reuse completed workspace backing arrays and
+disposal returns all rents exactly once.
+
+### Stage 3c — Reusable decoder-session allocation contract
+
+**Inserted after Stage 3b's implementation finding.** Resetting a workspace reuses large backing
+arrays but still constructs the managed session/wavelet object graph. Add the smallest explicit
+reusable session/lease API that caches that graph across same-or-smaller shapes, then set a warmed
+allocation budget that includes only the caller-selected output ownership. Define cancellation and
+failure reset behavior before implementation.
 
 Exit criteria: repeated supported decode operations using the explicit reusable path meet the
-documented warmed allocation budget, and disposal returns all rents exactly once.
+documented warmed allocation budget without changing the convenience API.
 
 ### Stage 4a — Eliminate downsampled chroma copies
 
@@ -230,10 +239,17 @@ coefficient/code/significance buffers to it. The existing APIs retain their allo
 no workspace is supplied; a caller opts in with `using var workspace` and therefore controls pool
 lifetime explicitly. Real finding: this is not yet a literal warmed zero-allocation decode path,
 because each stateless decode still constructs a session/wavelet object graph and rents fresh backing
-arrays. The PRD therefore splits the original Stage 3: new Stage 3b will add a reusable explicit
-session/lease rather than falsely claim that the convenience API is allocation-free. Focused tests:
+arrays. The PRD therefore splits the original Stage 3 rather than falsely claim that the convenience
+API is allocation-free. Focused tests:
 3/3 green. Full suite: 1381/1381 green (1380 existing + 1 new, zero regressions).
-- Stage 3b — pending.
+**Stage 3b — done.** `PgfWorkspace.Reset()` now moves completed operation rents into private
+type-specific reuse lists instead of returning them immediately to the shared pool. Reopening a
+decoder after reset reuses those backing arrays; reset explicitly invalidates all earlier
+workspace-backed decoder/session internals, so it cannot silently race an in-flight operation.
+Focused tests: 5/5 green (including exact-array identity and two sequential lossless decodes). Full
+suite: 1383/1383 green (1381 existing + 2 new, zero regressions). The remaining managed session
+object graph is a separate Stage 3c concern.
+- Stage 3c — pending.
 **Stage 4a — done.** Removed `channelBuffers[c][..chromaSize]`: downsampling already compacts
 chroma into the source plane prefix, and `PgfWaveletTransform` uses its supplied dimensions for all
 logical reads and writes. This removes one allocation/copy for every downsampled chroma channel

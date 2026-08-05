@@ -18,9 +18,13 @@ namespace PictTag.PgfCodec;
 public sealed class PgfWorkspace : IDisposable
 {
     private readonly List<int[]> int32Rents = [];
+    private readonly List<int[]> availableInt32 = [];
     private readonly List<uint[]> uint32Rents = [];
+    private readonly List<uint[]> availableUInt32 = [];
     private readonly List<bool[]> booleanRents = [];
+    private readonly List<bool[]> availableBoolean = [];
     private readonly List<byte[]> byteRents = [];
+    private readonly List<byte[]> availableByte = [];
     private bool disposed;
 
     /// <summary>Rents a logical <paramref name="length"/>-element coefficient span.</summary>
@@ -52,9 +56,27 @@ public sealed class PgfWorkspace : IDisposable
 
         disposed = true;
         Return(ArrayPool<int>.Shared, int32Rents);
+        Return(ArrayPool<int>.Shared, availableInt32);
         Return(ArrayPool<uint>.Shared, uint32Rents);
+        Return(ArrayPool<uint>.Shared, availableUInt32);
         Return(ArrayPool<bool>.Shared, booleanRents);
+        Return(ArrayPool<bool>.Shared, availableBoolean);
         Return(ArrayPool<byte>.Shared, byteRents);
+        Return(ArrayPool<byte>.Shared, availableByte);
+    }
+
+    /// <summary>
+    /// Makes buffers used by a completed operation available to the next operation without returning
+    /// them to the shared pool. The caller must not use any decoder/session opened with this workspace
+    /// after calling Reset; it invalidates that operation's internal working storage.
+    /// </summary>
+    public void Reset()
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        Reuse(int32Rents, availableInt32);
+        Reuse(uint32Rents, availableUInt32);
+        Reuse(booleanRents, availableBoolean);
+        Reuse(byteRents, availableByte);
     }
 
     private T[] RentBacking<T>(ArrayPool<T> pool, List<T[]> rents, int length)
@@ -62,9 +84,24 @@ public sealed class PgfWorkspace : IDisposable
         ObjectDisposedException.ThrowIf(disposed, this);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(length);
 
-        T[] rented = pool.Rent(length);
+        List<T[]> available = typeof(T) == typeof(int) ? (List<T[]>)(object)availableInt32
+            : typeof(T) == typeof(uint) ? (List<T[]>)(object)availableUInt32
+            : typeof(T) == typeof(bool) ? (List<T[]>)(object)availableBoolean
+            : (List<T[]>)(object)availableByte;
+        int reusableIndex = available.FindIndex(array => array.Length >= length);
+        T[] rented = reusableIndex >= 0 ? available[reusableIndex] : pool.Rent(length);
+        if (reusableIndex >= 0)
+        {
+            available.RemoveAt(reusableIndex);
+        }
         rents.Add(rented);
         return rented;
+    }
+
+    private static void Reuse<T>(List<T[]> rents, List<T[]> available)
+    {
+        available.AddRange(rents);
+        rents.Clear();
     }
 
     private static void Return<T>(ArrayPool<T> pool, List<T[]> rents)

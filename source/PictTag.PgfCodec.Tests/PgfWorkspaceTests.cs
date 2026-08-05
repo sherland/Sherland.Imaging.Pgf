@@ -32,6 +32,18 @@ public class PgfWorkspaceTests
     }
 
     [Fact]
+    public void Reset_ReusesCompletedOperationBackingArrays()
+    {
+        using var workspace = new PgfWorkspace();
+        int[] first = workspace.RentInt32Backing(32);
+
+        workspace.Reset();
+
+        int[] second = workspace.RentInt32Backing(32);
+        Assert.Same(first, second);
+    }
+
+    [Fact]
     public void WorkspaceBackedDecode_MatchesTheLosslessSource()
     {
         (byte[] source, int width, int height) = TestBitmaps.Gradient(64, 64);
@@ -42,5 +54,19 @@ public class PgfWorkspaceTests
             pgf!, static (bgra, _, _) => bgra.ToArray(), out byte[]? decoded, workspace: workspace));
 
         Assert.Equal(source, decoded);
+    }
+
+    [Fact]
+    public void ResetAfterCompletedDecode_ReusesWorkspaceForAnotherDecode()
+    {
+        (byte[] source, int width, int height) = TestBitmaps.Gradient(64, 64);
+        Assert.True(Oracle.NativePgfOracle.TryEncode(source, width, height, quality: 0, out byte[]? pgf));
+
+        using var workspace = new PgfWorkspace();
+        Assert.True(PgfImageDecoder.TryDecode(pgf!, static (bgra, _, _) => bgra.ToArray(), out byte[]? first, workspace: workspace));
+        workspace.Reset();
+        Assert.True(PgfImageDecoder.TryDecode(pgf!, static (bgra, _, _) => bgra.ToArray(), out byte[]? second, workspace: workspace));
+
+        Assert.Equal(first, second);
     }
 }

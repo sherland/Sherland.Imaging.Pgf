@@ -20,9 +20,17 @@ public class EncodeBenchmarks
     public FixtureKind Fixture { get; set; }
 
     private byte[] bgra = null!;
+    private byte[] destination = null!;
+    private PgfWorkspace workspace = null!;
 
     [GlobalSetup]
-    public void Setup() => bgra = Fixtures.Create(Fixture, Size, Size);
+    public void Setup()
+    {
+        bgra = Fixtures.Create(Fixture, Size, Size);
+        PgfImageEncoder.TryEncode(bgra, Size, Size, Quality, out byte[]? expected);
+        destination = new byte[expected!.Length];
+        workspace = new PgfWorkspace();
+    }
 
     [Benchmark(Baseline = true)]
     public int NativeEncode()
@@ -37,4 +45,22 @@ public class EncodeBenchmarks
         PgfImageEncoder.TryEncode(bgra, Size, Size, Quality, out byte[]? pgfBytes);
         return pgfBytes!.Length;
     }
+
+    /// <summary>Measures the explicit workspace plus caller-owned-output contract. Reset makes
+    /// the completed operation's rents available to the next benchmark iteration.</summary>
+    [Benchmark]
+    public int ManagedWorkspaceEncode()
+    {
+        workspace.Reset();
+        if (!PgfImageEncoder.TryEncodeMode(bgra, Size, Size, Quality, PgfConstants.ImageModeRGBA,
+                destination, out int bytesWritten, workspace: workspace))
+        {
+            throw new InvalidOperationException("Managed workspace encode exceeded its prepared destination.");
+        }
+
+        return bytesWritten;
+    }
+
+    [GlobalCleanup]
+    public void Cleanup() => workspace.Dispose();
 }

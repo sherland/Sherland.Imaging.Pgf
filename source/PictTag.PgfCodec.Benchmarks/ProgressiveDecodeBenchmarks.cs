@@ -19,6 +19,7 @@ public class ProgressiveDecodeBenchmarks
     public FixtureKind Fixture { get; set; }
 
     private byte[] pgfBytes = null!;
+    private PgfWorkspace workspace = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -30,6 +31,7 @@ public class ProgressiveDecodeBenchmarks
         }
 
         pgfBytes = bytes!;
+        workspace = new PgfWorkspace();
     }
 
     [Benchmark(Baseline = true)]
@@ -83,4 +85,29 @@ public class ProgressiveDecodeBenchmarks
 
         return totalBytes;
     }
+
+    /// <summary>Measures the progressive API with its caller-owned workspace. The decoder remains
+    /// per-operation, while completed buffer rents are deliberately recycled before the next open.</summary>
+    [Benchmark]
+    public int ManagedProgressiveDecodeWithWorkspace()
+    {
+        workspace.Reset();
+        PgfProgressiveDecoder? decoder = PgfProgressiveDecoder.TryOpen(pgfBytes, workspace: workspace);
+        if (decoder is null)
+        {
+            return 0;
+        }
+
+        int totalBytes = 0;
+        for (int level = decoder.Levels - 1; level >= 0; level--)
+        {
+            decoder.TryDecodeLevel(level, static (bgra, w, h) => bgra.Length, out int? length);
+            totalBytes += length ?? 0;
+        }
+
+        return totalBytes;
+    }
+
+    [GlobalCleanup]
+    public void Cleanup() => workspace.Dispose();
 }

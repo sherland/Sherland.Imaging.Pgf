@@ -23,6 +23,7 @@ public class DecodeBenchmarks
 
     private byte[] pgfBytes = null!;
     private int bufferSize;
+    private PgfReusableDecoder reusableDecoder = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -35,6 +36,8 @@ public class DecodeBenchmarks
 
         pgfBytes = bytes!;
         bufferSize = Size * Size * 4;
+        reusableDecoder = PgfReusableDecoder.TryOpen(pgfBytes)
+            ?? throw new InvalidOperationException("Managed reusable decode setup failed.");
     }
 
     [Benchmark(Baseline = true)]
@@ -57,4 +60,15 @@ public class DecodeBenchmarks
         PgfImageDecoder.TryDecode(pgfBytes, static (bgra, w, h) => true, out bool? ok);
         return ok == true;
     }
+
+    /// <summary>Measures the opt-in steady-state decode contract: the parsed session and its
+    /// workspace remain owned by one explicit disposable decoder across iterations.</summary>
+    [Benchmark]
+    public bool ManagedReusableDecode()
+    {
+        return reusableDecoder.TryDecode(static (bgra, w, h) => true, out bool? ok) && ok == true;
+    }
+
+    [GlobalCleanup]
+    public void Cleanup() => reusableDecoder.Dispose();
 }

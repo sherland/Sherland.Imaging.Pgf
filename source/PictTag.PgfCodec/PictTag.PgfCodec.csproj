@@ -11,6 +11,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="PictTag.PgfCodec.Tests" />
     <InternalsVisibleTo Include="PictTag.PgfCodec.Benchmarks" />
+    <InternalsVisibleTo Include="PictTag.PgfCodec.Performance" />
   </ItemGroup>
 
 </Project>

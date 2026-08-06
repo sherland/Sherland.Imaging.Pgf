@@ -84,3 +84,27 @@ operands are stride-2, not contiguous, so plain `Vector<int>` loads can't read t
 together cost substantially more than the ~4-op-per-element arithmetic they replaced ever saved.
 Reverted, not committed. Do not retry this same two-pass-plus-gather shape without a fundamentally
 cheaper way to get even/odd operands into vector lanes.
+
+**Assessed, not implemented**: the two remaining profiled functions. `PgfImageDecoder.ConvertToBgra`
+(really `PgfColorConversion.DecodeYuvaToBgra`, RGBA being the only mode any real caller - including
+this benchmark - ever produces) has heavier per-pixel arithmetic than the wavelet filters (three
+branchy `Clamp8` calls SIMD could make branchless), but only its `downsample=false` case (chroma at
+full resolution, lockstep with Y - genuinely contiguous) is cleanly vectorizable; `downsample=true`
+(chroma reused across 2x2 blocks - 2/3 of this benchmark's images by construction, and the realistic
+case for real digiKam thumbnails) needs the same kind of gather/duplicate pattern that just cost the
+row-lifting experiment 18%. Since the session images are quality 0/8/15 in even thirds, the
+`downsample=false`-only subset caps the *maximum possible* measured gain at roughly 2-2.5% of decode
+time before even accounting for the interleaved-BGRA-write overhead - marginal enough, on top of two
+already-rejected candidates, not to be worth the implementation/testing effort without first covering
+the `downsample=true` majority, which carries the same risk class that just failed. `PgfMacroBlock.
+BitplaneDecode`/`ComposeBitplane`/`ComposeBitplaneRld` (Malvar bitplane/significance-map entropy
+decoding) were not attempted at all: this is inherently sequential, bit-by-bit, data-dependent
+bitstream parsing (searching for the next significant bit, variable-length RLE runs) - the same
+problem class as Huffman/arithmetic decoding, not vectorizable via ordinary SIMD loop transforms.
+Meaningfully speeding it up would need research-level bit-parallel decoding techniques, out of scope
+for measure-and-revert iteration.
+
+This closes out every candidate the 2026-08-06 baseline profile surfaced: two were implemented,
+correctly, and rejected on real measurement; two were assessed and found to have a poor risk/reward
+ratio before implementation. A fresh profile of a further-optimized build would be needed to find the
+next real candidate.

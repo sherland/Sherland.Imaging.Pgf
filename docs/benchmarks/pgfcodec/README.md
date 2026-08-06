@@ -70,3 +70,17 @@ repeated-same-size-class pattern from a fast per-thread cache, so `TryDecode`'s 
 sample weight in the profile is probably attributable to something else in that method body (most
 likely the `onDecoded` delegate invocation) rather than the pool rent/return calls - worth a fresh,
 more targeted profiling pass rather than assuming the same cause next time.
+
+**Also rejected**: vectorizing `PgfWaveletTransform.InverseRow` (horizontal wavelet lifting, the one
+lifting pass the earlier PRD's SIMD work left scalar - see
+[`2026-08-06-33bae9d-row-lifting-simd-rejected`](2026-08-06-33bae9d-row-lifting-simd-rejected/)). The
+row's lifting recurrence does separate into two independent passes (every even position reads only
+original odd neighbors, then every odd position reads the now-final even neighbors), so it was
+implemented as gather-into-scratch/vectorize/scatter-back per pass, byte-exact against the scalar
+fallback (1397/1397 including 4 new focused parity tests) and Browser/WASM-buildable. But a controlled
+MediumRun showed a clear ~17-18% *regression*, not a wash: splitting one cache-friendly fused pass
+into two full separate passes over the row, plus the gather/scatter every chunk needs (even/odd
+operands are stride-2, not contiguous, so plain `Vector<int>` loads can't read them directly),
+together cost substantially more than the ~4-op-per-element arithmetic they replaced ever saved.
+Reverted, not committed. Do not retry this same two-pass-plus-gather shape without a fundamentally
+cheaper way to get even/odd operands into vector lanes.

@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace PictTag.PgfCodec;
 
 /// <summary>
@@ -164,6 +166,25 @@ internal sealed class PgfMacroBlock
         ValuePos = 0;
     }
 
+    /// <summary>Finds the next position at or after <paramref name="start"/> where
+    /// <see cref="sigFlagVector"/> is <see langword="true"/> - either a coefficient already found
+    /// significant in an earlier bitplane, or the sentinel at <c>[Header.BufferSize]</c>. Unlike the
+    /// bit-level entropy decoding elsewhere in this class (inherently sequential - each bit's meaning
+    /// depends on the ones before it), this is a plain "find the next set byte" memory search: a
+    /// <see langword="bool"/> is always 1 byte in .NET, so the backing array is reinterpreted as
+    /// <see langword="byte"/> and handed to <see cref="MemoryExtensions.IndexOf{T}(Span{T}, T)"/>,
+    /// which the BCL already hardware-accelerates (and keeps portable to WASM/Browser) - cheaper and
+    /// safer than hand-rolling a <c>Vector&lt;T&gt;</c> search here. Replaces three duplicated
+    /// byte-at-a-time <c>while (!sigFlagVector[sigEnd]) sigEnd++;</c> loops. Kept for its own sake as
+    /// a de-duplication even though a controlled MediumRun found no measurable end-to-end effect
+    /// (see docs/benchmarks/pgfcodec/2026-08-06-937d052-bitplane-sigflag-scan-rejected) - the original
+    /// three-way duplication had no other justification.</summary>
+    private uint FindNextSignificant(uint start)
+    {
+        ReadOnlySpan<byte> flags = MemoryMarshal.Cast<bool, byte>(sigFlagVector.AsSpan((int)start));
+        return start + (uint)flags.IndexOf((byte)1);
+    }
+
     /// <summary>Reconstructs one bitplane from separately-stored significant/refinement/sign
     /// bitsets (no RLE at all) - direct port of the non-RLE <c>ComposeBitplane</c>
     /// (Decoder.cpp:773). Returns the bit-length of <paramref name="sigBits"/> actually consumed.</summary>
@@ -173,12 +194,7 @@ internal sealed class PgfMacroBlock
 
         while (valPos < bufferSize)
         {
-            uint sigEnd = valPos;
-            while (!sigFlagVector[sigEnd])
-            {
-                sigEnd++;
-            }
-
+            uint sigEnd = FindNextSignificant(valPos);
             sigEnd -= valPos;
             sigEnd += sigPos;
 
@@ -230,12 +246,7 @@ internal sealed class PgfMacroBlock
 
         while (valPos < bufferSize)
         {
-            uint sigEnd = valPos;
-            while (!sigFlagVector[sigEnd])
-            {
-                sigEnd++;
-            }
-
+            uint sigEnd = FindNextSignificant(valPos);
             sigEnd -= valPos;
             sigEnd += sigPos;
 
@@ -332,12 +343,7 @@ internal sealed class PgfMacroBlock
 
         while (valPos < bufferSize)
         {
-            uint sigEnd = valPos;
-            while (!sigFlagVector[sigEnd])
-            {
-                sigEnd++;
-            }
-
+            uint sigEnd = FindNextSignificant(valPos);
             sigEnd -= valPos;
             sigEnd += sigPos;
 

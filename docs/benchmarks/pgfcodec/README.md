@@ -15,6 +15,7 @@ cross-run interpretation.
 | [`2026-08-05-f7e21ef-simd-enabled-shortrun`](2026-08-05-f7e21ef-simd-enabled-shortrun/) | `f7e21ef` | Completed vector-enabled run; preserved evidence, but not the scalar/vector decision by itself. | [Markdown](2026-08-05-f7e21ef-simd-enabled-shortrun/PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report-github.md) · [CSV](2026-08-05-f7e21ef-simd-enabled-shortrun/PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report.csv) |
 | [`2026-08-05-6f120cf-simd-scalar-controlled-shortrun`](2026-08-05-6f120cf-simd-scalar-controlled-shortrun/) | `6f120cf` | Completed controlled scalar-fallback versus vector matrix; authoritative SIMD decision evidence. | [Markdown](2026-08-05-6f120cf-simd-scalar-controlled-shortrun/PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report-github.md) · [CSV](2026-08-05-6f120cf-simd-scalar-controlled-shortrun/PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report.csv) |
 | [`2026-08-06-445451b-session-workload-baseline`](2026-08-06-445451b-session-workload-baseline/) | `445451b` | First Release baseline for the new managed-only `PictTag.PgfCodec.Performance` session workbench (`SessionWorkloadBenchmarks`); starting point for the optimize-pgfcodec loop. | [Markdown](2026-08-06-445451b-session-workload-baseline/PictTag.PgfCodec.Performance.SessionWorkloadBenchmarks-report-github.md) · [CSV](2026-08-06-445451b-session-workload-baseline/PictTag.PgfCodec.Performance.SessionWorkloadBenchmarks-report.csv) |
+| [`2026-08-06-e5d7548-batch-native-vs-managed-shortrun`](2026-08-06-e5d7548-batch-native-vs-managed-shortrun/) | `e5d7548` | First run of `BatchDecodeBenchmarks`/`BatchEncodeBenchmarks` (1/10/50-image batches); current authoritative evidence for the "Native vs. managed" table below. | [Decode Markdown](2026-08-06-e5d7548-batch-native-vs-managed-shortrun/PictTag.PgfCodec.Benchmarks.BatchDecodeBenchmarks-report-github.md) · [Encode Markdown](2026-08-06-e5d7548-batch-native-vs-managed-shortrun/PictTag.PgfCodec.Benchmarks.BatchEncodeBenchmarks-report-github.md) |
 
 At 256px/quality 8, the full-parity codec is 29.9% faster for single-shot decode, 28.7% faster for
 encode, and 32.2% faster for full progressive decode than Stage 10. Allocations increased 86.7%,
@@ -41,6 +42,56 @@ input against `PictTag.PgfCodec.Benchmarks`' own three-class, nine-report shape;
 managed-only `source/PictTag.PgfCodec.Performance` workbench (`SessionWorkloadBenchmarks`, a
 different report-file count) are archived by copying the same `results/` reports and writing
 `metadata.json` by hand in the same shape, as `2026-08-06-445451b-session-workload-baseline` does.
+
+## Native vs. managed
+
+This table is the running answer to "how much slower is the managed codec than the native C++ one,
+for realistic usage?" **Keep it current**: whenever `BatchDecodeBenchmarks`/`BatchEncodeBenchmarks`
+(or `DecodeBenchmarks`/`EncodeBenchmarks`) are re-run with intent to report the result - not an
+ad-hoc local check - archive the run under this directory and update this table from it, per
+AGENTS.md's "Keep this table current" note.
+
+**Fairness caveat - read before quoting these numbers**: the "native" leg here calls the C++ codec
+through a P/Invoke shim (`PictTagPgfDecoder.dll`, the same one `PictTag.PgfCodec.Tests`/`.Benchmarks`
+use as their correctness/performance oracle - see `docs/PGF-CODEC.md`), not a standalone native
+executable. Every `NativeDecode`/`NativeEncode`/`NativeDecodeBatch`/`NativeEncodeBatch` call pays a
+real P/Invoke marshaling transition that a genuine native C++ application processing PGF files
+in-process would never pay. That cost is small and roughly constant per call, so it does not
+meaningfully change the *shape* of the results below (the ratio still narrows with batch size for the
+reason described underneath the table), but it means the native column is a conservative
+(**best-case-for-managed**) baseline - a real native C++ app would likely be measurably faster than
+"native" shown here, so the true managed/native gap is at least as large as this table shows, not
+smaller.
+
+Single-image benchmarks (`DecodeBenchmarks`/`EncodeBenchmarks`, one image per `[Benchmark]`
+invocation) and batched benchmarks (`BatchDecodeBenchmarks`/`BatchEncodeBenchmarks`, 1/10/50 mixed-size
+images per invocation - see `2026-08-06-e5d7548-batch-native-vs-managed-shortrun`) tell a related but
+different story:
+
+| Operation | Batch size | Native (baseline) | Managed convenience API | Managed reusable/workspace API |
+|---|---|---|---|---|
+| Decode | 1 image | 899.6 μs | 1.44x (1,298.8 μs, 1,449,890 B) | 1.28x (1,147.6 μs, 5,368 B) |
+| Decode | 10 images | 13,636.6 μs | 1.47x (20,034.4 μs, 22,819,320 B) | 1.33x (18,123.2 μs, 62,944 B) |
+| Decode | 50 images | 86,196.3 μs | 1.22x (105,299.1 μs, 141,893,994 B) | 1.19x (102,458.6 μs, 333,216 B) |
+| Encode | 1 image | 1.285 ms | 1.51x (1.945 ms, 1,487.79 KB) | 1.56x (2.004 ms, 752.56 KB) |
+| Encode | 10 images | 20.658 ms | 1.23x (25.296 ms, 29,915.77 KB) | 1.29x (26.552 ms, 12,575.96 KB) |
+| Encode | 50 images | 116.205 ms | 1.23x (142.762 ms, 181,120.36 KB) | 1.08x (125.768 ms, 78,022.88 KB) |
+
+(AMD Ryzen 7 5800X, ShortRun, mixed 300x120-500x500 fixtures, one machine - not a cross-runtime
+guarantee. Ratios are managed-mean/native-mean; allocation figures are managed-only, since the native
+leg's own C++ heap doesn't appear in .NET's `MemoryDiagnoser`.)
+
+**Interpretation**: the single-image comparison's roughly 1.4-1.6x ratio is directionally correct -
+managed genuinely is slower - but is not fully representative of realistic multi-image usage (the
+typical case is loading 5-10+ thumbnails per grid/session, which
+`PictTag.PgfCodec.Performance.SessionWorkloadBenchmarks` already models managed-only). At real batch
+scale the gap narrows moderately (to roughly 1.1-1.3x by 50 images), most clearly on the reusable/
+workspace paths a real batch-processing service would actually use, not the always-allocating
+convenience API the single-image benchmarks exercise. A preliminary Dry/`ColdStart` smoke test showed
+a far more dramatic narrowing (roughly 9-11x at batch=1 down to roughly 2-3x at batch=50) - that shape
+is specific to `ColdStart`'s single-iteration, no-warmup methodology (it is largely re-measuring JIT
+tiering promotion, not steady-state throughput) and is not archived or reflected in the table above;
+only the properly warmed-up `ShortRun` figures are treated as evidence.
 
 ## Managed-only session workbench (`PictTag.PgfCodec.Performance`)
 

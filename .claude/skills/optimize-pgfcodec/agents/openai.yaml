@@ -1,0 +1,4 @@
+interface:
+  display_name: "Optimize PGF Codec"
+  short_description: "Iteratively profile and optimize managed PGF performance"
+  default_prompt: "Use $optimize-pgfcodec to iteratively improve PictTag.PgfCodec performance, compare every accepted change against the native oracle, commit each improvement, and stop only when end-to-end gains are below 2%."

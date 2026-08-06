@@ -85,6 +85,24 @@ together cost substantially more than the ~4-op-per-element arithmetic they repl
 Reverted, not committed. Do not retry this same two-pass-plus-gather shape without a fundamentally
 cheaper way to get even/odd operands into vector lanes.
 
+**Rejected**: vectorizing `PgfMacroBlock`'s significance-flag scan (see
+[`2026-08-06-937d052-bitplane-sigflag-scan-rejected`](2026-08-06-937d052-bitplane-sigflag-scan-rejected/)).
+Re-examining the same baseline profile confirmed `BitplaneDecode` as the largest real (non-harness)
+codec hotspot after excluding `TryDecode`'s top-ranked exclusive-sample bucket, which is actually
+inlined `SessionWorkloadBenchmarks.Checksum` benchmark-harness code, not codec work. While the bulk of
+`BitplaneDecode`/`ComposeBitplane`/`ComposeBitplaneRld` genuinely is inherently sequential bit-level
+entropy decoding (unchanged assessment, see below), one specific sub-operation duplicated three times
+across those methods - `while (!sigFlagVector[sigEnd]) sigEnd++;`, a linear scan through a `bool[]`
+for the next already-significant coefficient - is a plain memory search, independent of bitstream
+decode order. Replaced with a shared helper reinterpreting the array as `byte[]` and calling the BCL's
+hardware-accelerated `ReadOnlySpan<byte>.IndexOf`. Byte-exact (1393/1393, all pre-existing tests) and
+Browser/WASM-buildable, but a matched-conditions MediumRun (`git stash` isolating the one file, before/
+after run back-to-back) showed deltas of -1.1% to +0.7% with no consistent direction - a clean null
+result, not borderline. Reverted, not committed. Likely explanation: the original scalar loop was
+already about as cheap as a bounds-checked byte scan gets, and most individual scan lengths in this
+workload are short enough that the vectorized path's fixed per-call overhead cancels out its
+per-element savings.
+
 **Assessed, not implemented**: the two remaining profiled functions. `PgfImageDecoder.ConvertToBgra`
 (really `PgfColorConversion.DecodeYuvaToBgra`, RGBA being the only mode any real caller - including
 this benchmark - ever produces) has heavier per-pixel arithmetic than the wavelet filters (three
@@ -96,15 +114,17 @@ row-lifting experiment 18%. Since the session images are quality 0/8/15 in even 
 `downsample=false`-only subset caps the *maximum possible* measured gain at roughly 2-2.5% of decode
 time before even accounting for the interleaved-BGRA-write overhead - marginal enough, on top of two
 already-rejected candidates, not to be worth the implementation/testing effort without first covering
-the `downsample=true` majority, which carries the same risk class that just failed. `PgfMacroBlock.
-BitplaneDecode`/`ComposeBitplane`/`ComposeBitplaneRld` (Malvar bitplane/significance-map entropy
-decoding) were not attempted at all: this is inherently sequential, bit-by-bit, data-dependent
-bitstream parsing (searching for the next significant bit, variable-length RLE runs) - the same
-problem class as Huffman/arithmetic decoding, not vectorizable via ordinary SIMD loop transforms.
-Meaningfully speeding it up would need research-level bit-parallel decoding techniques, out of scope
-for measure-and-revert iteration.
+the `downsample=true` majority, which carries the same risk class that just failed. The rest of
+`PgfMacroBlock.BitplaneDecode`/`ComposeBitplane`/`ComposeBitplaneRld` (Malvar bitplane/significance-
+map entropy decoding), beyond the sigFlagVector scan above, remains unattempted: it is inherently
+sequential, bit-by-bit, data-dependent bitstream parsing (variable-length RLE runs, sign/refinement
+bits whose meaning depends on everything decoded before them) - the same problem class as Huffman/
+arithmetic decoding, not vectorizable via ordinary SIMD loop transforms. Meaningfully speeding it up
+would need research-level bit-parallel decoding techniques, out of scope for measure-and-revert
+iteration.
 
-This closes out every candidate the 2026-08-06 baseline profile surfaced: two were implemented,
-correctly, and rejected on real measurement; two were assessed and found to have a poor risk/reward
-ratio before implementation. A fresh profile of a further-optimized build would be needed to find the
-next real candidate.
+This closes out every candidate the 2026-08-06 baseline profile surfaced, including a second pass
+specifically re-mining it for non-memory candidates: three were implemented, correctly, and rejected
+on real measurement; two were assessed and found to have a poor risk/reward ratio before
+implementation. A fresh profile of a further-optimized build would be needed to find the next real
+candidate.

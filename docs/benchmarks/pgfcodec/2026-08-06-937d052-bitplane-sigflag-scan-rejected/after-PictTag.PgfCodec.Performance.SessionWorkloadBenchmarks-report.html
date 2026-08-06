@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>PictTag.PgfCodec.Performance.SessionWorkloadBenchmarks-20260806-140329</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.15.8, Windows 11 (10.0.26200.8875/25H2/2025Update/HudsonValley2)
+AMD Ryzen 7 5800X 3.80GHz, 1 CPU, 16 logical and 8 physical cores
+.NET SDK 10.0.302
+  [Host]    : .NET 10.0.10 (10.0.10, 10.0.1026.32716), X64 RyuJIT x86-64-v3
+  MediumRun : .NET 10.0.10 (10.0.10, 10.0.1026.32716), X64 RyuJIT x86-64-v3
+</code></pre>
+<pre><code>Job=MediumRun  InvocationCount=1  IterationCount=15  
+LaunchCount=2  UnrollFactor=1  WarmupCount=10  
+</code></pre>
+
+<table>
+<thead><tr><th>Method                            </th><th>ForceScalarVectors</th><th>Mean</th><th>Error</th><th>StdDev</th><th>Allocated</th>
+</tr>
+</thead><tbody><tr><td>DecodeFiftyImagesInNewSession</td><td>False</td><td>121.7 ms</td><td>0.84 ms</td><td>1.20 ms</td><td>330.18 KB</td>
+</tr><tr><td>ProgressiveDecodeFiftyImagesInNewSession</td><td>False</td><td>133.8 ms</td><td>1.85 ms</td><td>2.77 ms</td><td>333.3 KB</td>
+</tr><tr><td>DecodeFiftyImagesInNewSession</td><td>True</td><td>137.2 ms</td><td>0.82 ms</td><td>1.18 ms</td><td>330.18 KB</td>
+</tr><tr><td>ProgressiveDecodeFiftyImagesInNewSession</td><td>True</td><td>148.6 ms</td><td>1.12 ms</td><td>1.64 ms</td><td>333.3 KB</td>
+</tr></tbody></table>
+</body>
+</html>

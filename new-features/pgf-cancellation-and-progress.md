@@ -8,7 +8,7 @@ instead of "Explicitly out of scope".
 
 The native `libpgf` codec's `Read`/`Write`/`GetBitmap`/`RgbToYuv`/`ImportBitmap`/`ImportYUV` all
 accept an optional `CallbackPtr cb` + `void *data` pair, invoked periodically with a completion
-fraction; returning `true` from the callback requests early abort. `PictTag.PgfCodec` — this
+fraction; returning `true` from the callback requests early abort. `Sherland.Imaging.Pgf` — this
 codebase's from-scratch managed port of the same codec (see
 [`new-features/managed-pgf-codec.md`](managed-pgf-codec.md) for the full port history) — has no
 equivalent at all. `PgfImageDecoder.TryDecode`/`PgfImageEncoder.TryEncode`/`PgfProgressiveDecoder.
@@ -22,7 +22,7 @@ cancellation has an obvious user-visible payoff for *today's* real call sites
 (`PictTag.Api.Thumbnails.ThumbnailService`, `DesktopProgressiveBitmapLoader`/
 `BrowserProgressiveBitmapLoader`, all of which already get a natural, coarser-grained cancellation
 point for free — the progressive decode loop calls `TryDecodeLevel` once per level and can simply
-stop calling it). This PRD is motivated by making `PictTag.PgfCodec` a complete, idiomatic library
+stop calling it). This PRD is motivated by making `Sherland.Imaging.Pgf` a complete, idiomatic library
 rather than by an urgent product need — the same category of "close a documented, deliberate gap"
 motivation as `managed-pgf-codec.md`'s own Stage 1 (test/oracle infrastructure) rather than a
 user-facing bug fix. The real payoff is a single-shot `TryDecode`/`TryEncode` call that currently has
@@ -149,7 +149,7 @@ numbers).
     cancelled one) — the existing `PgfDecodeSession`/`PgfDecoderCore` lifecycle is already
     call-scoped for single-shot decode, so this should hold by construction; assert it directly
     anyway rather than assume.
-- **Regression**: the full existing 567-test `PictTag.PgfCodec.Tests` suite must stay green
+- **Regression**: the full existing 567-test `Sherland.Imaging.Pgf.Tests` suite must stay green
   throughout — the new optional parameters must not change any existing behavior when unused.
 
 ## Stage sequence
@@ -180,7 +180,7 @@ numbers).
   every fixture/level-count combination tested.
 - Cancellation throws `OperationCanceledException` promptly (within one level's worth of work) and
   leaves no corrupted shared state affecting subsequent unrelated calls.
-- The full existing `PictTag.PgfCodec.Tests` suite (567 tests as of this PRD's writing) stays green
+- The full existing `Sherland.Imaging.Pgf.Tests` suite (567 tests as of this PRD's writing) stays green
   with the new parameters unused at their default values.
 - `docs/PGF-CODEC.md` updated to move this item from "out of scope" to "supported."
 
@@ -243,7 +243,7 @@ to prove here). Full suite: 631/631 green (567 + 64 in the new file).
 
 **Stage 4 — done.** `PictTag.Data.PgfDecoding.PgfDecoder.TryDecode` and `ProgressivePgfDecoder.
 TryDecodeLevel` both gained the same trailing optional parameters, passed straight through to
-`PictTag.PgfCodec`. Checked both real UI call sites before wiring anything further:
+`Sherland.Imaging.Pgf`. Checked both real UI call sites before wiring anything further:
 `DesktopProgressiveBitmapLoader.DecodeProgressivePgf` and `BrowserProgressiveBitmapLoader.
 DecodeProgressivePgf` **already** call `cancellationToken.ThrowIfCancellationRequested()` once per
 level in their own outer loop, around each `TryDecodeLevel` call — exactly the natural,
@@ -262,6 +262,6 @@ Full solution build (`PictTag.slnx`, including the Browser/WASM head) confirmed 
 updated the "if a real need shows up" footer's PRD count from four to three. This PRD's own Status
 line and this Progress log updated to match.
 
-**Final state**: `PictTag.PgfCodec.Tests` — 631/631 passing (567 original + 64 new). Full solution
+**Final state**: `Sherland.Imaging.Pgf.Tests` — 631/631 passing (567 original + 64 new). Full solution
 build green. No production call site's behavior changed (every new parameter is optional and unused
 at its default), matching the Acceptance Criteria's explicit bar.

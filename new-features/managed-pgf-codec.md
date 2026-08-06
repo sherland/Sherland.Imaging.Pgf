@@ -8,7 +8,7 @@ see [`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md) instead of re-deriving it from t
 
 `new-features/client-side-pgf-and-remove-thumbnail-cache.md` and `docs/GUI.md`'s "Browser/WASM native
 PGF decode" section both document the same unresolved, confirmed-at-runtime problem: the vendored
-C++ `libpgf` codec (`native/PictTag.PgfDecoder/`), statically linked into `PictTag.UI.Browser`'s WASM
+C++ `libpgf` codec (`native/Sherland.Imaging.Pgf.Native/`), statically linked into `PictTag.UI.Browser`'s WASM
 output, throws `DllNotFoundException("__Internal")` on every call in the real browser, in every
 configuration tried — including a full AOT-compiled `dotnet publish`. Three real root-cause fixes
 landed and none closed the gap (see that doc's "Update" paragraph and
@@ -284,7 +284,7 @@ shared infrastructure like `BitStream.h`).
 - **Rewriting `ProgressiveImage`/dwell-gating/the grid.** Out of scope — this PRD only replaces what's
   underneath `IProgressiveBitmapLoader`, not the control or loading strategy built on top of it
   (`client-side-pgf-and-remove-thumbnail-cache.md`).
-- **Deciding the final fate of `native/PictTag.PgfDecoder/` up front.** Whether the native project is
+- **Deciding the final fate of `native/Sherland.Imaging.Pgf.Native/` up front.** Whether the native project is
   fully retired from this repo or kept solely as a permanent test-oracle is an explicit open question
   for late in this PRD (see "Open questions"), not a decision this document makes now.
 - **General PGF encode/decode features this codebase never uses** (indexed-color/CMYK modes, bit
@@ -294,14 +294,14 @@ shared infrastructure like `BitStream.h`).
 
 ## Proposed architecture
 
-- **New project: `source/PictTag.PgfCodec`** — a plain, dependency-free C# library (no EF Core, no
+- **New project: `source/Sherland.Imaging.Pgf`** — a plain, dependency-free C# library (no EF Core, no
   Avalonia, no ASP.NET) targeting whatever TFM both `PictTag.Data` (Desktop, `net10.0`) and
   `PictTag.UI.Browser` (`net10.0-browser`) can reference directly. This is the structural fix: today
   `PictTag.UI.Browser.Interop`'s own doc comment explains it exists *only* because `PictTag.Data`
   carries SQLite/EF Core that Browser can't reference — a managed codec with zero dependencies removes
   that constraint entirely, so both hosts can reference the *same* implementation instead of two
   P/Invoke wrappers around the same native shim. Both encode and decode live in this one project
-  (`PictTag.PgfCodec.Decoding`/`PictTag.PgfCodec.Encoding` namespaces, or similar) since they share
+  (`Sherland.Imaging.Pgf.Decoding`/`Sherland.Imaging.Pgf.Encoding` namespaces, or similar) since they share
   `BitStream`, header structs, and the `Subband`/`WaveletTransform` infrastructure.
 - **Decode public API mirrors the existing shape** in `PictTag.Data.PgfDecoding.PgfDecoder`
   (`TryDecode`, `OpenProgressive`/`ProgressivePgfDecoder.TryDecodeLevel`, the
@@ -338,7 +338,7 @@ shared infrastructure like `BitStream.h`).
   re-verifying bit-exactness after each vectorization since a SIMD rewrite is exactly the kind of
   change that can silently alter rounding/clamping behavior.
 - **Native shim gains test-only encode exports.** `Encoder.cpp` is already compiled into
-  `PictTagPgfDecoder.dll` but nothing exports it (`shim.cpp` calls only decode functions). Add a small
+  `SherlandImagingPgfNative.dll` but nothing exports it (`shim.cpp` calls only decode functions). Add a small
   new export, e.g. `pgf_encode_bgra_alloc(bgra, width, height, quality, out dataPtr, out dataLen)` +
   `pgf_free_encoded(dataPtr)` (an owned-pointer pattern, mirroring the existing `pgf_open`/`pgf_close`
   handle lifecycle, appropriate here since this is test-tooling, not the performance-critical
@@ -350,7 +350,7 @@ shared infrastructure like `BitStream.h`).
 
 **Principle: compare live against real implementations in-process; don't commit golden byte arrays
 that can silently drift from what either implementation actually produces.** The existing native
-`PictTagPgfDecoder.dll` (extended with the new encode exports above) stays available throughout this
+`SherlandImagingPgfNative.dll` (extended with the new encode exports above) stays available throughout this
 PRD specifically to serve as the decode oracle and as one leg of the encode round-trip matrix — its
 own existing test suite (`PictTag.Data.Tests/PgfDecoderTests.cs`) is not touched or reduced.
 
@@ -403,9 +403,9 @@ own existing test suite (`PictTag.Data.Tests/PgfDecoderTests.cs`) is not touched
   equivalent: invalid dimensions (zero/negative width or height), a BGRA buffer shorter than
   `width*height*4`, etc., must also fail closed with a clear result rather than throwing or producing
   a malformed file.
-- **Where these tests live**: a new `PictTag.PgfCodec.Tests` project (xUnit v3/MTP, this repo's
-  standard runner) referencing both `PictTag.PgfCodec` (new) and `PictTag.Data.PgfDecoding` (existing,
-  for the native oracle/round-trip legs) — `dotnet test source/PictTag.PgfCodec.Tests` joins the
+- **Where these tests live**: a new `Sherland.Imaging.Pgf.Tests` project (xUnit v3/MTP, this repo's
+  standard runner) referencing both `Sherland.Imaging.Pgf` (new) and `PictTag.Data.PgfDecoding` (existing,
+  for the native oracle/round-trip legs) — `dotnet test source/Sherland.Imaging.Pgf.Tests` joins the
   standard "always run" tier in `docs/TESTING.md`, not a new opt-in tier, since it needs neither
   Ollama nor a live digiKam library.
 
@@ -413,7 +413,7 @@ own existing test suite (`PictTag.Data.Tests/PgfDecoderTests.cs`) is not touched
 
 - **BenchmarkDotNet**, a new dependency for this repo (not currently used anywhere — confirmed by
   grep) — the standard, idiomatic .NET tool for exactly this need, run as its own console-app project
-  (`source/PictTag.PgfCodec.Benchmarks`), not folded into the xUnit/MTP test projects (BenchmarkDotNet
+  (`source/Sherland.Imaging.Pgf.Benchmarks`), not folded into the xUnit/MTP test projects (BenchmarkDotNet
   needs its own process/toolchain and doesn't compose with the Microsoft.Testing.Platform runner this
   repo's other test projects use).
 - **What to measure, both directions, swept across every quality level (`0..MaxQuality`), not one
@@ -437,7 +437,7 @@ own existing test suite (`PictTag.Data.Tests/PgfDecoderTests.cs`) is not touched
     native investigation confirmed AOT compiles successfully even though P/Invoke resolution still
     failed there, so this configuration is real and reachable, not hypothetical.
 - **Concrete pass/fail latency numbers, set from Stage 10's first real `BenchmarkDotNet` measurement**
-  (Desktop CoreCLR, `ShortRun` job, `PictTag.PgfCodec.Benchmarks`) against the actual constraint that
+  (Desktop CoreCLR, `ShortRun` job, `Sherland.Imaging.Pgf.Benchmarks`) against the actual constraint that
   matters for decode: thumbnails must stay interactively responsive during dwell-gated grid scrolling
   (`client-side-pgf-and-remove-thumbnail-cache.md`). At realistic thumbnail dimensions (128-256px) and
   quality values a real digiKam library would actually use (4 and above, not the lossless `quality=0`
@@ -466,9 +466,9 @@ own existing test suite (`PictTag.Data.Tests/PgfDecoderTests.cs`) is not touched
 
 ## Progress log
 
-**Stage 1 — done.** `native/PictTag.PgfDecoder/shim.cpp` gained `pgf_encode_bgra_alloc`/
-`pgf_free_encoded` and `pgf_debug_decode_channel`; `source/PictTag.PgfCodec` (empty skeleton) and
-`source/PictTag.PgfCodec.Tests` (20 passing tests, `NativeEncodeExportsTests.cs`) exist and are wired
+**Stage 1 — done.** `native/Sherland.Imaging.Pgf.Native/shim.cpp` gained `pgf_encode_bgra_alloc`/
+`pgf_free_encoded` and `pgf_debug_decode_channel`; `source/Sherland.Imaging.Pgf` (empty skeleton) and
+`source/Sherland.Imaging.Pgf.Tests` (20 passing tests, `NativeEncodeExportsTests.cs`) exist and are wired
 into `PictTag.slnx`. Three real, non-obvious findings came out of getting this far, all now fixed or
 documented — exactly the "verify, don't recall" bar this repo holds itself to elsewhere:
 
@@ -482,7 +482,7 @@ documented — exactly the "verify, don't recall" bar this repo holds itself to 
   correctly, the return value didn't). Fixed by switching every occurrence to
   `MarshalAs(UnmanagedType.U1)`, in **all three** P/Invoke wrapper classes:
   `PictTag.Data.PgfDecoding.PgfDecoder` and `PictTag.UI.Browser.Interop.NativePgf` (both pre-existing,
-  production) as well as this PRD's new `PictTag.PgfCodec.Tests.Oracle.NativePgfOracle`. The
+  production) as well as this PRD's new `Sherland.Imaging.Pgf.Tests.Oracle.NativePgfOracle`. The
   pre-existing decode functions had apparently been "getting lucky" (their specific compiled code
   happens to leave the upper return-register bytes clean) rather than being provably correct — worth
   fixing regardless of whether it had ever caused an observed failure in production.
@@ -499,7 +499,7 @@ documented — exactly the "verify, don't recall" bar this repo holds itself to 
   root-caused: a real, correctly-configured AddressSanitizer rebuild (confirmed genuinely active via
   its own startup diagnostics) found no violation report before the crash, and the ABI marshaling fix
   above — initially suspected as the same root cause — did *not* resolve it when tested directly.
-  `PictTag.PgfCodec.Tests` deliberately does not call this function at all; it remains available for
+  `Sherland.Imaging.Pgf.Tests` deliberately does not call this function at all; it remains available for
   occasional manual/interactive use during later stages (its actual intended purpose) with a
   prominent warning in its own doc comment. Revisit if a real need for automated intermediate-channel
   comparison arises in Stage 5/6 — don't reuse this function in a loop without solving this first.
@@ -511,7 +511,7 @@ documented — exactly the "verify, don't recall" bar this repo holds itself to 
   (`TestBitmaps.MinimumSupportedDimension = 10`) — a legitimate scope narrowing (real thumbnails never
   need it) independent of the debug-channel finding above.
 
-**Stage 2 — done.** `source/PictTag.PgfCodec/BitStream.cs`: a direct, method-for-method port of
+**Stage 2 — done.** `source/Sherland.Imaging.Pgf/BitStream.cs`: a direct, method-for-method port of
 `BitStream.h`'s stateless bit-array primitives over `Span<uint>`/`ReadOnlySpan<uint>`, verified by 38
 hand-constructed-bit-pattern tests (`BitStreamTests.cs`) with no PGF file involved. Writing real tests
 against the real port (rather than assuming the C++ and the port agree) surfaced two more genuine,
@@ -662,7 +662,7 @@ exceptions found at any tested quality level** - 288 combinations (3 fixtures x 
 (encode C#/decode C#, encode C#/decode native, encode native/decode C#, encode native/decode native)
 and asserting pixel-exact agreement with the original source bitmap at `quality=0` or pixel-identical
 cross-leg agreement at every other quality value - passed in full on the first real test run, after a
-quick standalone smoke check (a scratch console app compiling `PictTag.PgfCodec`'s sources directly,
+quick standalone smoke check (a scratch console app compiling `Sherland.Imaging.Pgf`'s sources directly,
 P/Invoking the native shim, swept across the same quality range) had already confirmed no obvious
 bugs before committing to writing the full matrix. `PgfImageEncoderTests` adds Tier 5's encode-side
 negative cases (invalid/mismatched dimensions, quality above `MaxQuality`, below-minimum-dimension
@@ -724,7 +724,7 @@ run except the pre-existing regression above (caught immediately by the existing
 any new test was even run). Full suite (567 tests total) run 5x for stability - no flakiness.
 
 **Stage 10 — done, with a deliberately narrowed scope documented below.** Two real pieces: an
-allocation-hardening pass on the decode API surface, and a new `PictTag.PgfCodec.Benchmarks`
+allocation-hardening pass on the decode API surface, and a new `Sherland.Imaging.Pgf.Benchmarks`
 BenchmarkDotNet console project (Desktop CoreCLR) that produced this PRD's first real latency/
 allocation numbers (now recorded above in "Test rig: performance").
 
@@ -766,7 +766,7 @@ reversing Stage 9's simplification or threading two different lifetime policies 
 type. Given the measured numbers below don't show these as clearly worth that risk/complexity trade
 yet, they're left as plain arrays, with the real allocation cost now quantified instead of guessed.
 
-*Measurements* (`PictTag.PgfCodec.Benchmarks`, `ShortRun` job - 3 iterations, wider confidence
+*Measurements* (`Sherland.Imaging.Pgf.Benchmarks`, `ShortRun` job - 3 iterations, wider confidence
 intervals than a full default run, but real numbers from real runs, appropriate for "first
 measurement" per this stage's own charter, not a final tuned baseline): at 256x256/quality=8 (a
 realistic thumbnail), managed single-shot decode measured ~1.34 ms vs. native's ~0.86 ms (~1.6x),
@@ -781,7 +781,7 @@ matrix, reconfirmed here as a real cross-check rather than assumed to still hold
 *Explicitly out of scope this stage, deferred to Stage 13, not skipped silently:* Browser/WASM
 benchmarking (Mono interpreter and real AOT). `BenchmarkDotNet` itself only runs Desktop CoreCLR-style
 process-spawning jobs, and more fundamentally, Stage 12 (wiring the managed codec into
-`PictTag.UI.Browser`) hasn't happened yet - there is currently no way to execute `PictTag.PgfCodec`
+`PictTag.UI.Browser`) hasn't happened yet - there is currently no way to execute `Sherland.Imaging.Pgf`
 code inside an actual browser session at all, so a standalone throwaway WASM timing harness built now
 would duplicate infrastructure Stage 13's real-browser Playwright work needs to build anyway once
 there's a real call site to measure. Revisit there, not here.
@@ -799,18 +799,18 @@ that matters (interactive responsiveness during thumbnail grid scrolling). Revis
 real-world measurement (e.g. Stage 13's eventual in-browser numbers, where the interpreter's overhead
 is much larger) shows an actual case where this gap matters.
 
-**Stage 12 — done.** Real production call sites now go through `PictTag.PgfCodec`, not native
+**Stage 12 — done.** Real production call sites now go through `Sherland.Imaging.Pgf`, not native
 P/Invoke, on both hosts. Three real, meaningful changes, not just a rename:
 
-- **`PictTag.PgfCodec`'s entry points went public** (`PgfImageDecoder`, `PgfProgressiveDecoder`,
+- **`Sherland.Imaging.Pgf`'s entry points went public** (`PgfImageDecoder`, `PgfProgressiveDecoder`,
   `PgfDecodedCallback<TResult>` - `PgfImageEncoder` stays `internal`, matching the PRD's own "encoder
   gets no production call site" scope note). This is the moment this library stopped being
   test/benchmark-only infrastructure and became the real, first-class, multi-consumer library the
   "Proposed architecture" section always described - confirmed empirically, not assumed: `PictTag.UI`/
   `PictTag.UI.Controls` (both already `net10.0`, already referenced by both the `net10.0` desktop host
   and the `net10.0-browser` host) proved a plain-`net10.0` library needs no multi-targeting to be
-  referenced from a `browser-wasm` project - the same pattern `PictTag.PgfCodec` now follows.
-- **`PictTag.Data.PgfDecoding.PgfDecoder` is now a facade over `PictTag.PgfCodec`**, not a P/Invoke
+  referenced from a `browser-wasm` project - the same pattern `Sherland.Imaging.Pgf` now follows.
+- **`PictTag.Data.PgfDecoding.PgfDecoder` is now a facade over `Sherland.Imaging.Pgf`**, not a P/Invoke
   wrapper - same public shape (`TryDecode<TResult>`, `OpenProgressive`, `ProgressivePgfDecoder`, even
   keeping a real (now no-op) `Dispose()` so every existing `using` call site keeps compiling), widened
   from `ReadOnlySpan<byte>` to `ReadOnlyMemory<byte>` (source-compatible with every real call site,
@@ -819,7 +819,7 @@ P/Invoke, on both hosts. Three real, meaningful changes, not just a rename:
   tier generation) and `PictTag.UI.Desktop.DesktopProgressiveBitmapLoader` needed **zero call-site
   changes** - genuinely mechanical, exactly as planned. `PictTag.Data.csproj` dropped its native DLL
   copy-to-output entirely (production desktop/server code needs zero native binaries now) in favor of
-  a `PictTag.PgfCodec` project reference.
+  a `Sherland.Imaging.Pgf` project reference.
 - **`PictTag.UI.Browser.Interop`/`NativePgf` is deleted, not just faceted** - unlike the Desktop side,
   keeping the old wrapper name would have been actively misleading (a class called `NativePgf`
   containing zero P/Invoke), and there was a stronger reason to remove it outright:
@@ -852,7 +852,7 @@ it's cheap either way.
 completely unchanged - the regression proof the facade swap preserved behavior exactly),
 `PictTag.Api.Tests` (44 tests, including `ThumbnailServiceTests`), `PictTag.UI.Desktop.Tests` (4
 tests, real Avalonia-rendered progressive bitmaps through the new managed path), `PictTag.UI.Tests`
-(62), `PictTag.UI.Controls.Tests` (6), `PictTag.PgfCodec.Tests` (567), plus `PictTag.Core.Tests` as an
+(62), `PictTag.UI.Controls.Tests` (6), `Sherland.Imaging.Pgf.Tests` (567), plus `PictTag.Core.Tests` as an
 unrelated-project sanity check - all passed on the first run after the swap, no regressions. The full
 solution (`PictTag.slnx`, all 21 projects including `PictTag.Integration.Tests` and the
 `net10.0-browser` WASM build) also builds clean.
@@ -882,7 +882,7 @@ exists, not a live caveat about today's replacement - a future reader skimming t
 mistake Stage 8's genuine dead end for a still-open problem.
 
 Byte-exact pixel correctness of the decode *algorithm* itself was already proven in isolation well
-before this stage (`PictTag.PgfCodec.Tests`' 567 tests, Stages 5-9, against the real native oracle);
+before this stage (`Sherland.Imaging.Pgf.Tests`' 567 tests, Stages 5-9, against the real native oracle);
 what only a real browser run could prove - and now has - is that the same managed code actually
 executes correctly under Mono's WASM interpreter, driven by real HTTP responses, inside a real page,
 with no P/Invoke/native-linking failure mode left to hit.
@@ -900,24 +900,24 @@ interpreted configuration was in Stage 13).
   of the confirmed-broken native path) with a "Managed PGF codec" section describing the actual
   current architecture and what it replaced; removed the now-resolved "Fixing the browser/WASM
   progressive PGF decode itself" bullet from "What's not built yet"; fixed a stale `PgfDecoder
-  (P/Invoke)` project-layout description and added entries for the three new `PictTag.PgfCodec*`
+  (P/Invoke)` project-layout description and added entries for the three new `Sherland.Imaging.Pgf*`
   projects.
 - `client-side-pgf-and-remove-thumbnail-cache.md`: added a "second update" paragraph alongside the
   existing Stage-8 "confirmed broken" investigation record (kept, not deleted, for its own real
   engineering value) explaining what actually fixed it and how that's verified; removed the
   now-resolved bullet from "What's still not built."
 - `CLAUDE.md`: Prerequisites section now correctly scopes the C++ toolchain/CMake requirement to
-  `PictTag.PgfCodec.Tests`/`.Benchmarks` only (not the GUI stack generally); the "native PGF thumbnail
+  `Sherland.Imaging.Pgf.Tests`/`.Benchmarks` only (not the GUI stack generally); the "native PGF thumbnail
   decoding" and "browser host's native PGF decoder confirmed broken" bullets rewritten to describe
   the current managed architecture and the real fix, with the original investigation kept as explicit
   historical context rather than erased; the `dotnet test` command list gained
-  `PictTag.PgfCodec.Tests`.
+  `Sherland.Imaging.Pgf.Tests`.
 - `docs/TESTING.md` (not explicitly named in this stage's own bullet, but a real, load-bearing gap
-  found while doing this pass - it had **zero** mentions of `PictTag.PgfCodec.Tests`/`.Benchmarks`
+  found while doing this pass - it had **zero** mentions of `Sherland.Imaging.Pgf.Tests`/`.Benchmarks`
   despite Stage 4's own doc comment promising it would "join the standard 'always run' tier"):
-  added `PictTag.PgfCodec.Tests` to the always-run command list and tier 4's own section, corrected
+  added `Sherland.Imaging.Pgf.Tests` to the always-run command list and tier 4's own section, corrected
   tier 4's prerequisite paragraph (falsely claimed `PictTag.Data.Tests`/`PictTag.Api.Tests` need the
-  native DLL - they don't anymore, only `PictTag.PgfCodec.Tests`/`.Benchmarks` do), fixed
+  native DLL - they don't anymore, only `Sherland.Imaging.Pgf.Tests`/`.Benchmarks` do), fixed
   `PgfDecoderTests`' stale "native P/Invoke path" description, and updated tier 5's
   `ProgressivePgfBrowserTests` description to reflect Stage 13's real proof instead of the old
   documented failure.
@@ -934,7 +934,7 @@ very end.
    encodes a handful of known-pixel bitmaps (solid color, checkerboard) and decodes them back
    correctly through its own existing `pgf_decode_bgra` — proving the new native exports work before
    any C# port work depends on them.
-2. **`PictTag.PgfCodec` project skeleton + `BitStream` port**: the stateless bit-array primitives,
+2. **`Sherland.Imaging.Pgf` project skeleton + `BitStream` port**: the stateless bit-array primitives,
    shared by both directions. Exit test: unit tests against hand-constructed bit patterns, no PGF file
    involved yet.
 3. **`PgfMemoryReader`** (the `CPGFMemoryStream`-equivalent read contract) over `ReadOnlyMemory<byte>`,
@@ -980,7 +980,7 @@ very end.
     headroom to chase, not a mandatory stage. Decode is the actual product hot path, so prioritize
     there if time-boxing is needed.
 12. **Wire real decode call sites over**: `PictTag.Data.PgfDecoding.PgfDecoder` and
-    `PictTag.UI.Browser.Interop.NativePgf` (or their replacements) switch to `PictTag.PgfCodec`;
+    `PictTag.UI.Browser.Interop.NativePgf` (or their replacements) switch to `Sherland.Imaging.Pgf`;
     evaluate collapsing `DesktopProgressiveBitmapLoader`/`BrowserProgressiveBitmapLoader`'s duplicated
     decode-loop logic into one shared `PictTag.UI` implementation now that both platforms share one
     real decoder with no platform-specific P/Invoke linking-model difference to justify the
@@ -1032,7 +1032,7 @@ landed, documented here rather than silently marked complete:
     scope decision (see Stage 10's progress log) rather than an unmet target nobody looked at.
     Output-size non-increasing-with-quality *does* hold, confirmed via the `--sizes` sweep and the
     round-trip matrix's own quality-level coverage.
-- ✅ **`dotnet test` (all existing tiers, plus the new `PictTag.PgfCodec.Tests`) stays green** -
+- ✅ **`dotnet test` (all existing tiers, plus the new `Sherland.Imaging.Pgf.Tests`) stays green** -
   verified repeatedly throughout Stages 7-13, most recently as part of Stage 12's call-site swap
   (every affected project's test suite rebuilt and run individually, plus a full solution build).
 - ✅ **`docs/GUI.md`, `client-side-pgf-and-remove-thumbnail-cache.md`, and `CLAUDE.md` are updated
@@ -1044,8 +1044,8 @@ All resolved as of Stage 14 - kept below (not deleted) as the record of what was
 what actually settled it, per this PRD's own "verify, don't recall" standard.
 
 - **Native project's final fate — resolved (Stage 14).** Kept indefinitely, but as test/benchmark
-  infrastructure only: `PictTag.PgfCodec.Tests`/`.Benchmarks` still build against
-  `native/PictTag.PgfDecoder/` as the correctness/round-trip oracle. It is no longer a production
+  infrastructure only: `Sherland.Imaging.Pgf.Tests`/`.Benchmarks` still build against
+  `native/Sherland.Imaging.Pgf.Native/` as the correctness/round-trip oracle. It is no longer a production
   dependency of either GUI host or `PictTag.Api` - `CLAUDE.md`'s C++ toolchain/CMake prerequisite is
   now scoped explicitly to that one test project, not the whole GUI stack, matching the "only becomes
   optional for contributors who don't touch PGF test tooling" branch of this question, not full
@@ -1065,7 +1065,7 @@ what actually settled it, per this PRD's own "verify, don't recall" standard.
 - **`PictTag.Api`'s server-side thumbnail decode path — resolved (Stage 12): switched.**
   `ThumbnailService` needed zero code changes, since it already went through
   `PictTag.Data.PgfDecoding.PgfDecoder`'s public API, which Stage 12 turned into a facade over
-  `PictTag.PgfCodec` - one implementation for every real call site, desktop and server-side and
+  `Sherland.Imaging.Pgf` - one implementation for every real call site, desktop and server-side and
   browser alike, as this question's own "leaning toward" anticipated. No server-side regression risk
   materialized worth blocking on: `PictTag.Api.Tests` (including `ThumbnailServiceTests`) passed
   unchanged, and Stage 10's benchmarks already showed managed decode comfortably within the real

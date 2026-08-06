@@ -1,7 +1,7 @@
 ---
 name: optimize-pgfcodec
 description: >-
-  Iteratively profile and optimize the managed `PictTag.PgfCodec` implementation for end-to-end
+  Iteratively profile and optimize the managed `Sherland.Imaging.Pgf` implementation for end-to-end
   performance. Use when improving PGF decode, progressive decode, encode, workspace, SIMD, or
   related C# paths: identify the highest-impact managed bottleneck, implement one focused change,
   validate it against the native oracle, commit it, and repeat until no remaining end-to-end

@@ -7,7 +7,7 @@ below for the full per-stage record.
 
 ## Context
 
-`PictTag.PgfCodec` is planned to be published as a standalone NuGet package (see
+`Sherland.Imaging.Pgf` is planned to be published as a standalone NuGet package (see
 [`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md)'s own opening note) — a real, stated goal that changes
 the bar for what counts as in-scope. The native encoder writes a real per-level byte-length table
 into every PGF file's post-header area: a zero placeholder written first (so the table's own size is
@@ -69,7 +69,7 @@ parsed" step, not new parsing logic or a new native oracle to prove correctness 
   `PgfHeader.Write` doesn't need the `hSize`-patch logic at all — only the level-length placeholder
   and its later patch.
 - **`PgfByteWriter` already supports seek-and-patch** — no writer-capability gap exists.
-  `source/PictTag.PgfCodec/PgfByteWriter.cs` wraps a real `MemoryStream` with `SetPos(SeekOrigin,
+  `source/Sherland.Imaging.Pgf/PgfByteWriter.cs` wraps a real `MemoryStream` with `SetPos(SeekOrigin,
   long)` (explicitly documented as existing for exactly this: seek back, write, resume forward,
   preserving `MemoryStream`'s past-end-seek semantics). The only missing piece is caller-side
   accounting (the bullet above), not writer plumbing.
@@ -183,7 +183,7 @@ parsed" step, not new parsing logic or a new native oracle to prove correctness 
   the new shim export's `GetEncodedLevelLength`-backed report for the *same* file — this leg has a
   genuine, already-working independent oracle (per the Context finding above), unlike
   `pgf-legacy-interleaved-decode.md`'s self-consistency-only situation.
-- **Regression**: the full existing `PictTag.PgfCodec.Tests` suite must stay green throughout,
+- **Regression**: the full existing `Sherland.Imaging.Pgf.Tests` suite must stay green throughout,
   especially confirming the placeholder-write byte range/stream layout doesn't shift for any existing
   fixture (a level-length table sized wrong by even one entry would corrupt every subsequent byte
   offset in the file).
@@ -330,11 +330,11 @@ parsed" step, not new parsing logic or a new native oracle to prove correctness 
   side of the test.
 - Added `NativePgfOracle.TryGetLevelLengths` (learns `Levels()` via the existing
   `TryGetHeaderInfo` first, then calls the new export) and the matching `LibraryImport` declaration.
-- Rebuilt `PictTagPgfDecoder.dll` via the VS-bundled CMake/Ninja toolchain (`cmake --build
-  native/PictTag.PgfDecoder/build --config Release`, run from a `vcvars64.bat`-initialized
+- Rebuilt `SherlandImagingPgfNative.dll` via the VS-bundled CMake/Ninja toolchain (`cmake --build
+  native/Sherland.Imaging.Pgf.Native/build --config Release`, run from a `vcvars64.bat`-initialized
   environment - `cmake`/`ninja` are not on the default `PATH` in this environment, only reachable
   under Visual Studio's own install tree). The project's existing `<None Include="...
-  PictTagPgfDecoder.dll" CopyToOutputDirectory="PreserveNewest">` item picked up the rebuilt DLL on
+  SherlandImagingPgfNative.dll" CopyToOutputDirectory="PreserveNewest">` item picked up the rebuilt DLL on
   the next `dotnet build` automatically - no `.csproj` change needed.
 - Full regression suite (existing tests, unaffected by the shim addition): 1295/1295 passed.
 

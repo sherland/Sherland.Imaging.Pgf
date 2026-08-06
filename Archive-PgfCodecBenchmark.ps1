@@ -25,7 +25,7 @@ param(
     [ValidateNotNullOrEmpty()]
     [string] $Purpose,
 
-    [string] $Command = 'dotnet run -c Release --project source/PictTag.PgfCodec.Benchmarks -- --job short --filter "*" --artifacts <directory>'
+    [string] $Command = 'dotnet run -c Release --project source/Sherland.Imaging.Pgf.Benchmarks -- --job short --filter "*" --artifacts <directory>'
 )
 
 $ErrorActionPreference = 'Stop'

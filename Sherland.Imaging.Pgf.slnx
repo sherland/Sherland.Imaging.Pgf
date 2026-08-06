@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/source/">
+    <Project Path="source/Sherland.Imaging.Pgf.Benchmarks/Sherland.Imaging.Pgf.Benchmarks.csproj" />
+    <Project Path="source/Sherland.Imaging.Pgf.Performance/Sherland.Imaging.Pgf.Performance.csproj" />
+    <Project Path="source/Sherland.Imaging.Pgf.Tests/Sherland.Imaging.Pgf.Tests.csproj" />
+    <Project Path="source/Sherland.Imaging.Pgf/Sherland.Imaging.Pgf.csproj" />
+  </Folder>
+</Solution>

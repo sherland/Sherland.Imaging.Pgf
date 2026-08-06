@@ -1,7 +1,7 @@
 ---
 name: optimize-pgfcodec
 description: >-
-  Iteratively profile and optimize the managed PictTag.PgfCodec implementation for end-to-end
+  Iteratively profile and optimize the managed Sherland.Imaging.Pgf implementation for end-to-end
   performance; use the canonical repository skill for the complete workflow.
 ---
 

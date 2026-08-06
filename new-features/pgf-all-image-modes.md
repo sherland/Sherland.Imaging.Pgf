@@ -13,7 +13,7 @@ not `INT32`, in this build (`__PGF32SUPPORT__` is not defined anywhere in `CMake
 `PGFplatform.h`'s defaults)" — is wrong, and was wrong from the start:
 
 - `PGFplatform.h:66-67` defines `__PGF32SUPPORT__` **by default** (`#ifndef NPGF32` /
-  `#define __PGF32SUPPORT__`). `native/PictTag.PgfDecoder/CMakeLists.txt` never defines `NPGF32`
+  `#define __PGF32SUPPORT__`). `native/Sherland.Imaging.Pgf.Native/CMakeLists.txt` never defines `NPGF32`
   anywhere, so the real compiled oracle DLL this whole codec is verified against has
   `__PGF32SUPPORT__` **active**: `DataT = INT32` (`PGFtypes.h:273`), `MaxBitPlanes = 31`,
   `MaxQuality = 31` (`PGFtypes.h:89`) — not the `INT16`/`15` this port (`PgfConstants.MaxBitPlanes`)
@@ -41,13 +41,13 @@ byte-exact under the wider type before any new mode work begins on top of it.
 
 ## Context
 
-`PictTag.PgfCodec` (this codebase's managed `libpgf` port — see
+`Sherland.Imaging.Pgf` (this codebase's managed `libpgf` port — see
 [`new-features/managed-pgf-codec.md`](managed-pgf-codec.md)) only implements `ImageModeRGBA`/32bpp —
 the one mode real digiKam thumbnails and this app's own encoder actually use. Every other mode the
 native codec supports is out of scope today: `PgfConstants.cs:50-52` only defines
 `ImageModeIndexedColor` (2, to reject it during header parse) and `ImageModeRGBA` (17);
 `PgfDecodeSession.cs:63` fails closed on anything else. This PRD ports the rest, making
-`PictTag.PgfCodec` a complete, general-purpose PGF codec rather than one scoped tightly to this app's
+`Sherland.Imaging.Pgf` a complete, general-purpose PGF codec rather than one scoped tightly to this app's
 own thumbnail format.
 
 **Being honest about what problem this solves**: there is no current real digiKam-produced file or
@@ -255,7 +255,7 @@ Group by *implementation similarity*, not alphabetically by mode name, so shared
   for at least a representative quality sweep, following the base PRD's own "Achievable round-trip
   guarantee" standard (pixel-exact at `quality=0`, pixel-identical-across-legs above that).
 - Indexed color's palette round-trips exactly and is correctly applied on decode.
-- The existing RGBA-only round-trip matrix and full `PictTag.PgfCodec.Tests` suite show zero
+- The existing RGBA-only round-trip matrix and full `Sherland.Imaging.Pgf.Tests` suite show zero
   regression throughout.
 - `docs/PGF-CODEC.md` updated to reflect the new, broader mode support.
 
@@ -408,6 +408,6 @@ Bitmap's legacy sub-variant remain out of scope), corrected the stale `MaxQualit
 count claims, and updated the cross-referencing PRD-status footer. This PRD's own Status line and
 Open Questions section updated in place.
 
-**Final test count: `PictTag.PgfCodec.Tests` 1043/1043, `PictTag.Data.Tests` 15/15 — zero
+**Final test count: `Sherland.Imaging.Pgf.Tests` 1043/1043, `PictTag.Data.Tests` 15/15 — zero
 regressions across all 11 stages (9 code stages plus the Stage 0/4b insertions), starting from 920 at
 Stage 0's entry point.**

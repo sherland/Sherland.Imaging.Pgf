@@ -5,7 +5,7 @@ Progress log for the corrected evidence.
 
 ## Context
 
-`PictTag.PgfCodec` is a dependency-free managed PGF codec used by both the Desktop/server stack and
+`Sherland.Imaging.Pgf` is a dependency-free managed PGF codec used by both the Desktop/server stack and
 the Browser/WASM UI, and is intended to become a standalone NuGet package. Its public decode APIs
 already rent the transient BGRA callback buffer, but its larger coefficient, subband, macroblock,
 and encoder buffers are ordinary GC allocations.
@@ -64,8 +64,8 @@ baseline justifies a fresh, evidence-led evaluation, but does not make SIMD a pr
 - `PgfColorConversion` has independent per-pixel loops; wavelet vertical lifting has independent
   horizontal lanes. Wavelet row lifting has loop-carried neighbor dependencies, so a naive vector
   loop is not correct. Entropy loops are branch-heavy.
-- Existing `PictTag.PgfCodec.Tests` include native-oracle full matrices plus focused color and
-  wavelet tests. `PictTag.PgfCodec.Benchmarks` already has `MemoryDiagnoser` for single-shot decode,
+- Existing `Sherland.Imaging.Pgf.Tests` include native-oracle full matrices plus focused color and
+  wavelet tests. `Sherland.Imaging.Pgf.Benchmarks` already has `MemoryDiagnoser` for single-shot decode,
   encode, and full progressive decode. No allocation-budget test exists.
 
 ## Proposed architecture

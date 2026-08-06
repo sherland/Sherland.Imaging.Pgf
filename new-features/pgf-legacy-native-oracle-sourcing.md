@@ -10,7 +10,7 @@ one can and can't prove.
 
 ## Why this was worth a dedicated investigation
 
-Both PRDs above were written by directly reading `native/PictTag.PgfDecoder/libpgf/` — this repo's
+Both PRDs above were written by directly reading `native/Sherland.Imaging.Pgf.Native/libpgf/` — this repo's
 own vendored copy of the *current* (7.19.3-derived) reference source — and inferring legacy behavior
 from comments and dead code left in that current source. Neither PRD had access to an actual older
 build. `pgf-legacy-interleaved-decode.md`'s own "Why this needs to be grounded" section explicitly
@@ -90,7 +90,7 @@ import), 43,532 commits total. Searching for when `libpgf` was first added
   code to `libs/pgfutils/libpgf/` (`b0f7ce4ab29bb9999dd7c0308592757a161c6c5e`, 2018-04-23, an
   isolation/reorg commit, not a version bump) and finally updated to
   **`95236bcc93e8ac764258291419084848bc12b2dc`, 2019-02-25, *"update internal libpgf to last stable
-  version 071903"*** — `7.19.3`, which is what this repo's own `native/PictTag.PgfDecoder/libpgf/`
+  version 071903"*** — `7.19.3`, which is what this repo's own `native/Sherland.Imaging.Pgf.Native/libpgf/`
   is itself derived from (matches `PGFtypes.h`'s `PGFMajorNumber=7, PGFYear=19, PGFWeek=03` exactly).
 
 ### 6. `libpgf.org` directly
@@ -166,7 +166,7 @@ Bitmap format existed at all**:
 - **Confirmed buildable, not assumed**: this investigation extracted the real `6.14.12` source (via
   Debian's snapshot archive — see Reproduction below, since SourceForge's own download endpoint is
   Cloudflare-blocked), wrote a minimal `CMakeLists.txt` (static lib, C++17, `LIBPGF_DISABLE_OPENMP` —
-  deliberately mirroring `native/PictTag.PgfDecoder/CMakeLists.txt`'s own settings so it's a fair,
+  deliberately mirroring `native/Sherland.Imaging.Pgf.Native/CMakeLists.txt`'s own settings so it's a fair,
   like-for-like comparison), and built it with **zero errors** using the exact same MSVC toolchain
   (Visual Studio "18" Community, `cl` 19.51) this repo's existing native oracle already uses. (One
   environment-only wrinkle: building from a path deep under `%TEMP%` hit an MSBuild `FileTracker`
@@ -209,7 +209,7 @@ tar xjf libpgf_6.12.24.orig.tar.bz2   # -> libpgf/{include,src}/...
 curl -sL "https://snapshot.debian.org/archive/debian/20140926T043003Z/pool/main/libp/libpgf/libpgf_6.14.12.orig.tar.gz" -o libpgf_6.14.12.orig.tar.gz
 tar xzf libpgf_6.14.12.orig.tar.gz   # -> libpgf/{include,src}/...
 ```
-Build (adapt `native/PictTag.PgfDecoder/CMakeLists.txt`'s own settings — C++17,
+Build (adapt `native/Sherland.Imaging.Pgf.Native/CMakeLists.txt`'s own settings — C++17,
 `LIBPGF_DISABLE_OPENMP` — pointed at this source's `include`/`src` layout instead of the single
 `libpgf/` folder the current vendored copy uses).
 

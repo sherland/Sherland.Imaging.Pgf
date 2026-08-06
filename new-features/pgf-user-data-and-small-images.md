@@ -17,7 +17,7 @@ under that framing, verified directly against the real fixture rather than assum
 files carry zero post-header content — and real digiKam thumbnails never approach the ~10px
 threshold that triggers the raw/uncoded path.
 
-That framing changes if `PictTag.PgfCodec` is published as a standalone NuGet package for general
+That framing changes if `Sherland.Imaging.Pgf` is published as a standalone NuGet package for general
 PGF use, not just consumed internally by this app. A general consumer's PGF files are not
 constrained to "whatever digiKam's thumbnail writer produces" — a real file from some other PGF
 encoder could carry embedded user data (arbitrary metadata a caller wrote at encode time) or a color
@@ -271,7 +271,7 @@ fail-closed cases (one specifically sized to prove the check happens before any 
 would be attempted), and two full-pipeline tests (a real encoded image with user data spliced in,
 decoded through both `PgfImageDecoder.TryDecode` and `PgfProgressiveDecoder`, proving pixel data and
 user data both come back correctly together) plus one confirming the simpler `TryDecode` overload
-still compiles and behaves unchanged. Full regression: `PictTag.PgfCodec.Tests` 1043 → 1058 (15 new,
+still compiles and behaves unchanged. Full regression: `Sherland.Imaging.Pgf.Tests` 1043 → 1058 (15 new,
 0 failed), `PictTag.Data.Tests` 15/15 unchanged (facade untouched by this stage).
 
 **Stage 2 (user data — encode side) — done.** `PgfHeaderIO.Write` gained an optional
@@ -291,7 +291,7 @@ the real encoder (not just the Stage 1 hand-spliced case). One test cross-checks
 native decoder** (`NativePgfOracle.TryDecode`) that a C#-encoded file with user data still opens and
 decodes correctly there too - proof the `hSize`/post-header accounting is right by the format's own
 real parser, not just self-consistent within this port's own reader. Full regression:
-`PictTag.PgfCodec.Tests` 1058 → 1069 (11 new, 0 failed).
+`Sherland.Imaging.Pgf.Tests` 1058 → 1069 (11 new, 0 failed).
 
 **Stage 3 (untrusted-length bounding review) — done, found and fixed a real bug beyond user data.**
 Re-verified `PgfHeaderIO.Read`'s own two named cases first: the level-length array is safe regardless
@@ -325,7 +325,7 @@ iterations regardless of input - no fix needed.
 New tests (8, `PgfUntrustedLengthTests.cs`): width/height that don't fit in `int` at all, width×height
 that overflows the buffer-size multiplication, zero width/height, the same fixed-closed behavior via
 `PgfProgressiveDecoder.TryOpen`, and a normal-sized-image regression proving the new bound doesn't
-narrow real, valid input. Full regression: `PictTag.PgfCodec.Tests` 1069 → 1077 (8 new, 0 failed).
+narrow real, valid input. Full regression: `Sherland.Imaging.Pgf.Tests` 1069 → 1077 (8 new, 0 failed).
 
 **Stage 4 (`nLevels=0` decode) — done.** `PgfDecodeSession.TryOpen` no longer rejects
 `header.NLevels == 0`: a new `TryReadRawChannels` helper reads each channel's raw `DataT`
@@ -359,7 +359,7 @@ New tests (21, `PgfNLevelsZeroDecodeTests.cs`): byte-exact decode against the re
 across eight sizes down to 1x1, both single-shot and progressive decode, an indexed-color (paletted)
 tiny image, a truncated-stream fail-closed case, and `PgfProgressiveDecoder`'s level-0-only
 contract (rejecting level 1, idempotent on repeat level-0 requests). Full regression:
-`PictTag.PgfCodec.Tests` 1077 → 1098 (21 new, 0 failed); `PictTag.Data.Tests` 15/15 unchanged.
+`Sherland.Imaging.Pgf.Tests` 1077 → 1098 (21 new, 0 failed); `PictTag.Data.Tests` 15/15 unchanged.
 
 **Stage 5 (`nLevels=0` encode, completing the round trip) — done.** `PgfImageEncoder.TryEncodeMode`'s
 old `if (header.NLevels == 0) return false;` hard-fail is gone. Color conversion and the chroma
@@ -386,7 +386,7 @@ existing test (`PgfImageEncoderTests.BelowMinimumDimension_FailsClosed_WithoutTh
 to `..._NoLongerFailsClosed_EncodesViaRawPath` and its assertion flipped, since the behavior it was
 locking in is exactly what this stage changed; `TestBitmaps.MinimumSupportedDimension`'s own doc
 comment was updated to stop calling this range "out of scope" now that every consumer (native shim,
-this port's decoder, this port's encoder) supports it. Full regression: `PictTag.PgfCodec.Tests`
+this port's decoder, this port's encoder) supports it. Full regression: `Sherland.Imaging.Pgf.Tests`
 1098 → 1130 (32 new, 0 failed); `PictTag.Data.Tests` 15/15 unchanged.
 
 **Stage 6 (Documentation) — done.** This "Status" line flipped to done; every "Open questions" entry

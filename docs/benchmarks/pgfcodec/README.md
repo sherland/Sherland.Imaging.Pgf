@@ -14,7 +14,7 @@ cross-run interpretation.
 | [`2026-08-05-e49c1fc-allocation-paths-shortrun`](2026-08-05-e49c1fc-allocation-paths-shortrun/) | `e49c1fc` | Completed ShortRun of convenience and opt-in allocation-reuse paths; the current evidence for allocation performance. | [Markdown](2026-08-05-e49c1fc-allocation-paths-shortrun/PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report-github.md) · [CSV](2026-08-05-e49c1fc-allocation-paths-shortrun/PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report.csv) |
 | [`2026-08-05-f7e21ef-simd-enabled-shortrun`](2026-08-05-f7e21ef-simd-enabled-shortrun/) | `f7e21ef` | Completed vector-enabled run; preserved evidence, but not the scalar/vector decision by itself. | [Markdown](2026-08-05-f7e21ef-simd-enabled-shortrun/PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report-github.md) · [CSV](2026-08-05-f7e21ef-simd-enabled-shortrun/PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report.csv) |
 | [`2026-08-05-6f120cf-simd-scalar-controlled-shortrun`](2026-08-05-6f120cf-simd-scalar-controlled-shortrun/) | `6f120cf` | Completed controlled scalar-fallback versus vector matrix; authoritative SIMD decision evidence. | [Markdown](2026-08-05-6f120cf-simd-scalar-controlled-shortrun/PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report-github.md) · [CSV](2026-08-05-6f120cf-simd-scalar-controlled-shortrun/PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report.csv) |
-| [`2026-08-06-445451b-session-workload-baseline`](2026-08-06-445451b-session-workload-baseline/) | `445451b` | First Release baseline for the new managed-only `PictTag.PgfCodec.Performance` session workbench (`SessionWorkloadBenchmarks`); starting point for the optimize-pgfcodec loop. | [Markdown](2026-08-06-445451b-session-workload-baseline/PictTag.PgfCodec.Performance.SessionWorkloadBenchmarks-report-github.md) · [CSV](2026-08-06-445451b-session-workload-baseline/PictTag.PgfCodec.Performance.SessionWorkloadBenchmarks-report.csv) |
+| [`2026-08-06-445451b-session-workload-baseline`](2026-08-06-445451b-session-workload-baseline/) | `445451b` | First Release baseline for the new managed-only `Sherland.Imaging.Pgf.Performance` session workbench (`SessionWorkloadBenchmarks`); starting point for the optimize-pgfcodec loop. | [Markdown](2026-08-06-445451b-session-workload-baseline/PictTag.PgfCodec.Performance.SessionWorkloadBenchmarks-report-github.md) · [CSV](2026-08-06-445451b-session-workload-baseline/PictTag.PgfCodec.Performance.SessionWorkloadBenchmarks-report.csv) |
 | [`2026-08-06-e5d7548-batch-native-vs-managed-shortrun`](2026-08-06-e5d7548-batch-native-vs-managed-shortrun/) | `e5d7548` | First run of `BatchDecodeBenchmarks`/`BatchEncodeBenchmarks` (1/10/50-image batches); current authoritative evidence for the "Native vs. managed" table below. | [Decode Markdown](2026-08-06-e5d7548-batch-native-vs-managed-shortrun/PictTag.PgfCodec.Benchmarks.BatchDecodeBenchmarks-report-github.md) · [Encode Markdown](2026-08-06-e5d7548-batch-native-vs-managed-shortrun/PictTag.PgfCodec.Benchmarks.BatchEncodeBenchmarks-report-github.md) |
 
 At 256px/quality 8, the full-parity codec is 29.9% faster for single-shot decode, 28.7% faster for
@@ -38,8 +38,8 @@ To archive a new run, use [`Archive-PgfCodecBenchmark.ps1`](../../../Archive-Pgf
 after running BenchmarkDotNet with `--artifacts`; the script refuses to overwrite an existing run.
 Name a run `yyyy-MM-dd-shortsha-description` (for example,
 `2026-08-04-b64488d-full-parity`), never `current`. `Archive-PgfCodecBenchmark.ps1` validates its
-input against `PictTag.PgfCodec.Benchmarks`' own three-class, nine-report shape; runs from the
-managed-only `source/PictTag.PgfCodec.Performance` workbench (`SessionWorkloadBenchmarks`, a
+input against `Sherland.Imaging.Pgf.Benchmarks`' own three-class, nine-report shape; runs from the
+managed-only `source/Sherland.Imaging.Pgf.Performance` workbench (`SessionWorkloadBenchmarks`, a
 different report-file count) are archived by copying the same `results/` reports and writing
 `metadata.json` by hand in the same shape, as `2026-08-06-445451b-session-workload-baseline` does.
 
@@ -52,7 +52,7 @@ ad-hoc local check - archive the run under this directory and update this table 
 AGENTS.md's "Keep this table current" note.
 
 **Fairness caveat - read before quoting these numbers**: the "native" leg here calls the C++ codec
-through a P/Invoke shim (`PictTagPgfDecoder.dll`, the same one `PictTag.PgfCodec.Tests`/`.Benchmarks`
+through a P/Invoke shim (`SherlandImagingPgfNative.dll`, the same one `Sherland.Imaging.Pgf.Tests`/`.Benchmarks`
 use as their correctness/performance oracle - see `docs/PGF-CODEC.md`), not a standalone native
 executable. Every `NativeDecode`/`NativeEncode`/`NativeDecodeBatch`/`NativeEncodeBatch` call pays a
 real P/Invoke marshaling transition that a genuine native C++ application processing PGF files
@@ -93,12 +93,12 @@ is specific to `ColdStart`'s single-iteration, no-warmup methodology (it is larg
 tiering promotion, not steady-state throughput) and is not archived or reflected in the table above;
 only the properly warmed-up `ShortRun` figures are treated as evidence.
 
-## Managed-only session workbench (`PictTag.PgfCodec.Performance`)
+## Managed-only session workbench (`Sherland.Imaging.Pgf.Performance`)
 
 Started 2026-08-06 with no active PRD; evidence for this optimization line is recorded here rather
 than in a `new-features/*.md` progress log. The workbench models a thumbnail service: decode/
 progressive-decode a 50-image mixed-size session, encode one image, and bulk-encode 20 images
-(caller-buffer and owned-result paths) - see `source/PictTag.PgfCodec.Performance/README.md`.
+(caller-buffer and owned-result paths) - see `source/Sherland.Imaging.Pgf.Performance/README.md`.
 
 `2026-08-06-445451b-session-workload-baseline` is the starting point (ShortRun, N=3, AMD Ryzen 7
 5800X, .NET 10.0.10). A DiagSessionAnalyzer pass against the incidentally-captured
@@ -209,7 +209,7 @@ call site rather than disappearing. No new hotspot emerged.
 whether forcing inlining via `[MethodImpl(AggressiveInlining)]` helps (user-directed investigation,
 not profile-driven; see
 [`2026-08-06-7748dfa-inlining-investigation-no-effect`](2026-08-06-7748dfa-inlining-investigation-no-effect/)).
-Auditing every `try`/`catch`/`finally` in `PictTag.PgfCodec` found exception handling only in large,
+Auditing every `try`/`catch`/`finally` in `Sherland.Imaging.Pgf` found exception handling only in large,
 multi-call orchestration methods (`PgfDecodeSession.TryOpen`/`DecodeOneLevel`/`DecodeOneLevelRoi`/
 `TryDecode`, `PgfImageDecoder.TryDecode`, `PgfProgressiveDecoder`'s own rent/return wrapper) - none
 close to the JIT's inlining size budget regardless of EH, and none of the actual hot leaf methods

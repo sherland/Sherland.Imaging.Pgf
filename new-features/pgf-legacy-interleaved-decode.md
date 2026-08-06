@@ -11,7 +11,7 @@ from a historical encoder that no longer exists.
 
 ## Context
 
-`PictTag.PgfCodec` is planned to be published as a standalone NuGet package (see
+`Sherland.Imaging.Pgf` is planned to be published as a standalone NuGet package (see
 [`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md)'s own opening note) — a real, stated goal that changes
 the bar for what counts as in-scope. The decoder originally implemented only the *modern* Version5+
 scheme, where the HL and LH subbands are each independently tiled and decoded via
@@ -23,7 +23,7 @@ version dispatch while implementing the Bitmap PRD; this PRD owns the remaining 
 
 **Being honest about what this closes and what it doesn't**: this is a decode-only gap. Confirmed by
 direct read of the vendored source: `EncodeInterleaved` does not exist anywhere in
-`native/PictTag.PgfDecoder/libpgf` — grepping `Encoder.cpp`/`Encoder.h` finds no trace of it, not
+`native/Sherland.Imaging.Pgf.Native/libpgf` — grepping `Encoder.cpp`/`Encoder.h` finds no trace of it, not
 even as dead code. `CPGFImage::SetHeader`'s `flags` parameter (PGFimage.cpp:893, body at :905,
 `m_preHeader.version = PGFVersion | flags;`) can only **add** bits onto `PGFVersion`
 (`PGFtypes.h:76/78`, which unconditionally already includes `Version5`) — there is no way, through
@@ -249,9 +249,9 @@ compares the real native `GetBitmap` raw result and the managed normalized BGRA 
 ordinary even 64x48 case and an odd 37x23 case; the odd case exercises the unequal HL/LH trailing
 fixups. A separate 2049x1027 RGBA case asserts multiple wavelet levels and synthesizes 8,417,292
 source bytes, exercising large multi-macroblock data without committing a fixture binary. Focused
-verification: `dotnet test source/PictTag.PgfCodec.Tests -- --filter-class
+verification: `dotnet test source/Sherland.Imaging.Pgf.Tests -- --filter-class
 "*.PgfLegacyInterleavedAllModeTests"` — **16/16 passed** (15 mode cases plus the large case). Full
-regression: `dotnet test source/PictTag.PgfCodec.Tests` — **1376/1376 passed**.
+regression: `dotnet test source/Sherland.Imaging.Pgf.Tests` — **1376/1376 passed**.
 
 **Stage 4: Documentation.** Reconciled the PRD's original pre-implementation assumptions with the
 as-built native synthetic writer and dual-decoder rig, including the precise 12/15 false-failure root

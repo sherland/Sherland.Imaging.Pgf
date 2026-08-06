@@ -5,7 +5,7 @@
 
 ## Context
 
-`PictTag.PgfCodec` is planned to be published as a standalone NuGet package (see
+`Sherland.Imaging.Pgf` is planned to be published as a standalone NuGet package (see
 [`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md)'s own opening note) — a real, stated goal that changes
 the bar for what counts as in-scope. This port's C# code currently assumes a little-endian host
 throughout, documented explicitly in `PgfDecoderCore.cs`'s own doc comment. Every real deployment
@@ -39,7 +39,7 @@ supports. This PRD's whole architecture rests on that one fact — see "Proposed
   `PGF_USE_BIG_ENDIAN` is defined, `#define __VAL(x) (x)` otherwise. `ByteSwap` overloads for
   `UINT16`/`UINT32`/`UINT64` are defined just above (`PGFplatform.h:601-620`), compiled in only for
   big-endian builds.
-- **Every real call site** in `native/PictTag.PgfDecoder/libpgf`, confirmed by direct read (not
+- **Every real call site** in `native/Sherland.Imaging.Pgf.Native/libpgf`, confirmed by direct read (not
   grepped-and-assumed):
   - `Decoder.cpp`: `preHeader.hSize` (:119), `header.width`/`header.height` (:133-134), the
     `levelLength[]` array inside its own `#ifdef PGF_USE_BIG_ENDIAN` block (:197-202), `wordLen` in
@@ -143,7 +143,7 @@ supports. This PRD's whole architecture rests on that one fact — see "Proposed
   this is the only way to get real code coverage of the actual swap arithmetic on any real CI host,
   since the `BitConverter.IsLittleEndian`-gated call site itself will never take the swap branch
   during a normal test run.
-- **Regression**: the existing full `PictTag.PgfCodec.Tests` suite must stay green throughout —
+- **Regression**: the existing full `Sherland.Imaging.Pgf.Tests` suite must stay green throughout —
   confirms this change is a no-op on every real (little-endian) test host, exactly as intended.
 - **A whole-pipeline sanity check with the swap forced on**: temporarily/locally invoking the
   round-trip encode→decode path with the swap helper's "always swap" branch forced true (e.g. via an

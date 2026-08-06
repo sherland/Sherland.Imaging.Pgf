@@ -1,6 +1,6 @@
 # PGF codec
 
-`PictTag.PgfCodec` is a from-scratch, dependency-free C# port of digiKam's vendored `libpgf` codec
+`Sherland.Imaging.Pgf` is a from-scratch, dependency-free C# port of digiKam's vendored `libpgf` codec
 (PGF = Progressive Graphics File, a wavelet-based image format). It decodes (single-shot and
 progressive/level-by-level) and encodes PGF thumbnails — the format digiKam itself caches thumbnail
 images in — with no native/P/Invoke dependency at all.
@@ -11,7 +11,7 @@ made, what was tried, what broke and how it was fixed), see
 [`new-features/managed-pgf-codec.md`](../new-features/managed-pgf-codec.md) — that PRD's own
 "Progress log" is the authoritative narrative; this page is the lookup table distilled from it.
 
-**The plan is to publish `PictTag.PgfCodec` as a standalone NuGet package.** That's a real, stated
+**The plan is to publish `Sherland.Imaging.Pgf` as a standalone NuGet package.** That's a real, stated
 goal, not a hypothetical — and it changes the bar for "out of scope" below. Everything up to this
 point was scoped against *this app's own* real usage (digiKam's own thumbnail shape: small, RGBA,
 metadata-free) — "nothing in this codebase's own usage exercises X" was a legitimate reason to skip
@@ -25,23 +25,23 @@ not permanent decisions.
 
 ## Where it's used
 
-- `PictTag.Data.PgfDecoding.PgfDecoder` — a thin facade over `PictTag.PgfCodec` for the desktop/
+- `PictTag.Data.PgfDecoding.PgfDecoder` — a thin facade over `Sherland.Imaging.Pgf` for the desktop/
   server side (`PictTag.Api.Thumbnails.ThumbnailService`, `PictTag.UI.Desktop.
   DesktopProgressiveBitmapLoader`). No native DLL involved.
-- `PictTag.UI.Browser.BrowserProgressiveBitmapLoader` — references `PictTag.PgfCodec` directly. No
+- `PictTag.UI.Browser.BrowserProgressiveBitmapLoader` — references `Sherland.Imaging.Pgf` directly. No
   native WASM linking involved (that whole subsystem was deleted, not kept as a fallback).
-- `native/PictTag.PgfDecoder/` (the vendored C++ build) still exists in the repo, but only as
-  test/benchmark infrastructure now — `PictTag.PgfCodec.Tests`/`.Benchmarks`' correctness oracle, not
+- `native/Sherland.Imaging.Pgf.Native/` (the vendored C++ build) still exists in the repo, but only as
+  test/benchmark infrastructure now — `Sherland.Imaging.Pgf.Tests`/`.Benchmarks`' correctness oracle, not
   a production dependency of either host. See [`CLAUDE.md`](../CLAUDE.md)'s Prerequisites section.
 
 ## Performance benchmarks
 
-`PictTag.PgfCodec.Benchmarks` is a BenchmarkDotNet console application that compares the managed
+`Sherland.Imaging.Pgf.Benchmarks` is a BenchmarkDotNet console application that compares the managed
 codec with the native oracle. It measures single-shot decode and encode at 128/256/512px and quality
 0/8/15, plus complete coarsest-to-finest progressive decode at 256/512px and quality 0/8. It also has
 an output-size sweep for every quality value.
 
-Build `native/PictTag.PgfDecoder/build/PictTagPgfDecoder.dll` first, as described in
+Build `native/Sherland.Imaging.Pgf.Native/build/SherlandImagingPgfNative.dll` first, as described in
 [`TESTING.md`](TESTING.md). Always pass an explicit `--artifacts` directory outside the repository:
 BenchmarkDotNet runs the benchmarks from an isolated generated build directory and cleans that
 directory at completion. Without `--artifacts`, the console summary is still valid, but the Markdown,
@@ -49,9 +49,9 @@ CSV, HTML, and detailed log files are removed with that temporary build.
 
 ```powershell
 $artifacts = "C:/tmp/pgfcodec-benchmark-$(Get-Date -Format yyyyMMdd-HHmmss)"
-dotnet run -c Release --project source/PictTag.PgfCodec.Benchmarks -- `
+dotnet run -c Release --project source/Sherland.Imaging.Pgf.Benchmarks -- `
   --job short --filter "*" --artifacts $artifacts
-dotnet run -c Release --project source/PictTag.PgfCodec.Benchmarks -- --sizes
+dotnet run -c Release --project source/Sherland.Imaging.Pgf.Benchmarks -- --sizes
 ```
 
 The report files are under `$artifacts/results/`. `short` is BenchmarkDotNet's command-line name for
@@ -131,7 +131,7 @@ for the current record.
   production-relevant shape; `TryEncodeMode` (every other mode) exists as test infrastructure to
   produce real fixtures to decode-test against, not a second production path.
 - Proven byte-exact against the real native decoder/encoder across a wide fixture/dimension/quality
-  matrix, every mode, both directions (`PictTag.PgfCodec.Tests`, 1376 tests) — see
+  matrix, every mode, both directions (`Sherland.Imaging.Pgf.Tests`, 1376 tests) — see
   `managed-pgf-codec.md`'s Stage 7-9 progress log entries for the original RGBA-only verification and
   `pgf-all-image-modes.md`'s own Progress log for the per-mode extension.
 - **Header metadata: user data, and the `nLevels=0` "raw/uncoded" small-image path** — arbitrary

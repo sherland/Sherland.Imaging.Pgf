@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Sherland.Imaging.Pgf.Tests" />
+    <InternalsVisibleTo Include="Sherland.Imaging.Pgf.Benchmarks" />
+    <InternalsVisibleTo Include="Sherland.Imaging.Pgf.Performance" />
+  </ItemGroup>
+
+</Project>

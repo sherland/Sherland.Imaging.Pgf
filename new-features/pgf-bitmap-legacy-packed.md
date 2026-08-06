@@ -11,7 +11,7 @@ Reproduction steps have the exact commands to re-obtain and build it.
 
 ## Context
 
-`PictTag.PgfCodec` is planned to be published as a standalone NuGet package (see
+`Sherland.Imaging.Pgf` is planned to be published as a standalone NuGet package (see
 [`docs/PGF-CODEC.md`](../docs/PGF-CODEC.md)'s own opening note) — a real, stated goal that changes
 the bar for what counts as in-scope. This port's `Bitmap` (1bpp, black/white) mode support only
 covers the *modern* "new unpacked since Version7" representation (`PgfColorConversion`'s own "Group
@@ -97,7 +97,7 @@ simpler two-way split the existing C# doc comment currently (inaccurately) descr
   `CPGFImage::SetChannel(DataT*, int c=0)` (`PGFimage.h:272`) — hand-replicating the exact
   commented-out packing logic at `PGFimage.cpp:1427-1441` from *outside* the class, in the shim,
   rather than uncommenting/modifying the vendored library file itself (this project's own established
-  convention is to keep `native/PictTag.PgfDecoder/libpgf/` as close to an unmodified vendored drop as
+  convention is to keep `native/Sherland.Imaging.Pgf.Native/libpgf/` as close to an unmodified vendored drop as
   possible, with all extensions living in `shim.cpp` — see `pgf-roi-support.md`'s Stage 5 for the same
   pattern applied to a smaller change).
 
@@ -131,7 +131,7 @@ simpler two-way split the existing C# doc comment currently (inaccurately) descr
   implementation for any build, ever — nothing would have a reason to write it. The Goal 2 fixture
   generator is test infrastructure only, mirroring `pgf-legacy-interleaved-decode.md`'s own
   test-only-encoder framing for the same reason.
-- **Modifying `native/PictTag.PgfDecoder/libpgf/` (the vendored source) itself.** The
+- **Modifying `native/Sherland.Imaging.Pgf.Native/libpgf/` (the vendored source) itself.** The
   `Version7`-clearing access needed for Goal 2 stays entirely inside a small, local, shim-only
   derived class — not a change to the vendored library files, matching this project's own standing
   convention.

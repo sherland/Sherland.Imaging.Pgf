@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sherland.Imaging.Pgf\Sherland.Imaging.Pgf.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Native oracle DLL - the managed-vs-native comparison this benchmark rig exists for (Stage 10,
+         new-features/managed-pgf-codec.md), re-declaring the same test-only P/Invoke exports
+         Sherland.Imaging.Pgf.Tests.Oracle.NativePgfOracle uses (not referencing that test project - a
+         benchmark exe pulling in a test project's dependencies would be backwards). -->
+    <None Include="..\..\native\Sherland.Imaging.Pgf.Native\build\SherlandImagingPgfNative.dll"
+          Condition="Exists('..\..\native\Sherland.Imaging.Pgf.Native\build\SherlandImagingPgfNative.dll')"
+          CopyToOutputDirectory="PreserveNewest" Link="SherlandImagingPgfNative.dll" />
+  </ItemGroup>
+
+</Project>

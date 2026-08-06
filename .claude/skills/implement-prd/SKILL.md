@@ -78,10 +78,10 @@ For each stage:
    (`dotnet test <project> -- --filter-class "*.ClassName"` — this repo's test projects use xUnit
    v3 on the Microsoft.Testing.Platform runner, **not** VSTest, so the filter syntax is
    `--filter-class` after a `--` separator, never plain `--filter`).
-5. Run the **full** test suite for every affected project (per `CLAUDE.md`'s "Tests" section, e.g.
-   `dotnet test source/PictTag.PgfCodec.Tests`, plus `PictTag.Data.Tests` if a facade changed) as a
-   regression gate before moving to the next stage. Don't accumulate multiple stages' changes
-   before running the full suite once — that's how a regression gets misattributed later.
+5. Run the **full** test suite for every affected project (e.g. `dotnet test
+   source/Sherland.Imaging.Pgf.Tests`) as a regression gate before moving to the next stage. Don't
+   accumulate multiple stages' changes before running the full suite once — that's how a regression
+   gets misattributed later.
 6. When a stage says "wire this into real call site X if it's cheap and correct" (a common last
    implementation stage in these PRDs): actually read that call site's current code first. If it
    already has its own adequate mechanism (e.g. an outer loop already checks cancellation once per

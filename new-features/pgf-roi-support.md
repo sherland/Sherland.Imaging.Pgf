@@ -11,7 +11,7 @@ __PGFROISUPPORT__`, never suppressed anywhere in this build — confirmed by gre
 suppressing macro `NPGFROI`), but it's dead code in practice for this app: nothing that touches this
 codebase — not this app's own encoder, not any real digiKam thumbnail encountered — ever sets the
 `PGFROI` version flag, so the real `ROIBlockHeader` bitfield is never actually read from or written
-to any file this app produces or consumes. `PictTag.PgfCodec` (this codebase's managed port — see
+to any file this app produces or consumes. `Sherland.Imaging.Pgf` (this codebase's managed port — see
 [`new-features/managed-pgf-codec.md`](managed-pgf-codec.md)) deliberately did not port ROI at all,
 for exactly that reason.
 
@@ -23,7 +23,7 @@ never PGF-encoded at all (originals are served as-is, whatever format digiKam ha
 current production call site with an actual need for cropped partial decode, the same honest framing
 `managed-pgf-codec.md` itself used for encode ("no production call site... exists to make the decoder
 provably correct, and as a genuinely useful general capability"). This PRD is motivated by
-completeness — making `PictTag.PgfCodec` a real, general-purpose PGF library rather than one scoped
+completeness — making `Sherland.Imaging.Pgf` a real, general-purpose PGF library rather than one scoped
 tightly to today's thumbnail-only usage — and by resolving `managed-pgf-codec.md`'s own tracked open
 question ("Is the ROI-enabled decode path actually reachable... resolve during stage 4/5, not
 upfront" — it was resolved as "no," and this PRD is the deliberate follow-up if that capability is
@@ -163,7 +163,7 @@ comparison, intermediate-stage comparison, 4-way round-trip matrix) with an ROI 
   must still leave the shared bitstream position correct for a *subsequent* `TryDecodeLevel` call
   requesting a different, non-overlapping ROI or a finer level — assert this directly (a real, subtle
   place for an off-by-one to silently desync the stream rather than visibly fail).
-- **Regression**: the existing non-ROI round-trip matrix and the full `PictTag.PgfCodec.Tests` suite
+- **Regression**: the existing non-ROI round-trip matrix and the full `Sherland.Imaging.Pgf.Tests` suite
   (567 tests as of this PRD's writing) must stay green throughout, especially after the
   `ROIBlockHeader`-becomes-real stage — this is exactly the kind of change Stage 5's own history
   warns could silently break non-ROI decode/encode if the "always full `bufferSize`, `tileEnd`
@@ -172,7 +172,7 @@ comparison, intermediate-stage comparison, 4-way round-trip matrix) with an ROI 
 ## Stage sequence
 
 1. **`ROIBlockHeader` becomes real** in `PgfMacroBlock`/`PgfEncodeMacroBlock`, with the existing
-   full `PictTag.PgfCodec.Tests` suite re-run in full afterward as the regression gate before any new
+   full `Sherland.Imaging.Pgf.Tests` suite re-run in full afterward as the regression gate before any new
    ROI-specific code is written — this is the highest-risk stage, isolate it.
 2. **Tile mechanics**: `PgfSubband`'s `GetNofTiles`/tile-index bounds/`TileIsRelevant`,
    `PgfWaveletTransform.SetROI`. Exit test: tile-index bounds computed for a range of fixture
@@ -240,7 +240,7 @@ and what actually settled it, per this repo's own "verify, don't recall" standar
 ### Stage 1: `ROIBlockHeader` becomes real
 
 Verified every native citation in this PRD's "Context"/"Why this needs to be grounded" sections
-against the real `native/PictTag.PgfDecoder/libpgf` sources before writing any code (`PGFplatform.h`
+against the real `native/Sherland.Imaging.Pgf.Native/libpgf` sources before writing any code (`PGFplatform.h`
 still `#define __PGFROISUPPORT__` unconditionally, zero `NPGFROI` hits; `ROIBlockHeader`/`PGFRect` at
 the cited `PGFtypes.h` lines; `SetROI`/`GetAlignedROI`/`ComputeLevelROI`/`WriteLevel`'s ROI branch in
 `PGFimage.cpp`; `GetNofTiles`/`m_indices`/`TileIsRelevant`/`SetROI` in `WaveletTransform.h/.cpp`;
@@ -279,7 +279,7 @@ introduced and the conditional extra-byte wire (de)serialization actually gets a
 ever sets it true. This stage's job was just making the per-macroblock header *value* real and
 correctly modeled, which is now done and independently verified.
 
-Regression gate: full `PictTag.PgfCodec.Tests` suite, before and after -
+Regression gate: full `Sherland.Imaging.Pgf.Tests` suite, before and after -
 **1130/1130 passed both times** (the PRD's "567 tests as of this PRD's writing" figure was stale -
 other PRDs' work landed more tests between then and now, confirmed by running the suite rather than
 trusting the cited count). No regressions; behavior is bit-identical for every non-ROI file, as
@@ -333,7 +333,7 @@ odd-unaligned rectangles across four different image sizes/level counts assertin
 invariant holds without throwing - **17 new tests**, all pure geometry (no decode/encode, no pixel
 data, matching this stage's own exit-test scope from the Stage sequence).
 
-Regression gate: full `PictTag.PgfCodec.Tests` suite - **1147/1147 passed** (1130 existing + 17 new,
+Regression gate: full `Sherland.Imaging.Pgf.Tests` suite - **1147/1147 passed** (1130 existing + 17 new,
 zero regressions).
 
 ### Stage 3: Decode-side ROI
@@ -409,7 +409,7 @@ the `RoiSupported` gate, and the one-call/one-session state machine - all using 
 non-ROI-flagged sample fixture, since (per the finding above) that's all that's independently
 testable at this stage.
 
-Regression gate: full `PictTag.PgfCodec.Tests` suite - **1154/1154 passed** (1147 existing + 7 new,
+Regression gate: full `Sherland.Imaging.Pgf.Tests` suite - **1154/1154 passed** (1147 existing + 7 new,
 zero regressions) - the load-bearing result for this stage, given the `InverseTransform` generalization's
 risk.
 
@@ -468,7 +468,7 @@ test to compare only within the accurate sub-rectangle - all 5 partial-ROI cases
 finding #1) this is real, hard evidence that Stage 3's decode-side code is correct, not just
 "didn't throw."
 
-Regression gate: full `PictTag.PgfCodec.Tests` suite - **1166/1166 passed** (1154 existing + 12 new
+Regression gate: full `Sherland.Imaging.Pgf.Tests` suite - **1166/1166 passed** (1154 existing + 12 new
 round-trip tests, zero regressions).
 
 ### Stage 5: Native shim ROI-capable encode export
@@ -483,7 +483,7 @@ export would be risky.
 
 Verified the native build toolchain first (`docs/TESTING.md`'s documented `cmake --build` command,
 via `vcvarsall.bat` + the Ninja/CMake binaries bundled with the installed Visual Studio, since neither
-was on `PATH` directly) - confirmed it produces a real, working `PictTagPgfDecoder.dll` before writing
+was on `PATH` directly) - confirmed it produces a real, working `SherlandImagingPgfNative.dll` before writing
 any new C++.
 
 Added `pgf_encode_bgra_alloc_roi` (shim.cpp) - identical to the existing `pgf_encode_bgra_alloc` except
@@ -511,7 +511,7 @@ production call site (this PRD's own Context section) once the higher-value leg 
 already closed. If a genuine need for that leg emerges later, `pgf_open`'s own doc comment pattern
 (stateful handle + level-by-level decode) is the template to extend.
 
-Regression gate: full `PictTag.PgfCodec.Tests` suite - **1173/1173 passed** (1166 existing + 7 new
+Regression gate: full `Sherland.Imaging.Pgf.Tests` suite - **1173/1173 passed** (1166 existing + 7 new
 cross-implementation tests, zero regressions).
 
 ### Stage 6: Full ROI round-trip matrix
@@ -558,5 +558,5 @@ generous-bound sanity test (`RoiEncodeSize_StaysWithinGenerousBoundOfPlainEncode
 regression gate - a compression ratio isn't a correctness property) so a future catastrophic
 regression (e.g. a tile somehow encoded multiple times) would still be caught.
 
-Regression gate: full `PictTag.PgfCodec.Tests` suite - **1259/1259 passed** (1173 existing + 86 new
+Regression gate: full `Sherland.Imaging.Pgf.Tests` suite - **1259/1259 passed** (1173 existing + 86 new
 matrix/size tests, zero regressions).

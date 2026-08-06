@@ -1,0 +1,17 @@
+{
+  "runName": "2026-08-06-445451b-session-workload-baseline",
+  "revision": "445451b4668da5860d5e71c04b279792d33a19c1",
+  "purpose": "First Release baseline for the new managed-only PictTag.PgfCodec.Performance session workbench (SessionWorkloadBenchmarks): 50-image decode/progressive-decode sessions, one-image encode, and 20-image bulk encode (caller-buffer and owned-result), each under both SIMD and forced-scalar vectors. Starting point for the optimize-pgfcodec loop; no PRD is active for this work, so evidence lives here instead of a new-features/*.md progress log.",
+  "archivedAtUtc": "2026-08-06T11:15:00Z",
+  "benchmarkCommand": "dotnet run -c Release --project source/PictTag.PgfCodec.Performance -- --filter \"*SessionWorkloadBenchmarks*\" --job Short --artifacts <directory>",
+  "sourceArtifactDirectory": "source/PictTag.PgfCodec.Performance/BenchmarkDotNet.Artifacts.baseline",
+  "reports": [
+    "PictTag.PgfCodec.Performance.ProfiledSessionWorkloadBenchmarks-report-github.md",
+    "PictTag.PgfCodec.Performance.ProfiledSessionWorkloadBenchmarks-report.csv",
+    "PictTag.PgfCodec.Performance.ProfiledSessionWorkloadBenchmarks-report.html",
+    "PictTag.PgfCodec.Performance.SessionWorkloadBenchmarks-report-github.md",
+    "PictTag.PgfCodec.Performance.SessionWorkloadBenchmarks-report.csv",
+    "PictTag.PgfCodec.Performance.SessionWorkloadBenchmarks-report.html"
+  ],
+  "notes": "The filter also matched ProfiledSessionWorkloadBenchmarks (CPUUsageDiagnoser variant) because its type name contains the filtered substring; this is a separate BenchmarkDotNet class/process per case so it did not perturb the plain SessionWorkloadBenchmarks timings, and it incidentally captured a usable DiagnosticsHub .diagsession (DecodeFiftyImagesInNewSession, ForceScalarVectors=False, PID 18488) used for the first DiagSessionAnalyzer profiling pass. SessionWorkloadBenchmarks summary (ShortRun, N=3, AMD Ryzen 7 5800X): DecodeFiftyImagesInNewSession 129.27ms/330KB (False) vs 139.02ms/330KB (True); ProgressiveDecodeFiftyImagesInNewSession 137.92ms/333KB (False) vs 151.64ms/333KB (True); EncodeOneImageInNewSession 3.26ms/2283KB (False) vs 3.39ms/2283KB (True); EncodeTwentyImagesInNewSession 72.85ms/34010KB (False) vs 73.77ms/34010KB (True); EncodeTwentyImagesWithOwnedResults 75.12ms/34618KB (False) vs 75.93ms/34618KB (True)."
+}

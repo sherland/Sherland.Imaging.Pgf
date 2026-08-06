@@ -14,6 +14,7 @@ cross-run interpretation.
 | [`2026-08-05-e49c1fc-allocation-paths-shortrun`](2026-08-05-e49c1fc-allocation-paths-shortrun/) | `e49c1fc` | Completed ShortRun of convenience and opt-in allocation-reuse paths; the current evidence for allocation performance. | [Markdown](2026-08-05-e49c1fc-allocation-paths-shortrun/PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report-github.md) · [CSV](2026-08-05-e49c1fc-allocation-paths-shortrun/PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report.csv) |
 | [`2026-08-05-f7e21ef-simd-enabled-shortrun`](2026-08-05-f7e21ef-simd-enabled-shortrun/) | `f7e21ef` | Completed vector-enabled run; preserved evidence, but not the scalar/vector decision by itself. | [Markdown](2026-08-05-f7e21ef-simd-enabled-shortrun/PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report-github.md) · [CSV](2026-08-05-f7e21ef-simd-enabled-shortrun/PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report.csv) |
 | [`2026-08-05-6f120cf-simd-scalar-controlled-shortrun`](2026-08-05-6f120cf-simd-scalar-controlled-shortrun/) | `6f120cf` | Completed controlled scalar-fallback versus vector matrix; authoritative SIMD decision evidence. | [Markdown](2026-08-05-6f120cf-simd-scalar-controlled-shortrun/PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report-github.md) · [CSV](2026-08-05-6f120cf-simd-scalar-controlled-shortrun/PictTag.PgfCodec.Benchmarks.DecodeBenchmarks-report.csv) |
+| [`2026-08-06-445451b-session-workload-baseline`](2026-08-06-445451b-session-workload-baseline/) | `445451b` | First Release baseline for the new managed-only `PictTag.PgfCodec.Performance` session workbench (`SessionWorkloadBenchmarks`); starting point for the optimize-pgfcodec loop. | [Markdown](2026-08-06-445451b-session-workload-baseline/PictTag.PgfCodec.Performance.SessionWorkloadBenchmarks-report-github.md) · [CSV](2026-08-06-445451b-session-workload-baseline/PictTag.PgfCodec.Performance.SessionWorkloadBenchmarks-report.csv) |
 
 At 256px/quality 8, the full-parity codec is 29.9% faster for single-shot decode, 28.7% faster for
 encode, and 32.2% faster for full progressive decode than Stage 10. Allocations increased 86.7%,
@@ -35,4 +36,37 @@ progressive decode from 975.6 to 844.4 us (13.4%), with identical allocations.
 To archive a new run, use [`Archive-PgfCodecBenchmark.ps1`](../../../Archive-PgfCodecBenchmark.ps1)
 after running BenchmarkDotNet with `--artifacts`; the script refuses to overwrite an existing run.
 Name a run `yyyy-MM-dd-shortsha-description` (for example,
-`2026-08-04-b64488d-full-parity`), never `current`.
+`2026-08-04-b64488d-full-parity`), never `current`. `Archive-PgfCodecBenchmark.ps1` validates its
+input against `PictTag.PgfCodec.Benchmarks`' own three-class, nine-report shape; runs from the
+managed-only `source/PictTag.PgfCodec.Performance` workbench (`SessionWorkloadBenchmarks`, a
+different report-file count) are archived by copying the same `results/` reports and writing
+`metadata.json` by hand in the same shape, as `2026-08-06-445451b-session-workload-baseline` does.
+
+## Managed-only session workbench (`PictTag.PgfCodec.Performance`)
+
+Started 2026-08-06 with no active PRD; evidence for this optimization line is recorded here rather
+than in a `new-features/*.md` progress log. The workbench models a thumbnail service: decode/
+progressive-decode a 50-image mixed-size session, encode one image, and bulk-encode 20 images
+(caller-buffer and owned-result paths) - see `source/PictTag.PgfCodec.Performance/README.md`.
+
+`2026-08-06-445451b-session-workload-baseline` is the starting point (ShortRun, N=3, AMD Ryzen 7
+5800X, .NET 10.0.10). A DiagSessionAnalyzer pass against the incidentally-captured
+`ProfiledSessionWorkloadBenchmarks.DecodeFiftyImagesInNewSession(ForceScalarVectors: False)` trace
+(PID 18488, 739 samples) found `PgfImageDecoder.TryDecode`'s own body as the single largest
+exclusive-sample function (~11.8%), ahead of `PgfMacroBlock.BitplaneDecode`, `PgfImageDecoder.
+ConvertToBgra`, and `PgfWaveletTransform.InverseRow`/`InverseTransform`. Reading `TryDecode` showed
+a plausible reason: its final BGRA result buffer always calls `ArrayPool<byte>.Shared.Rent`/`Return`
+directly, even when the caller supplies a `PgfWorkspace` - the one remaining codec buffer not routed
+through the workspace's own reuse pool that Stage 3b/3c/4b already built for every other decode/
+encode buffer.
+
+**Rejected**: routing that buffer through the workspace (see
+[`2026-08-06-445451b-workspace-decode-buffer-rejected`](2026-08-06-445451b-workspace-decode-buffer-rejected/))
+showed no measurable timing improvement under a controlled MediumRun (deltas of -0.8% to +1.6%, all
+within noise) and a small but reproducible ~500-600 byte *increase* in allocated bytes per 50-image
+session (`PgfWorkspace`'s byte-rent list structures growing from empty for the first time). Reverted,
+not committed. Likely explanation: `ArrayPool<byte>.Shared` already serves this single-threaded
+repeated-same-size-class pattern from a fast per-thread cache, so `TryDecode`'s own high exclusive
+sample weight in the profile is probably attributable to something else in that method body (most
+likely the `onDecoded` delegate invocation) rather than the pool rent/return calls - worth a fresh,
+more targeted profiling pass rather than assuming the same cause next time.

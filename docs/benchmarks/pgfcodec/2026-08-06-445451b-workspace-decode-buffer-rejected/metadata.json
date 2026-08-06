@@ -1,0 +1,18 @@
+{
+  "runName": "2026-08-06-445451b-workspace-decode-buffer-rejected",
+  "revision": "445451b4668da5860d5e71c04b279792d33a19c1",
+  "purpose": "Rejected experiment: route PgfImageDecoder.TryDecode/PgfDecodeSession.TryDecode/PgfProgressiveDecoder.TryDecodeLevel's final transient BGRA result buffer through the caller-supplied PgfWorkspace (a new PgfWorkspace.RentPooled/ReturnPooled helper) instead of always calling ArrayPool<byte>.Shared.Rent/Return directly, even when a workspace was supplied. before-*/after-* are a controlled MediumRun (N>=15) of just the two decode-shaped SessionWorkloadBenchmarks (DecodeFiftyImagesInNewSession, ProgressiveDecodeFiftyImagesInNewSession, both ForceScalarVectors values) on identical fixtures/machine/job, isolating this one change via git stash/pop between runs.",
+  "archivedAtUtc": "2026-08-06T11:55:00Z",
+  "benchmarkCommand": "dotnet run -c Release --project source/PictTag.PgfCodec.Performance -- --filter \"*.SessionWorkloadBenchmarks.DecodeFiftyImagesInNewSession\" \"*.SessionWorkloadBenchmarks.ProgressiveDecodeFiftyImagesInNewSession\" --job Medium --artifacts <directory>",
+  "sourceArtifactDirectories": [
+    "source/PictTag.PgfCodec.Performance/BenchmarkDotNet.Artifacts.prefix-medium (before)",
+    "source/PictTag.PgfCodec.Performance/BenchmarkDotNet.Artifacts.postfix-medium (after)"
+  ],
+  "reports": [
+    "before-PictTag.PgfCodec.Performance.SessionWorkloadBenchmarks-report-github.md",
+    "before-PictTag.PgfCodec.Performance.SessionWorkloadBenchmarks-report.csv",
+    "after-PictTag.PgfCodec.Performance.SessionWorkloadBenchmarks-report-github.md",
+    "after-PictTag.PgfCodec.Performance.SessionWorkloadBenchmarks-report.csv"
+  ],
+  "result": "REJECTED. Before -> after (MediumRun, AMD Ryzen 7 5800X): DecodeFiftyImagesInNewSession(False) 121.7ms/330.18KB -> 122.8ms/330.68KB (+0.9% time, +0.15% alloc); DecodeFiftyImagesInNewSession(True) 138.4ms/330.18KB -> 140.6ms/330.68KB (+1.6% time, +0.15% alloc); ProgressiveDecodeFiftyImagesInNewSession(False) 133.7ms/333.3KB -> 135.1ms/333.89KB (+1.0% time, +0.18% alloc); ProgressiveDecodeFiftyImagesInNewSession(True) 153.3ms/333.3KB -> 152.0ms/333.89KB (-0.8% time, +0.18% alloc). No timing delta exceeds its own StdDev-scale noise band in either direction (fails the >2% end-to-end rule), and allocated bytes went up by a small but reproducible ~500-600 bytes per 50-image session in every case (not noise: PgfWorkspace's byteRents/availableByte List<byte[]> backing arrays start empty and this was the first workload to ever populate them, a one-time per-workspace-instance growth cost). Likely explanation: ArrayPool<byte>.Shared already serves a single-threaded repeated same-size-class rent/return pattern from a fast per-thread cache, so there was little headroom to begin with, and the workspace's own linear best-fit search plus its Reset()-time Array.Clear roughly offsets whatever was saved. Reverted; PgfImageDecoder.cs/PgfDecodeSession.cs/PgfProgressiveDecoder.cs/PgfWorkspace.cs/PgfWorkspaceTests.cs changes were not committed. The DiagSessionAnalyzer exclusive-sample weight attributed to PgfImageDecoder.TryDecode's own body in the 2026-08-06-445451b-session-workload-baseline profile therefore likely reflects something else in that method body (delegate invocation through onDecoded, or sampling attribution to nearby inlined code) rather than ArrayPool.Rent/Return cost specifically - worth re-profiling with a fresh capture rather than assuming the same cause next time this function is investigated."
+}

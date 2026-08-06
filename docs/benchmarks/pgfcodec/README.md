@@ -142,5 +142,32 @@ iteration.
 This closes out every candidate the 2026-08-06 baseline profile surfaced, including a second pass
 specifically re-mining it for non-memory candidates: three were implemented, correctly, and rejected
 on real measurement; two were assessed and found to have a poor risk/reward ratio before
-implementation. A fresh profile of a further-optimized build would be needed to find the next real
-candidate.
+implementation.
+
+**Fresh profile confirmation**: a new DiagSessionAnalyzer pass against `DecodeFiftyImagesInNewSession`
+(ForceScalarVectors=False, PID 17560, 748 samples) on the post-de-duplication build reproduced the
+same picture as the original baseline. `TryDecode`'s inlined-checksum bucket remains the largest
+exclusive-sample function (92/748, ~12.3% - still harness noise, not codec work); `InverseRow`,
+`ConvertToBgra`, `DecodeOneLevel`, and `InverseTransform` retain the same relative ranking. Notably,
+`System.SpanHelpers.NonPackedIndexOfValueType` (the `FindNextSignificant` helper's `IndexOf` call)
+now appears as its own ~30-sample entry, no longer folded into `BitplaneDecode`'s inlined self-time -
+consistent with, not contradicting, that change's measured null effect: the cost moved to an explicit
+call site rather than disappearing. No new hotspot emerged.
+
+**Investigated, no change made**: whether `try`/`catch` blocks any real inlining opportunity, and
+whether forcing inlining via `[MethodImpl(AggressiveInlining)]` helps (user-directed investigation,
+not profile-driven; see
+[`2026-08-06-7748dfa-inlining-investigation-no-effect`](2026-08-06-7748dfa-inlining-investigation-no-effect/)).
+Auditing every `try`/`catch`/`finally` in `PictTag.PgfCodec` found exception handling only in large,
+multi-call orchestration methods (`PgfDecodeSession.TryOpen`/`DecodeOneLevel`/`DecodeOneLevelRoi`/
+`TryDecode`, `PgfImageDecoder.TryDecode`, `PgfProgressiveDecoder`'s own rent/return wrapper) - none
+close to the JIT's inlining size budget regardless of EH, and none of the actual hot leaf methods
+(`BitStream`'s bit helpers, `PgfMacroBlock.SetBitAtPos`/`SetSign`/`FindNextSignificant`,
+`PgfColorConversion.Clamp8`) contain a `try`/`catch` at all - so there was nothing to restructure.
+Separately tried adding `[MethodImpl(AggressiveInlining)]` (which `BitStream`'s helpers already carry
+uniformly) to `Clamp8`/`SetBitAtPos`/`SetSign`, which lacked it: byte-exact, Browser/WASM-buildable,
+but two independent matched-conditions MediumRuns gave contradictory results (trial 1: all four rows
+improved 0.4-1.4%; trial 2: three of four rows regressed 0.1-1.7%) - the signature of correlated
+session noise, not a real effect. Reverted, not committed.
+
+A fresh profile of a further-optimized build would be needed to find the next real candidate.

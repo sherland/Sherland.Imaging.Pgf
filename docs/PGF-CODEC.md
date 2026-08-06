@@ -32,7 +32,7 @@ not permanent decisions.
   native WASM linking involved (that whole subsystem was deleted, not kept as a fallback).
 - `native/Sherland.Imaging.Pgf.Native/` (the vendored C++ build) still exists in the repo, but only as
   test/benchmark infrastructure now — `Sherland.Imaging.Pgf.Tests`/`.Benchmarks`' correctness oracle, not
-  a production dependency of either host. See [`CLAUDE.md`](../CLAUDE.md)'s Prerequisites section.
+  a production dependency of either host. See [`AGENTS.md`](../AGENTS.md)'s Prerequisites section.
 
 ## Performance benchmarks
 
@@ -42,7 +42,8 @@ codec with the native oracle. It measures single-shot decode and encode at 128/2
 an output-size sweep for every quality value.
 
 Build `native/Sherland.Imaging.Pgf.Native/build/SherlandImagingPgfNative.dll` first, as described in
-[`TESTING.md`](TESTING.md). Always pass an explicit `--artifacts` directory outside the repository:
+[`AGENTS.md`](../AGENTS.md)'s Prerequisites section. Always pass an explicit `--artifacts` directory
+outside the repository:
 BenchmarkDotNet runs the benchmarks from an isolated generated build directory and cleans that
 directory at completion. Without `--artifacts`, the console summary is still valid, but the Markdown,
 CSV, HTML, and detailed log files are removed with that temporary build.

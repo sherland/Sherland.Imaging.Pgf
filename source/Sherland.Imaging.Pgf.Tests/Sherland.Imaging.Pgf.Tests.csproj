@@ -27,12 +27,17 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Native oracle DLL for the round-trip test rig (new-features/managed-pgf-codec.md) - the
-         same SherlandImagingPgfNative.dll PictTag.Data P/Invokes into for production decode, here also
-         exercised via its new test-only encode/debug exports (shim.cpp). -->
+    <!-- Native oracle library for the round-trip test rig (new-features/managed-pgf-codec.md) - the
+         same SherlandImagingPgfNative shim PictTag.Data P/Invokes into for production decode, here also
+         exercised via its new test-only encode/debug exports (shim.cpp). LibraryImport("SherlandImagingPgfNative")
+         resolves the platform-appropriate filename at load time, so both the Windows .dll and Linux .so
+         build outputs are copied (whichever exists on the running platform). -->
     <None Include="..\..\native\Sherland.Imaging.Pgf.Native\build\SherlandImagingPgfNative.dll"
           Condition="Exists('..\..\native\Sherland.Imaging.Pgf.Native\build\SherlandImagingPgfNative.dll')"
           CopyToOutputDirectory="PreserveNewest" Link="SherlandImagingPgfNative.dll" />
+    <None Include="..\..\native\Sherland.Imaging.Pgf.Native\build\libSherlandImagingPgfNative.so"
+          Condition="Exists('..\..\native\Sherland.Imaging.Pgf.Native\build\libSherlandImagingPgfNative.so')"
+          CopyToOutputDirectory="PreserveNewest" Link="libSherlandImagingPgfNative.so" />
   </ItemGroup>
 
 </Project>

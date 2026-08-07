@@ -1,0 +1,136 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_performance:
+        description: Run the managed-only performance workbench (Sherland.Imaging.Pgf.Performance)
+        type: boolean
+        default: false
+      run_benchmark:
+        description: Run the native-vs-managed BenchmarkDotNet suite (Sherland.Imaging.Pgf.Benchmarks)
+        type: boolean
+        default: false
+      pack_nuget:
+        description: Build and upload the 0.1-alpha NuGet package
+        type: boolean
+        default: false
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: "10.0.x"
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  PACKAGE_VERSION: "0.1-alpha"
+
+jobs:
+  build-and-test:
+    # The native oracle (native/Sherland.Imaging.Pgf.Native) cross-compiles cleanly on Linux -
+    # PGFplatform.h's Windows-only branch is gated behind WIN32/WINCE/__MINGW32__, which the
+    # CMakeLists.txt only defines under `if(WIN32)`. ubuntu-latest ships gcc/g++/make/cmake, so no
+    # extra toolchain setup is needed. Sherland.Imaging.Pgf.Performance is deliberately NOT built
+    # here - it pulls in Microsoft.VisualStudio.DiagnosticsHub.BenchmarkDotNetDiagnosers for its
+    # [CPUUsageDiagnoser] benchmarks (ETW-based, Windows-only), so it gets its own windows-latest job.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Configure native oracle (CMake)
+        run: cmake -S native/Sherland.Imaging.Pgf.Native -B native/Sherland.Imaging.Pgf.Native/build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build native oracle
+        run: cmake --build native/Sherland.Imaging.Pgf.Native/build --config Release
+
+      - name: Build managed codec
+        run: dotnet build source/Sherland.Imaging.Pgf/Sherland.Imaging.Pgf.csproj -c Release
+
+      - name: Build tests
+        run: dotnet build source/Sherland.Imaging.Pgf.Tests/Sherland.Imaging.Pgf.Tests.csproj -c Release
+
+      - name: Build benchmarks project
+        run: dotnet build source/Sherland.Imaging.Pgf.Benchmarks/Sherland.Imaging.Pgf.Benchmarks.csproj -c Release
+
+      - name: Run tests
+        run: dotnet test source/Sherland.Imaging.Pgf.Tests -c Release
+
+  performance:
+    needs: build-and-test
+    if: ${{ inputs.run_performance }}
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Run performance workbench
+        run: dotnet run -c Release --project source/Sherland.Imaging.Pgf.Performance
+
+  benchmark:
+    needs: build-and-test
+    if: ${{ inputs.run_benchmark }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Configure native oracle (CMake)
+        run: cmake -S native/Sherland.Imaging.Pgf.Native -B native/Sherland.Imaging.Pgf.Native/build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build native oracle
+        run: cmake --build native/Sherland.Imaging.Pgf.Native/build --config Release
+
+      - name: Run benchmarks (short job)
+        run: dotnet run -c Release --project source/Sherland.Imaging.Pgf.Benchmarks -- --job short --filter "*" --artifacts ${{ runner.temp }}/benchmark-artifacts
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: ${{ runner.temp }}/benchmark-artifacts
+
+  pack:
+    needs: build-and-test
+    if: ${{ inputs.pack_nuget }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Pack NuGet package
+        run: dotnet pack source/Sherland.Imaging.Pgf/Sherland.Imaging.Pgf.csproj -c Release -p:PackageVersion=${{ env.PACKAGE_VERSION }} -o ${{ runner.temp }}/nupkg
+
+      - name: Upload NuGet package
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-package-${{ env.PACKAGE_VERSION }}
+          path: ${{ runner.temp }}/nupkg/*.nupkg

@@ -8,6 +8,14 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <PackageLicenseExpression>LGPL-2.1-or-later</PackageLicenseExpression>
+    <Authors>Steinar Herland</Authors>
+    <Copyright>Original C++ code Copyright (C) 2006 xeraina GmbH. C# port Copyright (C) 2026 Steinar Herland.</Copyright>
+    <RepositoryUrl>https://github.com/sherland/Sherland.Imaging.Pgf</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/sherland/Sherland.Imaging.Pgf</PackageProjectUrl>
+  </PropertyGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="Sherland.Imaging.Pgf.Tests" />
     <InternalsVisibleTo Include="Sherland.Imaging.Pgf.Benchmarks" />

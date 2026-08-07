@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (C) 2026 Steinar Herland.
+
 namespace Sherland.Imaging.Pgf.Benchmarks;
 
 /// <summary>Synthetic BGRA fixtures at realistic digiKam thumbnail dimensions (docs/GUI.md: the

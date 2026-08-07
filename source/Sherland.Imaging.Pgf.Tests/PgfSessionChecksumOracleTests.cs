@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (C) 2026 Steinar Herland.
+
 using System.Numerics;
 
 using Sherland.Imaging.Pgf.Tests.Oracle;

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (C) 2026 Steinar Herland.
+
 namespace Sherland.Imaging.Pgf.Tests;
 
 /// <summary>Shared paths to committed real-world fixtures, resolved relative to the repo root (not

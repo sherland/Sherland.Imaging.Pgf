@@ -1,9 +1,12 @@
 # Sherland.Imaging.Pgf
 
-A from-scratch, dependency-free C# port of digiKam's vendored `libpgf` codec — PGF (Progressive
-Graphics File) is a wavelet-based image format offering high compression ratios and progressive,
-level-by-level display. This library decodes (single-shot and progressive) and encodes PGF images,
-with no native/P/Invoke dependency in the shipping package.
+A dependency-free C# port of digiKam's vendored `libpgf` codec — PGF (Progressive Graphics File) is
+a wavelet-based image format offering high compression ratios and progressive, level-by-level
+display. This library decodes (single-shot and progressive) and encodes PGF images, with no
+native/P/Invoke dependency in the shipping package: the core codec is a from-scratch **managed**
+reimplementation, not a wrapper around a compiled native binary — though, as the License section
+below explains, much of it is a close, line-by-line translation of the original C++ source rather
+than an independent reimplementation.
 
 - **Original C++ library:** [libpgf.org](http://www.libpgf.org), as vendored by
   [KDE/digikam](https://github.com/KDE/digikam).

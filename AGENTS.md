@@ -6,11 +6,14 @@ Copilot, or otherwise. Agent-specific directives (if any) live in that agent's o
 
 ## Project
 
-`Sherland.Imaging.Pgf` is a from-scratch, dependency-free C# port of digiKam's vendored `libpgf`
-codec (PGF = Progressive Graphics File, a wavelet-based image format): decode (single-shot and
+`Sherland.Imaging.Pgf` is a dependency-free C# port of digiKam's vendored `libpgf` codec (PGF =
+Progressive Graphics File, a wavelet-based image format): decode (single-shot and
 progressive/level-by-level) and encode, with no native/P/Invoke dependency in the shipping
-library. It was originally built as part of a larger photo-tagging application and is now being
-extracted to stand alone and be published as its own NuGet package — see
+library. The core codec is a from-scratch **managed** reimplementation rather than a wrapper around
+a compiled native binary — though, per the licensing rationale in [README.md](README.md), much of
+it is a close, line-by-line translation of the original C++ source rather than an independent
+reimplementation. It was originally built as part of a larger photo-tagging application and is now
+being extracted to stand alone and be published as its own NuGet package — see
 [`docs/PGF-CODEC.md`](docs/PGF-CODEC.md) for exactly what's supported, what's permanently out of
 scope (dead in the native reference too), and what's a real gap against full C++ parity.
 

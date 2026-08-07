@@ -19,6 +19,10 @@ on:
         description: Build and upload the 0.1-alpha NuGet package
         type: boolean
         default: false
+      run_windows_build:
+        description: Also run build-and-test on windows-latest (verifies the MSVC/native path)
+        type: boolean
+        default: false
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -46,28 +50,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - uses: ./.github/actions/build-and-test
 
-      - name: Configure native oracle (CMake)
-        run: cmake -S native/Sherland.Imaging.Pgf.Native -B native/Sherland.Imaging.Pgf.Native/build -DCMAKE_BUILD_TYPE=Release
+  windows-build-and-test:
+    # Optional twin of build-and-test verifying the MSVC/native path AGENTS.md documents (Visual
+    # Studio Developer Command Prompt + CMake+Ninja) - not run on every push/PR since it roughly
+    # doubles pipeline time for a platform combination that's already covered locally by whoever's
+    # developing on Windows.
+    if: ${{ inputs.run_windows_build }}
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Build native oracle
-        run: cmake --build native/Sherland.Imaging.Pgf.Native/build --config Release
-
-      - name: Build managed codec
-        run: dotnet build source/Sherland.Imaging.Pgf/Sherland.Imaging.Pgf.csproj -c Release
-
-      - name: Build tests
-        run: dotnet build source/Sherland.Imaging.Pgf.Tests/Sherland.Imaging.Pgf.Tests.csproj -c Release
-
-      - name: Build benchmarks project
-        run: dotnet build source/Sherland.Imaging.Pgf.Benchmarks/Sherland.Imaging.Pgf.Benchmarks.csproj -c Release
-
-      - name: Run tests
-        run: dotnet test source/Sherland.Imaging.Pgf.Tests -c Release
+      - uses: ./.github/actions/build-and-test
 
   performance:
     needs: build-and-test

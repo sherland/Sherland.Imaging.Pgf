@@ -1,0 +1,42 @@
+name: Build and test
+description: >
+  Builds the native oracle via CMake (Ninja generator, so the output path convention matches
+  local dev builds on every OS - see AGENTS.md), builds the managed codec/tests/benchmarks
+  projects, and runs the test suite. Shared by the ubuntu-latest and windows-latest legs of the
+  build-and-test job so the two platforms can't drift out of sync with each other.
+
+runs:
+  using: composite
+  steps:
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: "10.0.x"
+
+    - name: Setup MSVC developer environment (Windows)
+      if: runner.os == 'Windows'
+      uses: ilammy/msvc-dev-cmd@v1
+
+    - name: Configure native oracle (CMake)
+      shell: bash
+      run: cmake -S native/Sherland.Imaging.Pgf.Native -B native/Sherland.Imaging.Pgf.Native/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+    - name: Build native oracle
+      shell: bash
+      run: cmake --build native/Sherland.Imaging.Pgf.Native/build --config Release
+
+    - name: Build managed codec
+      shell: bash
+      run: dotnet build source/Sherland.Imaging.Pgf/Sherland.Imaging.Pgf.csproj -c Release
+
+    - name: Build tests
+      shell: bash
+      run: dotnet build source/Sherland.Imaging.Pgf.Tests/Sherland.Imaging.Pgf.Tests.csproj -c Release
+
+    - name: Build benchmarks project
+      shell: bash
+      run: dotnet build source/Sherland.Imaging.Pgf.Benchmarks/Sherland.Imaging.Pgf.Benchmarks.csproj -c Release
+
+    - name: Run tests
+      shell: bash
+      run: dotnet test source/Sherland.Imaging.Pgf.Tests -c Release

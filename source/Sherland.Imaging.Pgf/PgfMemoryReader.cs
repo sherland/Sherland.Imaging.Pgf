@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2026 Steinar Herland.
+// Copyright (C) 2006 xeraina GmbH. Portions Copyright (C) 2026 Steinar Herland.
 
 namespace Sherland.Imaging.Pgf;
 

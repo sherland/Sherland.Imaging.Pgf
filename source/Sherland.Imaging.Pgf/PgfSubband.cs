@@ -8,7 +8,7 @@ namespace Sherland.Imaging.Pgf;
 /// quadrant of one wavelet transform level's coefficients, plus the sequential read/write cursor
 /// (<see cref="ReadBuffer"/>/<see cref="WriteBuffer"/>) <see cref="PgfWaveletTransform"/>'s row-based
 /// lifting steps use, distinct from the indexed <see cref="GetData"/>/<see cref="SetData"/> access
-/// <see cref="PlaceTile"/>/<see cref="ExtractTile"/> use via <see cref="PgfDecoderCore.Partition"/>/
+/// <c>PlaceTile</c>/<c>ExtractTile</c> use via <see cref="PgfDecoderCore.Partition"/>/
 /// <see cref="PgfEncoderCore.Partition"/>.
 ///
 /// <c>CSubband::Dequantize</c> is deliberately not ported: grepping every call site found it's only
@@ -22,7 +22,7 @@ namespace Sherland.Imaging.Pgf;
 /// flow is not yet: <see cref="AllocMemory"/> still simplifies the real version's <c>oldSize &gt;=
 /// newSize</c> reuse-check (which only matters once ROI can shrink/grow <c>m_size</c> after
 /// <c>Initialize</c> via <see cref="BufferWidth"/>) to "allocate <see cref="Width"/>*<see cref="Height"/>
-/// once if not already allocated" - <see cref="PlaceTile"/>/<see cref="ExtractTile"/> still only
+/// once if not already allocated" - <c>PlaceTile</c>/<c>ExtractTile</c> still only
 /// port the non-ROI branches too. Stage 3 (decode) and Stage 4 (encode) wire the tile geometry this
 /// stage adds into actual data placement/extraction.
 /// </summary>
@@ -326,7 +326,7 @@ internal sealed class PgfSubband
 
     /// <summary>Direct port of <c>CSubband::Quantize</c> (Subband.cpp:112) - scalar
     /// quantization-with-deadzone, called per-subband from <c>CWaveletTransform::ForwardTransform</c>
-    /// (encode only; decode's equivalent adjustment lives in <see cref="PlaceTile"/>, mirroring
+    /// (encode only; decode's equivalent adjustment lives in <c>PlaceTile</c>, mirroring
     /// <c>CSubband::PlaceTile</c>'s own inline adjustment rather than a separate <c>Dequantize</c>
     /// call - see this class's doc comment for why <c>Dequantize</c> itself isn't ported).</summary>
     public void Quantize(int quantParam)

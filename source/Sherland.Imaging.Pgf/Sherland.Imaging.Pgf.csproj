@@ -9,17 +9,57 @@
   </PropertyGroup>
 
   <PropertyGroup>
+    <!-- NuGet package identity -->
+    <IsPackable>true</IsPackable>
+    <PackageId>Sherland.Imaging.Pgf</PackageId>
     <PackageLicenseExpression>LGPL-2.1-or-later</PackageLicenseExpression>
     <Authors>Steinar Herland</Authors>
     <Copyright>Original C++ code Copyright (C) 2006 xeraina GmbH. C# port Copyright (C) 2026 Steinar Herland.</Copyright>
     <RepositoryUrl>https://github.com/sherland/Sherland.Imaging.Pgf</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
     <PackageProjectUrl>https://github.com/sherland/Sherland.Imaging.Pgf</PackageProjectUrl>
+
+    <!-- Automatic versioning from git tags/height via MinVer -->
+    <MinVerDefaultPreReleaseIdentifiers>alpha.0</MinVerDefaultPreReleaseIdentifiers>
+
+    <!-- NuGet package discovery -->
+    <Description>
+      A dependency-free C# port of digiKam's vendored libpgf codec (PGF = Progressive Graphics
+      File, a wavelet-based image format): decode (single-shot and progressive/level-by-level) and
+      encode, with no native/P/Invoke dependency in the shipping library.
+    </Description>
+    <PackageTags>pgf image-codec wavelet imaging digikam libpgf progressive-decoding</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+
+    <!-- XML IntelliSense docs for package consumers -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Suppress CS1591 until public API doc-comment coverage is audited on its own. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+
+    <!-- Debug symbols shipped as a .snupkg alongside the main package -->
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+
+    <!-- SourceLink: let consumers step into this package's source on GitHub while debugging -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Include the repo README in the package root -->
+    <None Include="../../README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="Sherland.Imaging.Pgf.Tests" />
     <InternalsVisibleTo Include="Sherland.Imaging.Pgf.Benchmarks" />
     <InternalsVisibleTo Include="Sherland.Imaging.Pgf.Performance" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MinVer" Version="7.0.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.301" PrivateAssets="all" />
   </ItemGroup>
 
 </Project>

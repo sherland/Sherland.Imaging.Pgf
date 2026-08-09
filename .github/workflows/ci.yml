@@ -15,10 +15,6 @@ on:
         description: Run the native-vs-managed BenchmarkDotNet suite (Sherland.Imaging.Pgf.Benchmarks)
         type: boolean
         default: false
-      pack_nuget:
-        description: Build and upload the 0.1-alpha NuGet package
-        type: boolean
-        default: false
       run_windows_build:
         description: Also run build-and-test on windows-latest (verifies the MSVC/native path)
         type: boolean
@@ -35,7 +31,6 @@ env:
   DOTNET_VERSION: "10.0.x"
   DOTNET_NOLOGO: "true"
   DOTNET_CLI_TELEMETRY_OPTOUT: "true"
-  PACKAGE_VERSION: "0.1-alpha"
 
 jobs:
   build-and-test:
@@ -110,23 +105,47 @@ jobs:
           path: ${{ runner.temp }}/benchmark-artifacts
 
   pack:
+    # Always packs (and pushes) after a successful build-and-test - versioning is automatic via
+    # MinVer (git tag/height derived SemVer), not the old manual pack_nuget/PACKAGE_VERSION toggle.
     needs: build-and-test
-    if: ${{ inputs.pack_nuget }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
+      - name: Resolve MinVer pre-release override
+        id: minver
+        run: |
+          BRANCH="${{ github.head_ref || github.ref_name }}"
+          SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          SHORT_SHA="${SHA:0:7}"
+          if [ "$BRANCH" = "main" ]; then
+            echo "args=" >> "$GITHUB_OUTPUT"
+          else
+            # SemVer pre-release identifiers only allow [0-9A-Za-z-], so sanitize
+            # branch names like "docs/foo" or "feature/bar" before using them here.
+            SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^0-9A-Za-z-]/-/g')
+            echo "args=-p:MinVerVersionOverride=0.0.0-alpha-$SAFE_BRANCH.$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Pack NuGet package
-        run: dotnet pack source/Sherland.Imaging.Pgf/Sherland.Imaging.Pgf.csproj -c Release -p:PackageVersion=${{ env.PACKAGE_VERSION }} -o ${{ runner.temp }}/nupkg
+        run: dotnet pack source/Sherland.Imaging.Pgf/Sherland.Imaging.Pgf.csproj -c Release -o ${{ runner.temp }}/nupkg ${{ steps.minver.outputs.args }}
 
       - name: Upload NuGet package
         uses: actions/upload-artifact@v7
         with:
-          name: nuget-package-${{ env.PACKAGE_VERSION }}
-          path: ${{ runner.temp }}/nupkg/*.nupkg
+          name: nuget-packages
+          path: ${{ runner.temp }}/nupkg/*.*nupkg
+
+      - name: Push to GitHub Packages
+        run: dotnet nuget push "${{ runner.temp }}/nupkg/*.nupkg" --api-key ${{ secrets.GITHUB_TOKEN }} --source https://nuget.pkg.github.com/sherland/index.json --skip-duplicate

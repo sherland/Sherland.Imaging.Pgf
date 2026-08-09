@@ -168,10 +168,15 @@ internal sealed class PgfDecoderCore
 
         macroBlocksAvailable = 0;
 
+        // Both buffers are reused every iteration (not re-stackalloc'd per iteration) - a do-while
+        // loop bounded only by the number of skipped tiles in the file must not grow the stack frame
+        // per iteration, or a file with many tiles would risk a real stack overflow.
+        Span<byte> wordLenBytes = stackalloc byte[2];
+        Span<byte> headerBytes = stackalloc byte[2];
+
         PgfRoiBlockHeader header;
         do
         {
-            Span<byte> wordLenBytes = stackalloc byte[2];
             if (reader.Read(wordLenBytes) != 2)
             {
                 throw new PgfFormatException("Truncated stream: missing skipped-tile word length.");
@@ -183,7 +188,6 @@ internal sealed class PgfDecoderCore
                 throw new PgfFormatException($"Skipped-tile word length {wordLen} exceeds BufferSize.");
             }
 
-            Span<byte> headerBytes = stackalloc byte[2];
             if (reader.Read(headerBytes) != 2)
             {
                 throw new PgfFormatException("Truncated stream: missing skipped-tile ROI block header.");

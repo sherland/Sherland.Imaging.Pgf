@@ -22,7 +22,7 @@ namespace Sherland.Imaging.Pgf;
 /// versus the native shape being mirrored.
 ///
 /// Stage 10: each <see cref="TryDecodeLevel{TResult}"/> call rents its output buffer from
-/// <see cref="ArrayPool{T}"/> for the duration of <paramref name="onDecoded"/>-in-
+/// <see cref="ArrayPool{T}"/> for the duration of <c>onDecoded</c>-in-
 /// <see cref="TryDecodeLevel{TResult}"/> rather than allocating a fresh array per call - the same
 /// pooling <see cref="PgfImageDecoder"/> uses, appropriate here too since a caller rendering a
 /// progressive sequence calls this once per level, not once total.

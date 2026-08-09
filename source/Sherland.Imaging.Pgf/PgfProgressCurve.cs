@@ -17,7 +17,7 @@ namespace Sherland.Imaging.Pgf;
 /// Deliberately a per-call sweep (0-&gt;1 over just the levels this specific call decodes/encodes),
 /// not the native's <c>PM_Absolute</c> whole-image share - the PRD's Non-goals explicitly reject
 /// exposing <c>ProgressMode</c> as public API, and per-call is simpler and already exactly matches
-/// the native's own default <c>PM_Relative</c> mode. For <see cref="PgfImageDecoder.TryDecode{TResult}"/>/
+/// the native's own default <c>PM_Relative</c> mode. For <c>PgfImageDecoder.TryDecode</c>/
 /// <see cref="PgfImageEncoder.TryEncode"/> (always the full level range), per-call and whole-image
 /// coincide anyway; it only matters for <see cref="PgfProgressiveDecoder.TryDecodeLevel{TResult}"/>'s
 /// partial-range calls.

@@ -14,8 +14,8 @@ namespace Sherland.Imaging.Pgf;
 /// mirroring <c>Open</c>+repeated <c>Read(level)</c> - this type always decodes straight through to
 /// level 0 in one call, sharing <see cref="PgfDecodeSession"/>'s setup/per-level decode logic with it.
 ///
-/// Stage 10: <see cref="TryDecode{TResult}"/> writes into an <see cref="ArrayPool{T}"/>-rented buffer
-/// and hands it to <paramref name="onDecoded"/>-in-<see cref="TryDecode{TResult}"/> as a
+/// Stage 10: <c>TryDecode</c> writes into an <see cref="ArrayPool{T}"/>-rented buffer
+/// and hands it to <c>onDecoded</c> as a
 /// <see cref="ReadOnlySpan{T}"/>, never an owned array - matching
 /// <c>PictTag.Data.PgfDecoding.PgfDecoder.TryDecode</c>'s existing shape exactly (managed-pgf-codec.md's
 /// "Decode public API mirrors the existing shape" architecture note), so Stage 12's call-site swap is
@@ -28,9 +28,9 @@ namespace Sherland.Imaging.Pgf;
 /// a programming error, so it's caught inside <see cref="PgfDecodeSession"/> rather than left to
 /// propagate.
 ///
-/// pgf-cancellation-and-progress.md: <paramref name="progress"/> reports once per level actually
+/// pgf-cancellation-and-progress.md: <c>progress</c> reports once per level actually
 /// decoded (an area-weighted fraction, see <see cref="PgfProgressCurve"/>, since each level covers 4x
-/// the previous level's linear coverage); <paramref name="cancellationToken"/> is checked once per
+/// the previous level's linear coverage); <c>cancellationToken</c> is checked once per
 /// level, before that level's work starts, and surfaces as <see cref="OperationCanceledException"/> -
 /// a deliberate departure from this method's usual fail-closed-return-false convention, since
 /// cancellation is caller-requested, not a malformed-input failure mode.

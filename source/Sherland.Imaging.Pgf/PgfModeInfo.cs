@@ -94,8 +94,8 @@ internal static class PgfModeInfo
         _ => false,
     };
 
-    /// <summary>Expected tightly-packed source byte length for <see cref="PgfImageEncoder.
-    /// TryEncodeMode"/>'s input contract - ceiling bits-to-bytes-per-row (<c>(width*bpp+7)/8</c>),
+    /// <summary>Expected tightly-packed source byte length for <c>PgfImageEncoder.
+    /// TryEncodeMode</c>'s input contract - ceiling bits-to-bytes-per-row (<c>(width*bpp+7)/8</c>),
     /// times <paramref name="height"/>. Equivalent to the simpler <c>width * height * (bpp/8)</c> for
     /// every byte-aligned bpp (no remainder possible when <c>bpp%8==0</c>), but also correctly
     /// handles the two packed sub-byte-or-non-byte-aligned-per-pixel modes this formula would

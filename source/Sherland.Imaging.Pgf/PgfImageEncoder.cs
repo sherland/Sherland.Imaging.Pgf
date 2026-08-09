@@ -11,7 +11,7 @@ namespace Sherland.Imaging.Pgf;
 /// chained together - the algebraic mirror of <see cref="PgfImageDecoder"/>. <see cref="TryEncode"/>
 /// (BGRA/RGBA/32bpp) matches <c>pgf_encode_bgra_alloc</c>'s own scope exactly and is the only
 /// production-relevant shape (no metadata, no color table, `nLevels` always auto-computed).
-/// pgf-all-image-modes.md: <see cref="TryEncodeMode"/> generalizes it to every mode
+/// pgf-all-image-modes.md: <c>TryEncodeMode</c> generalizes it to every mode
 /// <see cref="PgfImageDecoder.IsModeSupported"/> covers - test infrastructure (Goal 2), not a second
 /// production path.
 ///
@@ -29,7 +29,7 @@ namespace Sherland.Imaging.Pgf;
 /// reserved, after <c>encoder.Flush()</c>.
 ///
 /// pgf-cancellation-and-progress.md: <c>progress</c>/<c>cancellationToken</c>
-/// mirror <see cref="PgfImageDecoder.TryDecode{TResult}"/>'s own semantics exactly (once per level,
+/// mirror <c>PgfImageDecoder.TryDecode</c>'s own semantics exactly (once per level,
 /// area-weighted fraction, <see cref="OperationCanceledException"/> on cancellation) - ported for
 /// completeness/symmetry, not because a production caller exists yet (this type has none, see
 /// managed-pgf-codec.md's Non-goals).

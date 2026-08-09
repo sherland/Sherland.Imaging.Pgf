@@ -15,7 +15,7 @@ namespace Sherland.Imaging.Pgf;
 /// piece can be verified against the real algorithm in isolation.
 ///
 /// <c>WordWidth</c> = 32 (bits per <see cref="uint"/> word), <c>WordWidthLog</c> = 5 (its base-2
-/// log) - see PGFplatform.h. A bit stream is a flat array of words; <paramref name="pos"/>
+/// log) - see PGFplatform.h. A bit stream is a flat array of words; <c>pos</c>
 /// parameters throughout are zero-based bit offsets into that array, not word offsets.
 /// </summary>
 internal static class BitStream
@@ -52,7 +52,10 @@ internal static class BitStream
     }
 
     /// <summary>Compare k-bit binary representation of stream at position pos with val.</summary>
+    /// <param name="stream">The bit stream to read.</param>
+    /// <param name="pos">Zero-based bit offset into <paramref name="stream"/>.</param>
     /// <param name="k">Number of bits to compare.</param>
+    /// <param name="val">Value to compare against.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool CompareBitBlock(ReadOnlySpan<uint> stream, uint pos, uint k, uint val)
     {
@@ -77,6 +80,9 @@ internal static class BitStream
     }
 
     /// <summary>Store k-bit binary representation of val in stream at position pos.</summary>
+    /// <param name="stream">The bit stream to write into.</param>
+    /// <param name="pos">Zero-based bit offset into <paramref name="stream"/>.</param>
+    /// <param name="val">Value to store.</param>
     /// <param name="k">Number of bits of integer representation of val.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void SetValueBlock(Span<uint> stream, uint pos, uint val, uint k)
@@ -104,6 +110,8 @@ internal static class BitStream
     }
 
     /// <summary>Read k-bit number from stream at position pos.</summary>
+    /// <param name="stream">The bit stream to read.</param>
+    /// <param name="pos">Zero-based bit offset into <paramref name="stream"/>.</param>
     /// <param name="k">Number of bits to read: 1 &lt;= k &lt;= 32.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static uint GetValueBlock(ReadOnlySpan<uint> stream, uint pos, uint k)

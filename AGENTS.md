@@ -79,6 +79,16 @@ matrix, why an `--artifacts` directory outside the repo is mandatory, and the ar
 follow — never rely on a console transcript or the gitignored `BenchmarkDotNet.Artifacts/` as the
 performance record.
 
+**Both commands above are long-running** (BenchmarkDotNet's own warmup/pilot/actual phases easily
+run several minutes per benchmark, longer under `--job full` or a wide `--filter`) and **must never
+be killed for running past an agent tool's default foreground timeout** — that isn't a hang, it's
+the benchmark doing its job. Run them backgrounded (or with an explicitly extended timeout) and
+wait for real completion; only treat a run as stuck and intervene if it's still running with no
+output/progress after literally hours, or has visibly crashed/thrown. Killing a run early doesn't
+just waste the time already spent — a truncated BenchmarkDotNet process can also leave a corrupt
+partial report in `BenchmarkDotNet.Artifacts/`, which is exactly the kind of unreliable console/
+partial-artifact result the paragraph above says never to treat as the performance record.
+
 There is **no CI configuration in this repo** — running the test suite locally before pushing is
 the current verification step.
 

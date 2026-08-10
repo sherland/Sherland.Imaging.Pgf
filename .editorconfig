@@ -388,10 +388,9 @@ dotnet_naming_style.s_camelcase.word_separator =
 dotnet_naming_style.s_camelcase.capitalization = camel_case
 
 #### Warnings promoted to errors ####
-# Diagnostics this repo has actually hit once (issue #7) - promoted so the same category of issue
-# fails the build instead of silently passing next time, rather than a blanket
-# TreatWarningsAsErrors that would also gate on every other analyzer rule this repo has never
-# looked at.
+# Diagnostics this repo has actually hit once - promoted so the same category of issue fails the
+# build instead of silently passing next time, rather than a blanket TreatWarningsAsErrors that
+# would also gate on every other analyzer rule this repo has never looked at.
 [*.cs]
 
 # CS1734: <paramref> names a parameter that doesn't exist on the member the doc comment is on
@@ -409,4 +408,10 @@ dotnet_diagnostic.CS0419.severity = error
 # CA2014: stackalloc inside a loop grows the stack frame every iteration instead of once - a real
 # stack-overflow risk for a loop with an unbounded/large iteration count, not just a lint nit.
 dotnet_diagnostic.CA2014.severity = error
+
+# xUnit1051 (test project only - a no-op wherever xunit.analyzers isn't loaded): a call into a
+# CancellationToken-accepting API used the implicit default(CancellationToken) instead of
+# TestContext.Current.CancellationToken, so cancelling a test run (Ctrl-C, a CI timeout) can't
+# actually interrupt that in-flight call.
+dotnet_diagnostic.xUnit1051.severity = error
 

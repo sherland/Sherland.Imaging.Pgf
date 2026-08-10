@@ -35,7 +35,7 @@ public sealed class PgfSessionChecksumOracleTests
                 pgfBytes,
                 static (bgra, decodedWidth, decodedHeight) =>
                     (Bytes: bgra.ToArray(), Width: decodedWidth, Height: decodedHeight),
-                out (byte[] Bytes, int Width, int Height) managed));
+                out (byte[] Bytes, int Width, int Height) managed, cancellationToken: TestContext.Current.CancellationToken));
         Assert.True(NativePgfOracle.TryDecode(
             pgfBytes,
             out byte[]? native,

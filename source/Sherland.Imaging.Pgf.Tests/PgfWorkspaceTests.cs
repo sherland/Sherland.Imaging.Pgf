@@ -54,7 +54,7 @@ public class PgfWorkspaceTests
 
         using var workspace = new PgfWorkspace();
         Assert.True(PgfImageDecoder.TryDecode(
-            pgf!, static (bgra, _, _) => bgra.ToArray(), out byte[]? decoded, workspace: workspace));
+            pgf!, static (bgra, _, _) => bgra.ToArray(), out byte[]? decoded, workspace: workspace, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Equal(source, decoded);
     }
@@ -66,9 +66,9 @@ public class PgfWorkspaceTests
         Assert.True(Oracle.NativePgfOracle.TryEncode(source, width, height, quality: 0, out byte[]? pgf));
 
         using var workspace = new PgfWorkspace();
-        Assert.True(PgfImageDecoder.TryDecode(pgf!, static (bgra, _, _) => bgra.ToArray(), out byte[]? first, workspace: workspace));
+        Assert.True(PgfImageDecoder.TryDecode(pgf!, static (bgra, _, _) => bgra.ToArray(), out byte[]? first, workspace: workspace, cancellationToken: TestContext.Current.CancellationToken));
         workspace.Reset();
-        Assert.True(PgfImageDecoder.TryDecode(pgf!, static (bgra, _, _) => bgra.ToArray(), out byte[]? second, workspace: workspace));
+        Assert.True(PgfImageDecoder.TryDecode(pgf!, static (bgra, _, _) => bgra.ToArray(), out byte[]? second, workspace: workspace, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Equal(first, second);
     }
@@ -80,8 +80,8 @@ public class PgfWorkspaceTests
         Assert.True(Oracle.NativePgfOracle.TryEncode(source, width, height, quality: 0, out byte[]? pgf));
 
         using PgfReusableDecoder decoder = Assert.IsType<PgfReusableDecoder>(PgfReusableDecoder.TryOpen(pgf!));
-        Assert.True(decoder.TryDecode(static (bgra, _, _) => bgra.ToArray(), out byte[]? first));
-        Assert.True(decoder.TryDecode(static (bgra, _, _) => bgra.ToArray(), out byte[]? second));
+        Assert.True(decoder.TryDecode(static (bgra, _, _) => bgra.ToArray(), out byte[]? first, cancellationToken: TestContext.Current.CancellationToken));
+        Assert.True(decoder.TryDecode(static (bgra, _, _) => bgra.ToArray(), out byte[]? second, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Equal(source, first);
         Assert.Equal(first, second);
@@ -95,13 +95,13 @@ public class PgfWorkspaceTests
 
         using PgfReusableDecoder decoder = Assert.IsType<PgfReusableDecoder>(PgfReusableDecoder.TryOpen(pgf!));
         PgfDecodedCallback<int> getLength = static (bgra, _, _) => bgra.Length;
-        Assert.True(decoder.TryDecode(getLength, out int warmupLength));
+        Assert.True(decoder.TryDecode(getLength, out int warmupLength, cancellationToken: TestContext.Current.CancellationToken));
         // The first rewind sizes the workspace's internal reuse lists. The steady-state contract
         // starts after that setup cycle, not merely after the first decode.
-        Assert.True(decoder.TryDecode(getLength, out int recycledLength));
+        Assert.True(decoder.TryDecode(getLength, out int recycledLength, cancellationToken: TestContext.Current.CancellationToken));
 
         long before = GC.GetAllocatedBytesForCurrentThread();
-        Assert.True(decoder.TryDecode(getLength, out int decodedLength));
+        Assert.True(decoder.TryDecode(getLength, out int decodedLength, cancellationToken: TestContext.Current.CancellationToken));
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
         Assert.Equal(warmupLength, recycledLength);
@@ -121,7 +121,7 @@ public class PgfWorkspaceTests
 
         Assert.Throws<OperationCanceledException>(() =>
             decoder.TryDecode(static (bgra, _, _) => bgra.Length, out _, cancellationToken: cancellation.Token));
-        Assert.True(decoder.TryDecode(static (bgra, _, _) => bgra.ToArray(), out byte[]? decoded));
+        Assert.True(decoder.TryDecode(static (bgra, _, _) => bgra.ToArray(), out byte[]? decoded, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Equal(source, decoded);
     }

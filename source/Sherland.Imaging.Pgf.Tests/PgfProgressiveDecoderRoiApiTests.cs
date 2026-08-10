@@ -94,7 +94,7 @@ public class PgfProgressiveDecoderRoiApiTests
         Assert.NotNull(decoder);
         Assert.True(decoder.Levels > 0);
 
-        bool decoded = decoder.TryDecodeLevel(decoder.Levels - 1, static (_, w, h) => (w, h), out _);
+        bool decoded = decoder.TryDecodeLevel(decoder.Levels - 1, static (_, w, h) => (w, h), out _, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(decoded);
 
         Assert.Throws<InvalidOperationException>(

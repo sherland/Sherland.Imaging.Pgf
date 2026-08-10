@@ -49,7 +49,7 @@ public class PgfUntrustedLengthTests
     {
         byte[] pgfBytes = BuildRgbaHeaderOnlyBytes(width, height);
 
-        bool decoded = PgfImageDecoder.TryDecode(pgfBytes, static (span, w, h) => span.Length, out int _);
+        bool decoded = PgfImageDecoder.TryDecode(pgfBytes, static (span, w, h) => span.Length, out int _, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(decoded);
     }
@@ -61,7 +61,7 @@ public class PgfUntrustedLengthTests
     {
         byte[] pgfBytes = BuildRgbaHeaderOnlyBytes(width, height);
 
-        bool decoded = PgfImageDecoder.TryDecode(pgfBytes, static (span, w, h) => span.Length, out int _);
+        bool decoded = PgfImageDecoder.TryDecode(pgfBytes, static (span, w, h) => span.Length, out int _, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(decoded);
     }
@@ -81,7 +81,7 @@ public class PgfUntrustedLengthTests
     {
         byte[] pgfBytes = BuildRgbaHeaderOnlyBytes(0u, 32u);
 
-        bool decoded = PgfImageDecoder.TryDecode(pgfBytes, static (span, w, h) => span.Length, out int _);
+        bool decoded = PgfImageDecoder.TryDecode(pgfBytes, static (span, w, h) => span.Length, out int _, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(decoded);
     }
@@ -93,9 +93,9 @@ public class PgfUntrustedLengthTests
     public void TryDecode_NormalSizedImage_StillDecodesCorrectly_UnaffectedByNewBound()
     {
         (byte[] bgra, int width, int height) = TestBitmaps.Gradient(64, 64);
-        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 0, out byte[]? encoded));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 0, out byte[]? encoded, cancellationToken: TestContext.Current.CancellationToken));
 
-        bool decoded = PgfImageDecoder.TryDecode(encoded!, static (span, w, h) => span.ToArray(), out byte[]? decodedBgra);
+        bool decoded = PgfImageDecoder.TryDecode(encoded!, static (span, w, h) => span.ToArray(), out byte[]? decodedBgra, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(decoded);
         Assert.Equal(bgra, decodedBgra);

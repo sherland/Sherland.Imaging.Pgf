@@ -21,7 +21,7 @@ public class PgfProgressiveDecoderTests
         byte[] pgfBytes = File.ReadAllBytes(TestFixtures.SampleThumbnailPath);
 
         bool singleShotOk = PgfImageDecoder.TryDecode(pgfBytes, static (bgra, width, height) => (Bytes: bgra.ToArray(), width, height),
-            out (byte[] Bytes, int width, int height) singleShot);
+            out (byte[] Bytes, int width, int height) singleShot, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(singleShotOk);
         byte[] singleShotBgra = singleShot.Bytes;
         int ssWidth = singleShot.width;
@@ -31,7 +31,7 @@ public class PgfProgressiveDecoderTests
         Assert.NotNull(decoder);
 
         bool decoded = decoder.TryDecodeLevel(0, static (bgra, width, height) => (Bytes: bgra.ToArray(), width, height),
-            out (byte[] Bytes, int width, int height) progressive);
+            out (byte[] Bytes, int width, int height) progressive, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(decoded);
         Assert.Equal(ssWidth, progressive.width);
@@ -52,7 +52,7 @@ public class PgfProgressiveDecoderTests
         for (int level = decoder.Levels - 1; level >= 0; level--)
         {
             bool decoded = decoder.TryDecodeLevel(level, static (bgra, width, height) => (bgra.Length, width, height),
-                out (int Length, int width, int height) result);
+                out (int Length, int width, int height) result, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.True(decoded, $"Level {level} should decode successfully.");
             Assert.Equal(result.width * result.height * 4, result.Length);
@@ -93,8 +93,8 @@ public class PgfProgressiveDecoderTests
         PgfProgressiveDecoder? decoder = PgfProgressiveDecoder.TryOpen(pgfBytes);
         Assert.NotNull(decoder);
 
-        Assert.False(decoder.TryDecodeLevel(-1, static (b, w, h) => true, out _));
-        Assert.False(decoder.TryDecodeLevel(decoder.Levels, static (b, w, h) => true, out _));
+        Assert.False(decoder.TryDecodeLevel(-1, static (b, w, h) => true, out _, cancellationToken: TestContext.Current.CancellationToken));
+        Assert.False(decoder.TryDecodeLevel(decoder.Levels, static (b, w, h) => true, out _, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     /// <summary>Levels must be requested in decreasing order - requesting a level already passed
@@ -110,9 +110,9 @@ public class PgfProgressiveDecoderTests
         Assert.NotNull(decoder);
         Assert.True(decoder.Levels > 1, "Fixture should have more than one level for this test to be meaningful.");
 
-        Assert.True(decoder.TryDecodeLevel(0, static (b, w, h) => true, out _));
+        Assert.True(decoder.TryDecodeLevel(0, static (b, w, h) => true, out _, cancellationToken: TestContext.Current.CancellationToken));
 
-        Assert.False(decoder.TryDecodeLevel(decoder.Levels - 1, static (b, w, h) => true, out _));
+        Assert.False(decoder.TryDecodeLevel(decoder.Levels - 1, static (b, w, h) => true, out _, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     /// <summary>Re-requesting the exact same level again is valid and idempotent (unlike requesting a
@@ -125,8 +125,8 @@ public class PgfProgressiveDecoderTests
         PgfProgressiveDecoder? decoder = PgfProgressiveDecoder.TryOpen(pgfBytes);
         Assert.NotNull(decoder);
 
-        Assert.True(decoder.TryDecodeLevel(1, static (bgra, w, h) => bgra.ToArray(), out byte[]? first));
-        Assert.True(decoder.TryDecodeLevel(1, static (bgra, w, h) => bgra.ToArray(), out byte[]? second));
+        Assert.True(decoder.TryDecodeLevel(1, static (bgra, w, h) => bgra.ToArray(), out byte[]? first, cancellationToken: TestContext.Current.CancellationToken));
+        Assert.True(decoder.TryDecodeLevel(1, static (bgra, w, h) => bgra.ToArray(), out byte[]? second, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Equal(first, second);
     }
@@ -151,7 +151,7 @@ public class PgfProgressiveDecoderTests
             for (int level = managed.Levels - 1; level >= 0; level--)
             {
                 bool managedOk = managed.TryDecodeLevel(level, static (bgra, w, h) => (Bytes: bgra.ToArray(), w, h),
-                    out (byte[] Bytes, int w, int h) managedResult);
+                    out (byte[] Bytes, int w, int h) managedResult, cancellationToken: TestContext.Current.CancellationToken);
                 Assert.True(managedOk, $"Managed progressive decode failed at level {level}.");
 
                 bool nativeOk = NativePgfOracle.TryDecodeLevel(nativeHandle, level, out byte[]? nativeBgra, out int nw, out int nh);
@@ -180,7 +180,7 @@ public class PgfProgressiveDecoderTests
         foreach ((int width, int height) in TestBitmaps.EdgeCaseDimensions())
         {
             (byte[] bgra, int w, int h) = TestBitmaps.Gradient(width, height);
-            Assert.True(PgfImageEncoder.TryEncode(bgra, w, h, quality, out byte[]? pgfBytes));
+            Assert.True(PgfImageEncoder.TryEncode(bgra, w, h, quality, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken));
 
             PgfProgressiveDecoder? managed = PgfProgressiveDecoder.TryOpen(pgfBytes!);
             Assert.NotNull(managed);
@@ -194,7 +194,7 @@ public class PgfProgressiveDecoderTests
                 for (int level = managed.Levels - 1; level >= 0; level--)
                 {
                     bool managedOk = managed.TryDecodeLevel(level, static (b, lw, lh) => (Bytes: b.ToArray(), lw, lh),
-                        out (byte[] Bytes, int lw, int lh) managedResult);
+                        out (byte[] Bytes, int lw, int lh) managedResult, cancellationToken: TestContext.Current.CancellationToken);
                     Assert.True(managedOk, $"{w}x{h} q={quality}: managed progressive decode failed at level {level}.");
 
                     bool nativeOk = NativePgfOracle.TryDecodeLevel(nativeHandle, level, out byte[]? nativeBgra, out int nw, out int nh);

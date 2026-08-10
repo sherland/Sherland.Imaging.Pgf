@@ -49,17 +49,17 @@ public class PgfRoiFullMatrixTests
     {
         (byte[] bgra, _, _) = TestBitmaps.Gradient(width, height);
 
-        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality, out byte[]? plainPgf));
-        bool plainDecoded = PgfImageDecoder.TryDecode(plainPgf, static (b, w, h) => (Bytes: b.ToArray(), w, h), out var plain);
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality, out byte[]? plainPgf, cancellationToken: TestContext.Current.CancellationToken));
+        bool plainDecoded = PgfImageDecoder.TryDecode(plainPgf, static (b, w, h) => (Bytes: b.ToArray(), w, h), out var plain, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(plainDecoded);
 
-        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality, out byte[]? roiPgf, roi: true));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality, out byte[]? roiPgf, roi: true, cancellationToken: TestContext.Current.CancellationToken));
 
         PgfProgressiveDecoder? roiDecoder = PgfProgressiveDecoder.TryOpen(roiPgf);
         Assert.NotNull(roiDecoder);
         Assert.True(roiDecoder.TrySetRoi(new PgfRoi(reqLeft, reqTop, reqRight, reqBottom)));
 
-        bool roiDecoded = roiDecoder.TryDecodeLevel(0, static (b, w, h) => (Bytes: b.ToArray(), w, h), out var roiResult);
+        bool roiDecoded = roiDecoder.TryDecodeLevel(0, static (b, w, h) => (Bytes: b.ToArray(), w, h), out var roiResult, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(roiDecoded);
 
         Assert.True(roiDecoder.TryGetAlignedRoi(0, out PgfRoi aligned));
@@ -102,11 +102,11 @@ public class PgfRoiFullMatrixTests
         (byte[] bgra, _, _) = TestBitmaps.Gradient(width, height);
         const byte quality = 0;
 
-        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality, out byte[]? plainPgf));
-        bool plainDecoded = PgfImageDecoder.TryDecode(plainPgf, static (b, w, h) => (Bytes: b.ToArray(), w, h), out var plain);
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality, out byte[]? plainPgf, cancellationToken: TestContext.Current.CancellationToken));
+        bool plainDecoded = PgfImageDecoder.TryDecode(plainPgf, static (b, w, h) => (Bytes: b.ToArray(), w, h), out var plain, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(plainDecoded);
 
-        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality, out byte[]? roiPgf, roi: true));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality, out byte[]? roiPgf, roi: true, cancellationToken: TestContext.Current.CancellationToken));
 
         PgfProgressiveDecoder? roiDecoder = PgfProgressiveDecoder.TryOpen(roiPgf);
         Assert.NotNull(roiDecoder);
@@ -115,12 +115,12 @@ public class PgfRoiFullMatrixTests
 
         // First call: stop at a coarse level (not 0) - skips some tiles at every level down to there.
         int coarseLevel = roiDecoder.Levels - 1;
-        bool coarseDecoded = roiDecoder.TryDecodeLevel(coarseLevel, static (b, w, h) => (w, h), out _);
+        bool coarseDecoded = roiDecoder.TryDecodeLevel(coarseLevel, static (b, w, h) => (w, h), out _, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(coarseDecoded);
 
         // Second, separate call: continue down to level 0 - if SkipTileBuffer left the stream
         // position wrong during the first call, this call reads garbage from the wrong offset.
-        bool fineDecoded = roiDecoder.TryDecodeLevel(0, static (b, w, h) => (Bytes: b.ToArray(), w, h), out var fineResult);
+        bool fineDecoded = roiDecoder.TryDecodeLevel(0, static (b, w, h) => (Bytes: b.ToArray(), w, h), out var fineResult, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(fineDecoded);
 
         Assert.True(roiDecoder.TryGetAlignedRoi(0, out PgfRoi aligned));
@@ -163,8 +163,8 @@ public class PgfRoiFullMatrixTests
     {
         (byte[] bgra, _, _) = TestBitmaps.Gradient(width, height);
 
-        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality, out byte[]? plainPgf));
-        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality, out byte[]? roiPgf, roi: true));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality, out byte[]? plainPgf, cancellationToken: TestContext.Current.CancellationToken));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality, out byte[]? roiPgf, roi: true, cancellationToken: TestContext.Current.CancellationToken));
 
         // Loose on purpose (see doc comment) - at high quality on simple content the *relative*
         // overhead is large even though the *absolute* byte count stays small; the fixed +2KB

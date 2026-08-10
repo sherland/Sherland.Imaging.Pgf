@@ -20,7 +20,7 @@ public class PgfAllocationBaselineTests
         (byte[] source, int width, int height) = TestBitmaps.Gradient(64, 64);
         Assert.True(NativePgfOracle.TryEncode(source, width, height, quality: 0, out byte[]? pgf));
 
-        Assert.True(PgfImageDecoder.TryDecode(pgf!, static (b, _, _) => b.ToArray(), out byte[]? warmup));
+        Assert.True(PgfImageDecoder.TryDecode(pgf!, static (b, _, _) => b.ToArray(), out byte[]? warmup, cancellationToken: TestContext.Current.CancellationToken));
         long allocated = Measure(() =>
         {
             Assert.True(PgfImageDecoder.TryDecode(pgf!, static (b, _, _) => b.ToArray(), out byte[]? decoded));
@@ -35,7 +35,7 @@ public class PgfAllocationBaselineTests
     {
         (byte[] source, int width, int height) = TestBitmaps.Checkerboard(64, 64);
 
-        Assert.True(PgfImageEncoder.TryEncode(source, width, height, quality: 8, out _));
+        Assert.True(PgfImageEncoder.TryEncode(source, width, height, quality: 8, out _, cancellationToken: TestContext.Current.CancellationToken));
         long allocated = Measure(() =>
         {
             Assert.True(PgfImageEncoder.TryEncode(source, width, height, quality: 8, out byte[]? pgf));

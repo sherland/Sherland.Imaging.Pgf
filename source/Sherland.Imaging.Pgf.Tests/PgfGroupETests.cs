@@ -41,10 +41,10 @@ public class PgfGroupETests
     {
         byte[] source = CmykGradient(37, 23);
 
-        bool encoded = PgfImageEncoder.TryEncodeMode(source, 37, 23, quality: 0, PgfConstants.ImageModeCMYKColor, out byte[]? pgfBytes);
+        bool encoded = PgfImageEncoder.TryEncodeMode(source, 37, 23, quality: 0, PgfConstants.ImageModeCMYKColor, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(encoded);
 
-        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult);
+        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(decoded);
 
         Assert.Equal(source, bgraResult);
@@ -60,10 +60,10 @@ public class PgfGroupETests
         byte[] source = CmykGradient(64, 64);
         byte quality = PgfConstants.DownsampleThreshold + 2;
 
-        bool encoded = PgfImageEncoder.TryEncodeMode(source, 64, 64, quality, PgfConstants.ImageModeCMYKColor, out byte[]? pgfBytes);
+        bool encoded = PgfImageEncoder.TryEncodeMode(source, 64, 64, quality, PgfConstants.ImageModeCMYKColor, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(encoded);
 
-        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => (bgra.ToArray(), w, h), out (byte[] Bgra, int W, int H) result);
+        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => (bgra.ToArray(), w, h), out (byte[] Bgra, int W, int H) result, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(decoded);
         Assert.Equal(64, result.W);
         Assert.Equal(64, result.H);
@@ -75,7 +75,7 @@ public class PgfGroupETests
     {
         byte[] source = CmykGradient(37, 23);
 
-        bool encoded = PgfImageEncoder.TryEncodeMode(source, 37, 23, quality: 0, PgfConstants.ImageModeCMYKColor, out byte[]? pgfBytes);
+        bool encoded = PgfImageEncoder.TryEncodeMode(source, 37, 23, quality: 0, PgfConstants.ImageModeCMYKColor, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(encoded);
 
         bool oracleOk = NativePgfOracle.TryDecodeRaw(pgfBytes!, bpp: 32, [0, 1, 2, 3], out byte[]? oracleRaw, out int width, out int height);
@@ -91,10 +91,10 @@ public class PgfGroupETests
     {
         byte[] source = CmykGradient(width, height);
 
-        bool encoded = PgfImageEncoder.TryEncodeMode(source, width, height, quality: 0, PgfConstants.ImageModeCMYKColor, out byte[]? pgfBytes);
+        bool encoded = PgfImageEncoder.TryEncodeMode(source, width, height, quality: 0, PgfConstants.ImageModeCMYKColor, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(encoded);
 
-        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult);
+        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(decoded);
         Assert.Equal(source, bgraResult);
     }

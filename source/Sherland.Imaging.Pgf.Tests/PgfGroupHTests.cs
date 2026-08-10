@@ -178,7 +178,7 @@ public class PgfGroupHTests
         const int width = 13, height = 11; // odd width exercises the dangling-pixel encode path
         byte[] source = Rgb12Gradient(width, height);
 
-        bool encoded = PgfImageEncoder.TryEncodeMode(source, width, height, quality: 0, PgfConstants.ImageModeRGB12, out byte[]? pgfBytes);
+        bool encoded = PgfImageEncoder.TryEncodeMode(source, width, height, quality: 0, PgfConstants.ImageModeRGB12, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(encoded);
 
         bool oracleOk = NativePgfOracle.TryDecodeRaw(pgfBytes!, bpp: 12, [0, 1, 2], out byte[]? oracleRaw, out int oracleWidth, out int oracleHeight);
@@ -190,7 +190,7 @@ public class PgfGroupHTests
         // source bytes exactly (both directions port the identical bit layout).
         Assert.Equal(source, oracleRaw);
 
-        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult);
+        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(decoded);
 
         int rowBytes = ((width * 12) + 7) / 8;
@@ -228,7 +228,7 @@ public class PgfGroupHTests
         const int width = 37, height = 23;
         byte[] source = Rgb16Gradient(width, height);
 
-        bool encoded = PgfImageEncoder.TryEncodeMode(source, width, height, quality: 0, PgfConstants.ImageModeRGB16, out byte[]? pgfBytes);
+        bool encoded = PgfImageEncoder.TryEncodeMode(source, width, height, quality: 0, PgfConstants.ImageModeRGB16, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(encoded);
 
         bool oracleOk = NativePgfOracle.TryDecodeRaw(pgfBytes!, bpp: 16, [0, 1, 2], out byte[]? oracleRaw, out int oracleWidth, out int oracleHeight);
@@ -237,7 +237,7 @@ public class PgfGroupHTests
         Assert.Equal(height, oracleHeight);
         Assert.Equal(source, oracleRaw);
 
-        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult);
+        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(decoded);
 
         int px = 0, srcCnt = 0;
@@ -266,10 +266,10 @@ public class PgfGroupHTests
         {
             byte[] source = mode == PgfConstants.ImageModeRGB12 ? Rgb12Gradient(width, height) : Rgb16Gradient(width, height);
 
-            bool encoded = PgfImageEncoder.TryEncodeMode(source, width, height, quality: 0, mode, out byte[]? pgfBytes);
+            bool encoded = PgfImageEncoder.TryEncodeMode(source, width, height, quality: 0, mode, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
             Assert.True(encoded, $"Encode failed for mode {mode} at {width}x{height}.");
 
-            bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => (w, h), out (int W, int H) result);
+            bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => (w, h), out (int W, int H) result, cancellationToken: TestContext.Current.CancellationToken);
             Assert.True(decoded, $"Decode failed for mode {mode} at {width}x{height}.");
             Assert.Equal(width, result.W);
             Assert.Equal(height, result.H);

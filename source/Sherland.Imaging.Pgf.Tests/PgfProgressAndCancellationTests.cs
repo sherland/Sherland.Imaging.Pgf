@@ -51,7 +51,7 @@ public class PgfProgressAndCancellationTests
     public void TryDecode_ProgressReports_OncePerLevel_MonotonicNonDecreasing_EndsAtOne(int width, int height, byte quality)
     {
         (byte[] bgra, int w, int h) = TestBitmaps.Gradient(width, height);
-        Assert.True(PgfImageEncoder.TryEncode(bgra, w, h, quality, out byte[]? pgfBytes));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, w, h, quality, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken));
 
         PgfProgressiveDecoder? probe = PgfProgressiveDecoder.TryOpen(pgfBytes!);
         Assert.NotNull(probe);
@@ -60,7 +60,7 @@ public class PgfProgressAndCancellationTests
         List<double> reports = [];
         SynchronousProgress<double> progress = new(reports.Add);
 
-        bool ok = PgfImageDecoder.TryDecode(pgfBytes!, static (b, dw, dh) => true, out _, progress);
+        bool ok = PgfImageDecoder.TryDecode(pgfBytes!, static (b, dw, dh) => true, out _, progress, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(ok);
         Assert.Equal(expectedLevels, reports.Count);
@@ -120,7 +120,7 @@ public class PgfProgressAndCancellationTests
             PgfImageDecoder.TryDecode(pgfBytes, static (b, w, h) => true, out _, cancellationToken: cts.Token));
 
         bool ok = PgfImageDecoder.TryDecode(pgfBytes, static (bgra, w, h) => (Bytes: bgra.ToArray(), w, h),
-            out (byte[] Bytes, int w, int h) result);
+            out (byte[] Bytes, int w, int h) result, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(ok);
         Assert.NotEmpty(result.Bytes);
@@ -133,7 +133,7 @@ public class PgfProgressAndCancellationTests
     public void TryDecodeLevel_FullRangeInOneCall_ProgressReports_OncePerLevel_MonotonicNonDecreasing_EndsAtOne(int width, int height, byte quality)
     {
         (byte[] bgra, int w, int h) = TestBitmaps.Gradient(width, height);
-        Assert.True(PgfImageEncoder.TryEncode(bgra, w, h, quality, out byte[]? pgfBytes));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, w, h, quality, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken));
 
         PgfProgressiveDecoder? decoder = PgfProgressiveDecoder.TryOpen(pgfBytes!);
         Assert.NotNull(decoder);
@@ -142,7 +142,7 @@ public class PgfProgressAndCancellationTests
         List<double> reports = [];
         SynchronousProgress<double> progress = new(reports.Add);
 
-        bool ok = decoder.TryDecodeLevel(0, static (b, dw, dh) => true, out _, progress);
+        bool ok = decoder.TryDecodeLevel(0, static (b, dw, dh) => true, out _, progress, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(ok);
         Assert.Equal(expectedLevels, reports.Count);
@@ -162,7 +162,7 @@ public class PgfProgressAndCancellationTests
             List<double> reports = [];
             SynchronousProgress<double> progress = new(reports.Add);
 
-            bool ok = decoder.TryDecodeLevel(level, static (b, w, h) => true, out _, progress);
+            bool ok = decoder.TryDecodeLevel(level, static (b, w, h) => true, out _, progress, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.True(ok);
             Assert.Single(reports);
@@ -177,11 +177,11 @@ public class PgfProgressAndCancellationTests
         PgfProgressiveDecoder? decoder = PgfProgressiveDecoder.TryOpen(pgfBytes);
         Assert.NotNull(decoder);
 
-        Assert.True(decoder.TryDecodeLevel(1, static (b, w, h) => true, out _));
+        Assert.True(decoder.TryDecodeLevel(1, static (b, w, h) => true, out _, cancellationToken: TestContext.Current.CancellationToken));
 
         List<double> reports = [];
         SynchronousProgress<double> progress = new(reports.Add);
-        bool ok = decoder.TryDecodeLevel(1, static (b, w, h) => true, out _, progress);
+        bool ok = decoder.TryDecodeLevel(1, static (b, w, h) => true, out _, progress, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(ok);
         Assert.Empty(reports);
@@ -236,7 +236,7 @@ public class PgfProgressAndCancellationTests
             // call-scoped session) - a fresh, uncancelled call resumes from exactly where the
             // cancelled one left off rather than re-decoding or losing state.
             bool ok = decoder.TryDecodeLevel(0, static (bgra, w, h) => (Bytes: bgra.ToArray(), w, h),
-                out (byte[] Bytes, int w, int h) result);
+                out (byte[] Bytes, int w, int h) result, cancellationToken: TestContext.Current.CancellationToken);
             Assert.True(ok);
             Assert.NotEmpty(result.Bytes);
         }
@@ -253,7 +253,7 @@ public class PgfProgressAndCancellationTests
         List<double> reports = [];
         SynchronousProgress<double> progress = new(reports.Add);
 
-        bool ok = PgfImageEncoder.TryEncode(bgra, w, h, quality, out byte[]? pgfBytes, progress);
+        bool ok = PgfImageEncoder.TryEncode(bgra, w, h, quality, out byte[]? pgfBytes, progress, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(ok);
 
         PgfProgressiveDecoder? probe = PgfProgressiveDecoder.TryOpen(pgfBytes!);
@@ -281,7 +281,7 @@ public class PgfProgressAndCancellationTests
     {
         (byte[] bgra, int w, int h) = TestBitmaps.Gradient(200, 150);
 
-        Assert.True(PgfImageEncoder.TryEncode(bgra, w, h, quality: 4, out byte[]? probeBytes));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, w, h, quality: 4, out byte[]? probeBytes, cancellationToken: TestContext.Current.CancellationToken));
         PgfProgressiveDecoder? probe = PgfProgressiveDecoder.TryOpen(probeBytes!);
         Assert.NotNull(probe);
         Assert.True(probe.Levels > 1, "Fixture should have more than one level for this test to be meaningful.");
@@ -317,7 +317,7 @@ public class PgfProgressAndCancellationTests
         Assert.Throws<OperationCanceledException>(() =>
             PgfImageEncoder.TryEncode(bgra, w, h, quality: 4, out _, cancellationToken: cts.Token));
 
-        bool ok = PgfImageEncoder.TryEncode(bgra, w, h, quality: 4, out byte[]? pgfBytes);
+        bool ok = PgfImageEncoder.TryEncode(bgra, w, h, quality: 4, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(ok);
         Assert.NotEmpty(pgfBytes!);

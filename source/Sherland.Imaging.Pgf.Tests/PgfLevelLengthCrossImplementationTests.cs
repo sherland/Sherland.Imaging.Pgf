@@ -53,7 +53,7 @@ public class PgfLevelLengthCrossImplementationTests
     {
         (byte[] bgra, int w, int h) = TestBitmaps.Gradient(width, height);
 
-        Assert.True(PgfImageEncoder.TryEncode(bgra, w, h, quality, out byte[]? managedPgf));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, w, h, quality, out byte[]? managedPgf, cancellationToken: TestContext.Current.CancellationToken));
         Assert.True(NativePgfOracle.TryEncode(bgra, w, h, quality, out byte[]? nativePgf));
 
         PgfProgressiveDecoder? managedDecoder = PgfProgressiveDecoder.TryOpen(managedPgf);
@@ -75,7 +75,7 @@ public class PgfLevelLengthCrossImplementationTests
     {
         (byte[] bgra, int w, int h) = TestBitmaps.Gradient(width, height);
 
-        Assert.True(PgfImageEncoder.TryEncode(bgra, w, h, quality, out byte[]? managedPgf, roi: true));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, w, h, quality, out byte[]? managedPgf, roi: true, cancellationToken: TestContext.Current.CancellationToken));
         Assert.True(NativePgfOracle.TryEncodeRoi(bgra, w, h, quality, out byte[]? nativePgf));
 
         PgfProgressiveDecoder? managedDecoder = PgfProgressiveDecoder.TryOpen(managedPgf);

@@ -18,7 +18,7 @@ public class PgfImageEncoderTests
     [InlineData(10, -1)]
     public void InvalidDimensions_FailsClosed_WithoutThrowing(int width, int height)
     {
-        bool encoded = PgfImageEncoder.TryEncode([], width, height, quality: 0, out byte[]? pgfBytes);
+        bool encoded = PgfImageEncoder.TryEncode([], width, height, quality: 0, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(encoded);
         Assert.Null(pgfBytes);
@@ -39,7 +39,7 @@ public class PgfImageEncoderTests
     {
         (byte[] bgra, int w, int h) = TestBitmaps.Gradient(width, height);
 
-        bool encoded = PgfImageEncoder.TryEncode(bgra, w, h, quality: 0, out byte[]? pgfBytes);
+        bool encoded = PgfImageEncoder.TryEncode(bgra, w, h, quality: 0, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(encoded, $"Expected {width}x{height} (below MinimumSupportedDimension) to encode via the nLevels=0 raw path.");
         Assert.NotNull(pgfBytes);
@@ -52,7 +52,7 @@ public class PgfImageEncoderTests
     {
         (byte[] bgra, int w, int h) = TestBitmaps.Gradient(32, 32);
 
-        bool encoded = PgfImageEncoder.TryEncode(bgra, w, h, (byte)quality, out byte[]? pgfBytes);
+        bool encoded = PgfImageEncoder.TryEncode(bgra, w, h, (byte)quality, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(encoded);
         Assert.Null(pgfBytes);
@@ -63,7 +63,7 @@ public class PgfImageEncoderTests
     {
         byte[] tooShort = new byte[10 * 10 * 4 - 1];
 
-        bool encoded = PgfImageEncoder.TryEncode(tooShort, width: 10, height: 10, quality: 0, out byte[]? pgfBytes);
+        bool encoded = PgfImageEncoder.TryEncode(tooShort, width: 10, height: 10, quality: 0, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(encoded);
         Assert.Null(pgfBytes);
@@ -74,7 +74,7 @@ public class PgfImageEncoderTests
     {
         byte[] tooLong = new byte[10 * 10 * 4 + 4];
 
-        bool encoded = PgfImageEncoder.TryEncode(tooLong, width: 10, height: 10, quality: 0, out byte[]? pgfBytes);
+        bool encoded = PgfImageEncoder.TryEncode(tooLong, width: 10, height: 10, quality: 0, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(encoded);
         Assert.Null(pgfBytes);
@@ -84,11 +84,11 @@ public class PgfImageEncoderTests
     public void CallerOwnedDestination_ProducesTheExactConvenienceStream_WithoutAnOwnedResult()
     {
         (byte[] bgra, int width, int height) = TestBitmaps.Gradient(64, 64);
-        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 8, out byte[]? expected));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 8, out byte[]? expected, cancellationToken: TestContext.Current.CancellationToken));
 
         byte[] destination = new byte[expected!.Length];
         bool encoded = PgfImageEncoder.TryEncodeMode(
-            bgra, width, height, quality: 8, PgfConstants.ImageModeRGBA, destination, out int bytesWritten);
+            bgra, width, height, quality: 8, PgfConstants.ImageModeRGBA, destination, out int bytesWritten, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(encoded);
         Assert.Equal(expected.Length, bytesWritten);
@@ -99,11 +99,11 @@ public class PgfImageEncoderTests
     public void CallerOwnedDestination_ReportsRequiredLength_AndDoesNotWritePartially()
     {
         (byte[] bgra, int width, int height) = TestBitmaps.Gradient(64, 64);
-        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 8, out byte[]? expected));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 8, out byte[]? expected, cancellationToken: TestContext.Current.CancellationToken));
 
         byte[] destination = Enumerable.Repeat((byte)0xCC, expected!.Length - 1).ToArray();
         bool encoded = PgfImageEncoder.TryEncodeMode(
-            bgra, width, height, quality: 8, PgfConstants.ImageModeRGBA, destination, out int bytesWritten);
+            bgra, width, height, quality: 8, PgfConstants.ImageModeRGBA, destination, out int bytesWritten, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(encoded);
         Assert.Equal(expected.Length, bytesWritten);
@@ -114,10 +114,10 @@ public class PgfImageEncoderTests
     public void WorkspaceBackedEncode_MatchesTheConvenienceStream()
     {
         (byte[] bgra, int width, int height) = TestBitmaps.Gradient(64, 64);
-        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 8, out byte[]? expected));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 8, out byte[]? expected, cancellationToken: TestContext.Current.CancellationToken));
 
         using var workspace = new PgfWorkspace();
-        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 8, out byte[]? actual, workspace: workspace));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 8, out byte[]? actual, workspace: workspace, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Equal(expected, actual);
     }
@@ -139,11 +139,11 @@ public class PgfImageEncoderTests
     {
         (byte[] bgra, int w, int h) = TestBitmaps.Gradient(width, height);
 
-        Assert.True(PgfImageEncoder.TryEncode(bgra, w, h, quality: 0, out byte[]? losslessBytes));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, w, h, quality: 0, out byte[]? losslessBytes, cancellationToken: TestContext.Current.CancellationToken));
 
         for (byte quality = 1; quality <= PgfConstants.MaxQuality; quality++)
         {
-            Assert.True(PgfImageEncoder.TryEncode(bgra, w, h, quality, out byte[]? bytes));
+            Assert.True(PgfImageEncoder.TryEncode(bgra, w, h, quality, out byte[]? bytes, cancellationToken: TestContext.Current.CancellationToken));
             Assert.True(bytes!.Length <= losslessBytes!.Length,
                 $"{w}x{h}: quality={quality} ({bytes.Length} bytes) exceeds quality=0 baseline ({losslessBytes.Length} bytes).");
         }

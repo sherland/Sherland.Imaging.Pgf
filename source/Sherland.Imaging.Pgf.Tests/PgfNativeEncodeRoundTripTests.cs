@@ -36,7 +36,7 @@ public class PgfNativeEncodeRoundTripTests
         }
 
         Assert.True(NativePgfOracle.TryEncode(source, Width, Height, quality: 0, out byte[]? pgfBytes));
-        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? result));
+        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? result, cancellationToken: TestContext.Current.CancellationToken));
         Assert.Equal(source, result);
     }
 
@@ -56,7 +56,7 @@ public class PgfNativeEncodeRoundTripTests
 
         Assert.True(NativePgfOracle.TryEncodeMode(
             source, Width, Height, quality: 0, PgfConstants.ImageModeCMYKColor, bpp: 32, channels: 4, colorTable: default, out byte[]? pgfBytes));
-        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? result));
+        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? result, cancellationToken: TestContext.Current.CancellationToken));
         Assert.Equal(source, result);
     }
 
@@ -75,7 +75,7 @@ public class PgfNativeEncodeRoundTripTests
         }
 
         Assert.True(NativePgfOracle.TryEncodeMode(source, Width, Height, quality: 0, mode, bpp, (byte)channels, colorTable: default, out byte[]? pgfBytes));
-        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? result));
+        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? result, cancellationToken: TestContext.Current.CancellationToken));
 
         int srcCnt = 0, dstCnt = 0;
         for (int i = 0; i < Width * Height; i++)
@@ -110,7 +110,7 @@ public class PgfNativeEncodeRoundTripTests
 
         Assert.True(NativePgfOracle.TryEncodeMode(
             source, Width, Height, quality: 0, PgfConstants.ImageModeIndexedColor, bpp: 8, channels: 1, colorTable, out byte[]? pgfBytes));
-        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? result));
+        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? result, cancellationToken: TestContext.Current.CancellationToken));
 
         for (int i = 0; i < source.Length; i++)
         {
@@ -133,7 +133,7 @@ public class PgfNativeEncodeRoundTripTests
 
         Assert.True(NativePgfOracle.TryEncodeMode(
             source, Width, Height, quality: 0, PgfConstants.ImageModeRGBColor, bpp: 24, channels: 3, colorTable: default, out byte[]? pgfBytes));
-        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? result));
+        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? result, cancellationToken: TestContext.Current.CancellationToken));
 
         int srcCnt = 0, dstCnt = 0;
         for (int i = 0; i < Width * Height; i++)
@@ -157,7 +157,7 @@ public class PgfNativeEncodeRoundTripTests
 
         Assert.True(NativePgfOracle.TryEncodeMode(
             source, Width, Height, quality: 0, PgfConstants.ImageModeLabColor, bpp: 24, channels: 3, colorTable: default, out byte[]? pgfBytes));
-        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? result));
+        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? result, cancellationToken: TestContext.Current.CancellationToken));
 
         int srcCnt = 0, dstCnt = 0;
         for (int i = 0; i < Width * Height; i++)
@@ -183,7 +183,7 @@ public class PgfNativeEncodeRoundTripTests
 
         Assert.True(NativePgfOracle.TryEncodeMode(
             source, Width, Height, quality: 0, PgfConstants.ImageModeGray16, bpp: 16, channels: 1, colorTable: default, out byte[]? pgfBytes));
-        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? result));
+        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? result, cancellationToken: TestContext.Current.CancellationToken));
 
         for (int i = 0; i < Width * Height; i++)
         {
@@ -208,7 +208,7 @@ public class PgfNativeEncodeRoundTripTests
 
         Assert.True(NativePgfOracle.TryEncodeMode(
             source, Width, Height, quality: 0, PgfConstants.ImageModeGray32, bpp: 32, channels: 1, colorTable: default, out byte[]? pgfBytes));
-        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? result));
+        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? result, cancellationToken: TestContext.Current.CancellationToken));
 
         for (int i = 0; i < Width * Height; i++)
         {
@@ -234,7 +234,7 @@ public class PgfNativeEncodeRoundTripTests
 
         Assert.True(NativePgfOracle.TryEncodeMode(
             source, Width, Height, quality: 0, PgfConstants.ImageModeLab48, bpp: 48, channels: 3, colorTable: default, out byte[]? pgfBytes));
-        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? result));
+        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? result, cancellationToken: TestContext.Current.CancellationToken));
 
         for (int i = 0; i < Width * Height; i++)
         {
@@ -263,7 +263,7 @@ public class PgfNativeEncodeRoundTripTests
 
         Assert.True(NativePgfOracle.TryEncodeMode(
             source, Width, Height, quality: 0, PgfConstants.ImageModeRGB48, bpp: 48, channels: 3, colorTable: default, out byte[]? pgfBytes));
-        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => (w, h), out (int W, int H) result));
+        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => (w, h), out (int W, int H) result, cancellationToken: TestContext.Current.CancellationToken));
         Assert.Equal(Width, result.W);
         Assert.Equal(Height, result.H);
     }
@@ -284,7 +284,7 @@ public class PgfNativeEncodeRoundTripTests
 
         Assert.True(NativePgfOracle.TryEncodeMode(
             source, Width, Height, quality: 0, PgfConstants.ImageModeCMYK64, bpp: 64, channels: 4, colorTable: default, out byte[]? pgfBytes));
-        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => (w, h), out (int W, int H) result));
+        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => (w, h), out (int W, int H) result, cancellationToken: TestContext.Current.CancellationToken));
         Assert.Equal(Width, result.W);
         Assert.Equal(Height, result.H);
     }
@@ -307,7 +307,7 @@ public class PgfNativeEncodeRoundTripTests
 
         Assert.True(NativePgfOracle.TryEncodeMode(
             source, Width, Height, quality: 0, PgfConstants.ImageModeBitmap, bpp: 1, channels: 1, colorTable: default, out byte[]? pgfBytes));
-        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? result));
+        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? result, cancellationToken: TestContext.Current.CancellationToken));
 
         for (int y = 0; y < Height; y++)
         {
@@ -349,7 +349,7 @@ public class PgfNativeEncodeRoundTripTests
 
         Assert.True(NativePgfOracle.TryEncodeMode(
             source, Width, Height, quality: 0, PgfConstants.ImageModeRGB12, bpp: 12, channels: 3, colorTable: default, out byte[]? pgfBytes));
-        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => (w, h), out (int W, int H) result));
+        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => (w, h), out (int W, int H) result, cancellationToken: TestContext.Current.CancellationToken));
         Assert.Equal(Width, result.W);
         Assert.Equal(Height, result.H);
     }
@@ -374,7 +374,7 @@ public class PgfNativeEncodeRoundTripTests
 
         Assert.True(NativePgfOracle.TryEncodeMode(
             source, Width, Height, quality: 0, PgfConstants.ImageModeRGB16, bpp: 16, channels: 3, colorTable: default, out byte[]? pgfBytes));
-        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => (w, h), out (int W, int H) result));
+        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => (w, h), out (int W, int H) result, cancellationToken: TestContext.Current.CancellationToken));
         Assert.Equal(Width, result.W);
         Assert.Equal(Height, result.H);
     }

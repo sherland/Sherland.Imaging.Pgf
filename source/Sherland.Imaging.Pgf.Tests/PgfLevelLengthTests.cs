@@ -21,7 +21,7 @@ public class PgfLevelLengthTests
     {
         (byte[] bgra, int w, int h) = TestBitmaps.Gradient(width, height);
 
-        Assert.True(PgfImageEncoder.TryEncode(bgra, w, h, quality, out byte[]? pgfBytes));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, w, h, quality, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken));
         AssertLevelLengthsSelfConsistent(pgfBytes!);
     }
 
@@ -31,7 +31,7 @@ public class PgfLevelLengthTests
     {
         (byte[] bgra, int w, int h) = TestBitmaps.Gradient(width, height);
 
-        Assert.True(PgfImageEncoder.TryEncode(bgra, w, h, quality, out byte[]? pgfBytes, roi: true));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, w, h, quality, out byte[]? pgfBytes, roi: true, cancellationToken: TestContext.Current.CancellationToken));
         AssertLevelLengthsSelfConsistent(pgfBytes!);
     }
 

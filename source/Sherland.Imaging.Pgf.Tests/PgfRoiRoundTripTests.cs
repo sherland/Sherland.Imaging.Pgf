@@ -35,18 +35,18 @@ public class PgfRoiRoundTripTests
     {
         (byte[] bgra, _, _) = TestBitmaps.Gradient(width, height);
 
-        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality, out byte[]? plainPgf));
-        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality, out byte[]? roiPgf, roi: true));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality, out byte[]? plainPgf, cancellationToken: TestContext.Current.CancellationToken));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality, out byte[]? roiPgf, roi: true, cancellationToken: TestContext.Current.CancellationToken));
         Assert.NotEqual(plainPgf, roiPgf); // genuinely different bitstreams, not a no-op flag
 
-        bool plainDecoded = PgfImageDecoder.TryDecode(plainPgf, static (b, w, h) => (Bytes: b.ToArray(), w, h), out var plain);
+        bool plainDecoded = PgfImageDecoder.TryDecode(plainPgf, static (b, w, h) => (Bytes: b.ToArray(), w, h), out var plain, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(plainDecoded);
 
         PgfProgressiveDecoder? roiDecoder = PgfProgressiveDecoder.TryOpen(roiPgf);
         Assert.NotNull(roiDecoder);
         Assert.True(roiDecoder.TrySetRoi(new PgfRoi(0, 0, width, height)));
 
-        bool roiDecoded = roiDecoder.TryDecodeLevel(0, static (b, w, h) => (Bytes: b.ToArray(), w, h), out var roiResult);
+        bool roiDecoded = roiDecoder.TryDecodeLevel(0, static (b, w, h) => (Bytes: b.ToArray(), w, h), out var roiResult, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(roiDecoded);
 
         Assert.True(roiDecoder.TryGetAlignedRoi(0, out PgfRoi aligned));
@@ -75,17 +75,17 @@ public class PgfRoiRoundTripTests
         (byte[] bgra, _, _) = TestBitmaps.Gradient(width, height);
         const byte quality = 0; // lossless: the reference decode must be pixel-exact, no quantization noise
 
-        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality, out byte[]? plainPgf));
-        bool plainDecoded = PgfImageDecoder.TryDecode(plainPgf, static (b, w, h) => (Bytes: b.ToArray(), w, h), out var plain);
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality, out byte[]? plainPgf, cancellationToken: TestContext.Current.CancellationToken));
+        bool plainDecoded = PgfImageDecoder.TryDecode(plainPgf, static (b, w, h) => (Bytes: b.ToArray(), w, h), out var plain, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(plainDecoded);
 
-        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality, out byte[]? roiPgf, roi: true));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality, out byte[]? roiPgf, roi: true, cancellationToken: TestContext.Current.CancellationToken));
 
         PgfProgressiveDecoder? roiDecoder = PgfProgressiveDecoder.TryOpen(roiPgf);
         Assert.NotNull(roiDecoder);
         Assert.True(roiDecoder.TrySetRoi(new PgfRoi(reqLeft, reqTop, reqRight, reqBottom)));
 
-        bool roiDecoded = roiDecoder.TryDecodeLevel(0, static (b, w, h) => (Bytes: b.ToArray(), w, h), out var roiResult);
+        bool roiDecoded = roiDecoder.TryDecodeLevel(0, static (b, w, h) => (Bytes: b.ToArray(), w, h), out var roiResult, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(roiDecoded);
 
         Assert.True(roiDecoder.TryGetAlignedRoi(0, out PgfRoi aligned));
@@ -132,7 +132,7 @@ public class PgfRoiRoundTripTests
     {
         (byte[] bgra, int width, int height) = TestBitmaps.Gradient(32, 32);
 
-        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 0, out byte[]? pgfBytes, roi: true));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 0, out byte[]? pgfBytes, roi: true, cancellationToken: TestContext.Current.CancellationToken));
 
         // preHeaderBytes[3] is the version-flags byte (PgfHeaderIO.Write) - PGFROI = 8.
         Assert.Equal(8, pgfBytes![3] & 8);
@@ -149,14 +149,14 @@ public class PgfRoiRoundTripTests
         // some other way, is not asserted - only that it does not silently produce a plausible-looking
         // wrong image that a test comparing against the plain encode would miss.
         (byte[] bgra, int width, int height) = TestBitmaps.Gradient(64, 64);
-        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 0, out byte[]? roiPgf, roi: true));
-        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 0, out byte[]? plainPgf));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 0, out byte[]? roiPgf, roi: true, cancellationToken: TestContext.Current.CancellationToken));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 0, out byte[]? plainPgf, cancellationToken: TestContext.Current.CancellationToken));
 
-        bool decodedAsNonRoi = PgfImageDecoder.TryDecode(roiPgf, static (b, w, h) => b.ToArray(), out byte[]? misreadBytes);
+        bool decodedAsNonRoi = PgfImageDecoder.TryDecode(roiPgf, static (b, w, h) => b.ToArray(), out byte[]? misreadBytes, cancellationToken: TestContext.Current.CancellationToken);
 
         if (decodedAsNonRoi)
         {
-            bool plainDecoded = PgfImageDecoder.TryDecode(plainPgf, static (b, w, h) => b.ToArray(), out byte[]? correctBytes);
+            bool plainDecoded = PgfImageDecoder.TryDecode(plainPgf, static (b, w, h) => b.ToArray(), out byte[]? correctBytes, cancellationToken: TestContext.Current.CancellationToken);
             Assert.True(plainDecoded);
             Assert.NotEqual(correctBytes, misreadBytes);
         }

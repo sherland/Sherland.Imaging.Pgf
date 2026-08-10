@@ -90,7 +90,7 @@ public class PgfImageDecoderTests
         Assert.True(NativePgfOracle.TryEncode(bgra, w, h, quality: 0, out byte[]? pgfBytes));
 
         bool managedOk = PgfImageDecoder.TryDecode(pgfBytes!, static (bgra, width, height) => (Bytes: bgra.ToArray(), width, height),
-            out (byte[] Bytes, int width, int height) managed);
+            out (byte[] Bytes, int width, int height) managed, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(managedOk);
         Assert.Equal(w, managed.width);
@@ -128,7 +128,7 @@ public class PgfImageDecoderTests
 
         byte[] truncated = pgfBytes![..(pgfBytes.Length / 2)];
 
-        bool ok = PgfImageDecoder.TryDecode(truncated, static (bgra, w, h) => bgra.ToArray(), out byte[]? result);
+        bool ok = PgfImageDecoder.TryDecode(truncated, static (bgra, w, h) => bgra.ToArray(), out byte[]? result, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(ok);
         Assert.Null(result);
@@ -140,7 +140,7 @@ public class PgfImageDecoderTests
         byte[] garbage = new byte[256];
         new Random(42).NextBytes(garbage);
 
-        bool ok = PgfImageDecoder.TryDecode(garbage, static (bgra, w, h) => bgra.ToArray(), out byte[]? result);
+        bool ok = PgfImageDecoder.TryDecode(garbage, static (bgra, w, h) => bgra.ToArray(), out byte[]? result, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(ok);
         Assert.Null(result);
@@ -149,7 +149,7 @@ public class PgfImageDecoderTests
     [Fact]
     public void EmptyInput_FailsClosed_WithoutThrowing()
     {
-        bool ok = PgfImageDecoder.TryDecode(ReadOnlyMemory<byte>.Empty, static (bgra, w, h) => bgra.ToArray(), out byte[]? result);
+        bool ok = PgfImageDecoder.TryDecode(ReadOnlyMemory<byte>.Empty, static (bgra, w, h) => bgra.ToArray(), out byte[]? result, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(ok);
         Assert.Null(result);

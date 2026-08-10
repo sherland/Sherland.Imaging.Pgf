@@ -58,9 +58,9 @@ public class PgfRoundTripMatrixTests
         (byte[] original, int w, int h) = BuildFixture(kind, width, height);
 
         // Leg 1: encode C#, decode C# - self round trip.
-        Assert.True(PgfImageEncoder.TryEncode(original, w, h, quality, out byte[]? csBytes), "C# encode failed.");
+        Assert.True(PgfImageEncoder.TryEncode(original, w, h, quality, out byte[]? csBytes, cancellationToken: TestContext.Current.CancellationToken), "C# encode failed.");
         Assert.True(PgfImageDecoder.TryDecode(csBytes!, static (bgra, width, height) => (Bytes: bgra.ToArray(), width, height),
-            out (byte[] Bytes, int width, int height) csDecodeCs), "C# decode of C#-encoded bytes failed.");
+            out (byte[] Bytes, int width, int height) csDecodeCs, cancellationToken: TestContext.Current.CancellationToken), "C# decode of C#-encoded bytes failed.");
         Assert.Equal(w, csDecodeCs.width);
         Assert.Equal(h, csDecodeCs.height);
 
@@ -73,7 +73,7 @@ public class PgfRoundTripMatrixTests
         // Leg 3: encode native, decode C# - validates the new decoder against real encoder output.
         Assert.True(NativePgfOracle.TryEncode(original, w, h, quality, out byte[]? nativeBytes), "Native encode failed.");
         Assert.True(PgfImageDecoder.TryDecode(nativeBytes!, static (bgra, width, height) => (Bytes: bgra.ToArray(), width, height),
-            out (byte[] Bytes, int width, int height) csDecodeNative), "C# decode of native-encoded bytes failed.");
+            out (byte[] Bytes, int width, int height) csDecodeNative, cancellationToken: TestContext.Current.CancellationToken), "C# decode of native-encoded bytes failed.");
         Assert.Equal(w, csDecodeNative.width);
         Assert.Equal(h, csDecodeNative.height);
 

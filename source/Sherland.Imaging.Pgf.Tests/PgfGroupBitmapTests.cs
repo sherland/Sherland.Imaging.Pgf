@@ -71,10 +71,10 @@ public class PgfGroupBitmapTests
         const int width = 37, height = 23;
         byte[] source = PackedBitmap(width, height, (x, y) => ((x / 3) + (y / 2)) % 2 == 0);
 
-        bool encoded = PgfImageEncoder.TryEncodeMode(source, width, height, quality: 0, PgfConstants.ImageModeBitmap, out byte[]? pgfBytes);
+        bool encoded = PgfImageEncoder.TryEncodeMode(source, width, height, quality: 0, PgfConstants.ImageModeBitmap, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(encoded);
 
-        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult);
+        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(decoded);
 
         int rowBytes = (width + 7) / 8;
@@ -99,7 +99,7 @@ public class PgfGroupBitmapTests
         const int width = 37, height = 23;
         byte[] source = PackedBitmap(width, height, (x, y) => ((x * 7) + (y * 13)) % 5 == 0);
 
-        bool encoded = PgfImageEncoder.TryEncodeMode(source, width, height, quality: 0, PgfConstants.ImageModeBitmap, out byte[]? pgfBytes);
+        bool encoded = PgfImageEncoder.TryEncodeMode(source, width, height, quality: 0, PgfConstants.ImageModeBitmap, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(encoded);
 
         bool oracleOk = NativePgfOracle.TryDecodeRaw(pgfBytes!, bpp: 1, [0], out byte[]? oracleRaw, out int oracleWidth, out int oracleHeight);
@@ -174,7 +174,7 @@ public class PgfGroupBitmapTests
         Assert.True(NativePgfOracle.TryEncodeLegacyBitmap(source, width, height, clearVersion5, out byte[]? pgfBytes));
         Assert.True(NativePgfOracle.TryDecodeRaw(pgfBytes!, bpp: 1, [0], out byte[]? nativePacked, out _, out _));
 
-        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, _, _) => bgra.ToArray(), out byte[]? managedBgra));
+        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, _, _) => bgra.ToArray(), out byte[]? managedBgra, cancellationToken: TestContext.Current.CancellationToken));
         AssertBgraMatchesPackedBits(managedBgra!, nativePacked!, width, height);
     }
 
@@ -189,7 +189,7 @@ public class PgfGroupBitmapTests
         Assert.True(NativePgfOracle.TryEncodeLegacyBitmap(source, width, height, clearVersion5: true, out byte[]? pgfBytes));
         Assert.True(NativePgfOracle.TryDecodeRaw(pgfBytes!, bpp: 1, [0], out byte[]? nativePacked, out _, out _));
 
-        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, _, _) => bgra.ToArray(), out byte[]? managedBgra));
+        Assert.True(PgfImageDecoder.TryDecode(pgfBytes!, (bgra, _, _) => bgra.ToArray(), out byte[]? managedBgra, cancellationToken: TestContext.Current.CancellationToken));
         AssertBgraMatchesPackedBits(managedBgra!, nativePacked!, width, height);
     }
 
@@ -199,10 +199,10 @@ public class PgfGroupBitmapTests
         const int width = 16, height = 16;
         byte[] source = PackedBitmap(width, height, (_, _) => true);
 
-        bool encoded = PgfImageEncoder.TryEncodeMode(source, width, height, quality: 0, PgfConstants.ImageModeBitmap, out byte[]? pgfBytes);
+        bool encoded = PgfImageEncoder.TryEncodeMode(source, width, height, quality: 0, PgfConstants.ImageModeBitmap, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(encoded);
 
-        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult);
+        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(decoded);
         Assert.All(bgraResult!, b => Assert.Equal(255, b));
     }
@@ -213,10 +213,10 @@ public class PgfGroupBitmapTests
         const int width = 16, height = 16;
         byte[] source = PackedBitmap(width, height, (_, _) => false);
 
-        bool encoded = PgfImageEncoder.TryEncodeMode(source, width, height, quality: 0, PgfConstants.ImageModeBitmap, out byte[]? pgfBytes);
+        bool encoded = PgfImageEncoder.TryEncodeMode(source, width, height, quality: 0, PgfConstants.ImageModeBitmap, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(encoded);
 
-        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult);
+        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(decoded);
 
         for (int i = 0; i < bgraResult!.Length; i += 4)
@@ -236,10 +236,10 @@ public class PgfGroupBitmapTests
         // (PgfColorConversion.EncodeBitmapToY's "if (cnt < width)" guard).
         byte[] source = PackedBitmap(width, height, (x, y) => ((x * 3) + (y * 5)) % 4 == 0);
 
-        bool encoded = PgfImageEncoder.TryEncodeMode(source, width, height, quality: 0, PgfConstants.ImageModeBitmap, out byte[]? pgfBytes);
+        bool encoded = PgfImageEncoder.TryEncodeMode(source, width, height, quality: 0, PgfConstants.ImageModeBitmap, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(encoded, $"Encode failed for {width}x{height}.");
 
-        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult);
+        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(decoded, $"Decode failed for {width}x{height}.");
 
         int rowBytes = (width + 7) / 8;

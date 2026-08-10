@@ -98,7 +98,7 @@ public class PgfGroupBDFTests
     {
         byte[] source = SingleChannel16Gradient(37, 23);
 
-        bool encoded = PgfImageEncoder.TryEncodeMode(source, 37, 23, quality: 0, PgfConstants.ImageModeGray16, out byte[]? pgfBytes);
+        bool encoded = PgfImageEncoder.TryEncodeMode(source, 37, 23, quality: 0, PgfConstants.ImageModeGray16, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(encoded);
 
         bool oracleOk = NativePgfOracle.TryDecodeRaw(pgfBytes!, bpp: 8, [0], out byte[]? oracleRaw, out int width, out int height);
@@ -119,10 +119,10 @@ public class PgfGroupBDFTests
     {
         byte[] source = SingleChannel16Gradient(37, 23);
 
-        bool encoded = PgfImageEncoder.TryEncodeMode(source, 37, 23, quality: 0, PgfConstants.ImageModeGray16, out byte[]? pgfBytes);
+        bool encoded = PgfImageEncoder.TryEncodeMode(source, 37, 23, quality: 0, PgfConstants.ImageModeGray16, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(encoded);
 
-        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult);
+        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(decoded);
 
         for (int i = 0; i < 37 * 23; i++)
@@ -144,7 +144,7 @@ public class PgfGroupBDFTests
     {
         byte[] source = SingleChannel32Gradient(37, 23);
 
-        bool encoded = PgfImageEncoder.TryEncodeMode(source, 37, 23, quality: 0, PgfConstants.ImageModeGray32, out byte[]? pgfBytes);
+        bool encoded = PgfImageEncoder.TryEncodeMode(source, 37, 23, quality: 0, PgfConstants.ImageModeGray32, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(encoded);
 
         bool oracleOk = NativePgfOracle.TryDecodeRaw(pgfBytes!, bpp: 8, [0], out byte[]? oracleRaw, out int width, out int height);
@@ -168,10 +168,10 @@ public class PgfGroupBDFTests
     {
         byte[] source = TripleChannel16Gradient(37, 23);
 
-        bool encoded = PgfImageEncoder.TryEncodeMode(source, 37, 23, quality: 0, PgfConstants.ImageModeLab48, out byte[]? pgfBytes);
+        bool encoded = PgfImageEncoder.TryEncodeMode(source, 37, 23, quality: 0, PgfConstants.ImageModeLab48, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(encoded);
 
-        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult);
+        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(decoded);
 
         for (int i = 0; i < 37 * 23; i++)
@@ -193,7 +193,7 @@ public class PgfGroupBDFTests
         byte[] source = TripleChannel16Gradient(64, 64);
         byte quality = PgfConstants.DownsampleThreshold + 2;
 
-        bool encoded = PgfImageEncoder.TryEncodeMode(source, 64, 64, quality, PgfConstants.ImageModeLab48, out byte[]? pgfBytes);
+        bool encoded = PgfImageEncoder.TryEncodeMode(source, 64, 64, quality, PgfConstants.ImageModeLab48, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(encoded);
 
         bool oracleOk = NativePgfOracle.TryDecodeRaw(pgfBytes!, bpp: 24, [0, 1, 2], out byte[]? oracleRaw, out int width, out int height);
@@ -201,7 +201,7 @@ public class PgfGroupBDFTests
         Assert.Equal(64, width);
         Assert.Equal(64, height);
 
-        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult);
+        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(decoded);
 
         int srcCnt = 0, dstCnt = 0;
@@ -222,7 +222,7 @@ public class PgfGroupBDFTests
     {
         byte[] source = TripleChannel16Gradient(37, 23);
 
-        bool encoded = PgfImageEncoder.TryEncodeMode(source, 37, 23, quality: 0, PgfConstants.ImageModeRGB48, out byte[]? pgfBytes);
+        bool encoded = PgfImageEncoder.TryEncodeMode(source, 37, 23, quality: 0, PgfConstants.ImageModeRGB48, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(encoded);
 
         bool oracleOk = NativePgfOracle.TryDecodeRaw(pgfBytes!, bpp: 24, [0, 1, 2], out byte[]? oracleRaw, out int width, out int height);
@@ -230,7 +230,7 @@ public class PgfGroupBDFTests
         Assert.Equal(37, width);
         Assert.Equal(23, height);
 
-        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult);
+        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(decoded);
 
         int srcCnt = 0, dstCnt = 0;
@@ -251,13 +251,13 @@ public class PgfGroupBDFTests
         byte[] source = TripleChannel16Gradient(64, 64);
         byte quality = PgfConstants.DownsampleThreshold + 2;
 
-        bool encoded = PgfImageEncoder.TryEncodeMode(source, 64, 64, quality, PgfConstants.ImageModeRGB48, out byte[]? pgfBytes);
+        bool encoded = PgfImageEncoder.TryEncodeMode(source, 64, 64, quality, PgfConstants.ImageModeRGB48, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(encoded);
 
         bool oracleOk = NativePgfOracle.TryDecodeRaw(pgfBytes!, bpp: 24, [0, 1, 2], out byte[]? oracleRaw, out int width, out int height);
         Assert.True(oracleOk, "Native oracle rejected a C#-encoded RGB48 file.");
 
-        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult);
+        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(decoded);
 
         int srcCnt = 0, dstCnt = 0;
@@ -286,7 +286,7 @@ public class PgfGroupBDFTests
     {
         byte[] source = QuadChannel16Gradient(37, 23);
 
-        bool encoded = PgfImageEncoder.TryEncodeMode(source, 37, 23, quality: 0, PgfConstants.ImageModeCMYK64, out byte[]? pgfBytes);
+        bool encoded = PgfImageEncoder.TryEncodeMode(source, 37, 23, quality: 0, PgfConstants.ImageModeCMYK64, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(encoded);
 
         bool oracleOk = NativePgfOracle.TryDecodeRaw(pgfBytes!, bpp: 40, [0, 1, 2, 3], out byte[]? oracleRawPadded, out int width, out int height);
@@ -294,7 +294,7 @@ public class PgfGroupBDFTests
         Assert.Equal(37, width);
         Assert.Equal(23, height);
 
-        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult);
+        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => bgra.ToArray(), out byte[]? bgraResult, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(decoded);
 
         int srcCnt = 0, dstCnt = 0;
@@ -327,10 +327,10 @@ public class PgfGroupBDFTests
                 _ => throw new InvalidOperationException(),
             };
 
-            bool encoded = PgfImageEncoder.TryEncodeMode(source, width, height, quality: 0, mode, out byte[]? pgfBytes);
+            bool encoded = PgfImageEncoder.TryEncodeMode(source, width, height, quality: 0, mode, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
             Assert.True(encoded, $"Encode failed for mode {mode} at {width}x{height}.");
 
-            bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => (w, h), out (int W, int H) result);
+            bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, (bgra, w, h) => (w, h), out (int W, int H) result, cancellationToken: TestContext.Current.CancellationToken);
             Assert.True(decoded, $"Decode failed for mode {mode} at {width}x{height}.");
             Assert.Equal(width, result.W);
             Assert.Equal(height, result.H);

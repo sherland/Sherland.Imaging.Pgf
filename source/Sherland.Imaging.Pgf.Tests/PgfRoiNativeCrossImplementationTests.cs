@@ -45,7 +45,7 @@ public class PgfRoiNativeCrossImplementationTests
         PgfProgressiveDecoder? managedDecoder = PgfProgressiveDecoder.TryOpen(nativeRoiPgf);
         Assert.NotNull(managedDecoder);
         Assert.True(managedDecoder.TrySetRoi(new PgfRoi(0, 0, width, height)));
-        bool decoded = managedDecoder.TryDecodeLevel(0, static (b, w, h) => (Bytes: b.ToArray(), w, h), out var managedResult);
+        bool decoded = managedDecoder.TryDecodeLevel(0, static (b, w, h) => (Bytes: b.ToArray(), w, h), out var managedResult, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(decoded);
 
         Assert.Equal(refW, managedResult.w);
@@ -76,7 +76,7 @@ public class PgfRoiNativeCrossImplementationTests
         PgfProgressiveDecoder? managedDecoder = PgfProgressiveDecoder.TryOpen(nativeRoiPgf);
         Assert.NotNull(managedDecoder);
         Assert.True(managedDecoder.TrySetRoi(new PgfRoi(reqLeft, reqTop, reqRight, reqBottom)));
-        bool decoded = managedDecoder.TryDecodeLevel(0, static (b, w, h) => (Bytes: b.ToArray(), w, h), out var managedResult);
+        bool decoded = managedDecoder.TryDecodeLevel(0, static (b, w, h) => (Bytes: b.ToArray(), w, h), out var managedResult, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(decoded);
 
         Assert.True(managedDecoder.TryGetAlignedRoi(0, out PgfRoi aligned));

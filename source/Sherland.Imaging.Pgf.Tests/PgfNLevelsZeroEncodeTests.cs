@@ -47,10 +47,10 @@ public class PgfNLevelsZeroEncodeTests
     {
         (byte[] bgra, int w, int h) = TestBitmaps.Gradient(width, height);
 
-        bool encoded = PgfImageEncoder.TryEncode(bgra, w, h, quality: 0, out byte[]? pgfBytes);
+        bool encoded = PgfImageEncoder.TryEncode(bgra, w, h, quality: 0, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(encoded, $"Expected {width}x{height} to encode via the nLevels=0 raw path.");
 
-        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, static (span, dw, dh) => span.ToArray(), out byte[]? decodedBgra);
+        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, static (span, dw, dh) => span.ToArray(), out byte[]? decodedBgra, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(decoded);
         Assert.Equal(bgra, decodedBgra);
     }
@@ -68,7 +68,7 @@ public class PgfNLevelsZeroEncodeTests
     {
         (byte[] bgra, int w, int h) = TestBitmaps.Gradient(width, height);
 
-        Assert.True(PgfImageEncoder.TryEncode(bgra, w, h, quality: 0, out byte[]? pgfBytes));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, w, h, quality: 0, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken));
 
         bool decoded = NativePgfOracle.TryDecode(pgfBytes!, out byte[]? decodedBgra, out int decodedWidth, out int decodedHeight);
 
@@ -87,9 +87,9 @@ public class PgfNLevelsZeroEncodeTests
     {
         (byte[] bgra, int width, int height) = TestBitmaps.Gradient(9, 9);
 
-        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality, out byte[]? pgfBytes));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken));
 
-        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, static (span, w, h) => span.ToArray(), out byte[]? decodedBgra);
+        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, static (span, w, h) => span.ToArray(), out byte[]? decodedBgra, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(decoded);
         Assert.Equal(bgra, decodedBgra);
@@ -106,10 +106,10 @@ public class PgfNLevelsZeroEncodeTests
     {
         (byte[] bgra, int width, int height) = TestBitmaps.Gradient(9, 9);
 
-        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality, out byte[]? pgfBytes));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken));
 
         bool decoded = PgfImageDecoder.TryDecode(
-            pgfBytes!, static (span, w, h) => (Width: w, Height: h), out var result);
+            pgfBytes!, static (span, w, h) => (Width: w, Height: h), out var result, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(decoded);
         Assert.Equal(width, result.Width);
@@ -133,10 +133,10 @@ public class PgfNLevelsZeroEncodeTests
         }
 
         bool encoded = PgfImageEncoder.TryEncodeMode(
-            indexSource, width, height, 0, PgfConstants.ImageModeIndexedColor, out byte[]? pgfBytes, colorTable);
+            indexSource, width, height, 0, PgfConstants.ImageModeIndexedColor, out byte[]? pgfBytes, colorTable, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(encoded);
 
-        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, static (span, w, h) => span.ToArray(), out byte[]? decodedBgra);
+        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, static (span, w, h) => span.ToArray(), out byte[]? decodedBgra, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(decoded);
         Assert.NotNull(decodedBgra);
@@ -148,10 +148,10 @@ public class PgfNLevelsZeroEncodeTests
         byte[] userData = "tiny image, real metadata"u8.ToArray();
         (byte[] bgra, int width, int height) = TestBitmaps.SolidColor(1, 1, 10, 20, 30, 255);
 
-        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 0, out byte[]? pgfBytes, userData: userData));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 0, out byte[]? pgfBytes, userData: userData, cancellationToken: TestContext.Current.CancellationToken));
 
         bool decoded = PgfImageDecoder.TryDecode(
-            pgfBytes!, static (span, w, h) => span.ToArray(), out byte[]? decodedBgra, out PgfUserData decodedUserData);
+            pgfBytes!, static (span, w, h) => span.ToArray(), out byte[]? decodedBgra, out PgfUserData decodedUserData, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(decoded);
         Assert.Equal(bgra, decodedBgra);
@@ -162,13 +162,13 @@ public class PgfNLevelsZeroEncodeTests
     public void ProgressiveDecoder_DecodesThisPortsOwnEncodedNLevelsZeroFile()
     {
         (byte[] bgra, int width, int height) = TestBitmaps.Gradient(9, 9);
-        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 0, out byte[]? pgfBytes));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 0, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken));
 
         PgfProgressiveDecoder? progressive = PgfProgressiveDecoder.TryOpen(pgfBytes!);
         Assert.NotNull(progressive);
         Assert.Equal(0, progressive.Levels);
 
-        bool decoded = progressive.TryDecodeLevel(0, static (span, w, h) => span.ToArray(), out byte[]? decodedBgra);
+        bool decoded = progressive.TryDecodeLevel(0, static (span, w, h) => span.ToArray(), out byte[]? decodedBgra, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(decoded);
         Assert.Equal(bgra, decodedBgra);
     }
@@ -180,7 +180,7 @@ public class PgfNLevelsZeroEncodeTests
 
         List<double> reports = [];
         bool encoded = PgfImageEncoder.TryEncode(
-            bgra, width, height, quality: 0, out byte[]? pgfBytes, progress: new SynchronousProgress<double>(reports.Add));
+            bgra, width, height, quality: 0, out byte[]? pgfBytes, progress: new SynchronousProgress<double>(reports.Add), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(encoded);
         Assert.Contains(1.0, reports);
@@ -194,9 +194,9 @@ public class PgfNLevelsZeroEncodeTests
     {
         (byte[] bgra, int width, int height) = TestBitmaps.Gradient(TestBitmaps.MinimumSupportedDimension, TestBitmaps.MinimumSupportedDimension);
 
-        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 0, out byte[]? pgfBytes));
+        Assert.True(PgfImageEncoder.TryEncode(bgra, width, height, quality: 0, out byte[]? pgfBytes, cancellationToken: TestContext.Current.CancellationToken));
 
-        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, static (span, w, h) => span.ToArray(), out byte[]? decodedBgra);
+        bool decoded = PgfImageDecoder.TryDecode(pgfBytes!, static (span, w, h) => span.ToArray(), out byte[]? decodedBgra, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(decoded);
         Assert.Equal(bgra, decodedBgra);
